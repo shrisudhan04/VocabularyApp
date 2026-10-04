@@ -268,14 +268,7 @@ export default function NounsPage({
     reader.readAsArrayBuffer(file);
   };
 
- const generateGermanNoun = async () => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-    if (!apiKey) {
-      setAiError("VITE_GEMINI_API_KEY is not defined. Ensure .env is in the root directory and restart Vite.");
-      return;
-    }
-
+const generateGermanNoun = async () => {
     if (!nounFormData.meaning.trim()) {
       setAiError("Please provide an English word first.");
       return;
@@ -285,75 +278,34 @@ export default function NounsPage({
       setAiLoading(true);
       setAiError("");
 
-      const ai = new GoogleGenAI({ apiKey });
-
-      const promptConfig = {
-        contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              article: {
-                type: Type.STRING,
-                enum: ["der", "die", "das"],
-              },
-              noun: {
-                type: Type.STRING,
-              },
-              plural: {
-                type: Type.STRING,
-              },
-            },
-            required: ["article", "noun", "plural"],
-          },
+      const response = await fetch("/api/generate-noun", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      };
+        body: JSON.stringify({
+          meaning: nounFormData.meaning.trim(),
+        }),
+      });
 
-      // Updated model identifiers
-      const candidateModels = ["gemini-2.5-flash", "gemini-3.8-flash"];
-      let response;
+      const data = await response.json();
 
-      for (const modelName of candidateModels) {
-        try {
-          response = await ai.models.generateContent({
-            model: modelName,
-            ...promptConfig,
-          });
-          break;
-        } catch (err) {
-          const isOverloadedOrNotFound =
-            err?.status === "UNAVAILABLE" ||
-            err?.status === "NOT_FOUND" ||
-            err?.message?.includes("503") ||
-            err?.message?.includes("404");
-          if (isOverloadedOrNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
-            await new Promise((res) => setTimeout(res, 800));
-            continue;
-          }
-          throw err;
-        }
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate noun.");
       }
-
-      const parsed = JSON.parse(response.text);
 
       setNounFormData((prev) => ({
         ...prev,
-        article: parsed.article,
-        noun: parsed.noun,
-        plural: parsed.plural,
+        article: data.article,
+        noun: data.noun,
+        plural: data.plural,
       }));
     } catch (err) {
-      if (err?.message?.includes("503") || err?.status === "UNAVAILABLE") {
-        setAiError("Servers are currently experiencing high demand. Please tap 'Generate' again in a few moments.");
-      } else {
-        setAiError(err.message || "Failed to generate noun.");
-      }
+      setAiError(err.message || "Failed to generate noun.");
     } finally {
       setAiLoading(false);
     }
   };
-
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
     const itemDate = new Date(isoDate);

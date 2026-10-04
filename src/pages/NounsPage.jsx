@@ -272,26 +272,51 @@ const handleTriggerInstantNotification = async () => {
     return;
   }
 
-  // Check or request notification permission
+  if (!("Notification" in window)) {
+    alert("This browser does not support notifications.");
+    return;
+  }
+
+  // 1. Request permission if not already granted
   let permission = Notification.permission;
   if (permission !== "granted") {
-    const granted = await requestMobileNotificationPermission();
-    if (!granted) {
-      alert("Notification permissions were not granted.");
+    permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      alert("Notification permissions were denied. Please enable them in your browser/device settings.");
       return;
     }
   }
 
-  // Pick a random noun from current list
+  // 2. Select a random noun
   const randomNoun = vocabList[Math.floor(Math.random() * vocabList.length)];
+  const title = `🇩🇪 ${randomNoun.article} ${randomNoun.noun}`;
+  const options = {
+    body: `Meaning: ${randomNoun.meaning} | Plural: ${randomNoun.plural || "—"}`,
+    icon: "/favicon.ico",
+    badge: "/favicon.ico",
+    tag: "noun-notification",
+    renotify: true,
+  };
 
-  // Trigger web/device notification
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(`🇩🇪 ${randomNoun.article} ${randomNoun.noun}`, {
-      body: `Meaning: ${randomNoun.meaning} | Plural: ${randomNoun.plural || "—"}`,
-      tag: "test-noun-alert",
-      renotify: true,
-    });
+  // 3. Mobile Execution via Service Worker (Android / iOS PWA)
+  if ("serviceWorker" in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration && registration.showNotification) {
+        await registration.showNotification(title, options);
+        return;
+      }
+    } catch (err) {
+      console.warn("ServiceWorker showNotification failed, trying fallback:", err);
+    }
+  }
+
+  // 4. Desktop / Fallback Execution
+  try {
+    new Notification(title, options);
+  } catch (err) {
+    console.error("Standard Notification API failed:", err);
+    alert("Unable to display notification on this device.");
   }
 };
   const handleConfirmReset = () => {

@@ -1,46 +1,23 @@
-// src/utils/hourlyWordNotifier.js
-
-export async function requestMobileNotificationPermission() {
-  if (!("Notification" in window)) {
-    alert("Mobile notifications are not supported in this browser.");
-    return false;
-  }
-
-  const permission = await Notification.requestPermission();
-  return permission === "granted";
-}
-
-export async function sendNounNotification(nounItem) {
+export const triggerNounNotification = async (vocabList) => {
+  if (!vocabList || vocabList.length === 0) return;
   if (Notification.permission !== "granted") return;
 
-  const registration = await navigator.serviceWorker.ready;
-  const title = `🇩🇪 Word of the Hour: ${nounItem.article} ${nounItem.noun}`;
-  const body = `Plural: ${nounItem.plural || "—"} | Meaning: ${nounItem.meaning}`;
-
-  registration.showNotification(title, {
-    body,
+  const item = vocabList[Math.floor(Math.random() * vocabList.length)];
+  const title = `${item.article} ${item.noun}`;
+  const options = {
+    body: `Meaning: ${item.meaning} | Plural: ${item.plural || "—"}`,
     icon: "/favicon.ico",
-    badge: "/favicon.ico",
-    vibrate: [150, 80, 150],
-    tag: "hourly-german-noun",
+    tag: "hourly-noun-alert",
     renotify: true,
-    data: { url: "/" },
-  });
-}
+  };
 
-// Schedules hourly local notifications
-export function startHourlyNounNotifier(vocabList) {
-  if (!vocabList || vocabList.length === 0) return null;
+  if ("serviceWorker" in navigator) {
+    const registration = await navigator.serviceWorker.ready;
+    if (registration) {
+      registration.showNotification(title, options);
+      return;
+    }
+  }
 
-  // Trigger one immediately so you see it work
-  const initialWord = vocabList[Math.floor(Math.random() * vocabList.length)];
-  sendNounNotification(initialWord);
-
-  // Set recurring 1-hour interval (3,600,000 ms)
-  const intervalId = setInterval(() => {
-    const randomWord = vocabList[Math.floor(Math.random() * vocabList.length)];
-    sendNounNotification(randomWord);
-  }, 60 * 60 * 1000);
-
-  return intervalId;
-}
+  new Notification(title, options);
+};

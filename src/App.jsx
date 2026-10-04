@@ -22,16 +22,280 @@ const SEED_DATA = [
   { id: 5, article: "die", noun: "Sonne", plural: "die Sonnen", gender: "Feminine", meaning: "Sun", status: "Mastered" },
   { id: 6, article: "das", noun: "Buch", plural: "die Bücher", gender: "Neuter", meaning: "Book", status: "In Progress" },
 ];
-
 const SEED_VERBS = [
-  { id: 101, verb: "helfen", preterite: "half", participle: "geholfen", caseType: "Dativ", meaning: "to help", example: "Ich helfe dem Mann.", status: "Mastered" },
-  { id: 102, verb: "danken", preterite: "dankte", participle: "gedankt", caseType: "Dativ", meaning: "to thank", example: "Wir danken der Lehrerin.", status: "In Progress" },
-  { id: 103, verb: "gehören", preterite: "gehörte", participle: "gehört", caseType: "Dativ", meaning: "to belong to", example: "Das Buch gehört mir.", status: "In Progress" },
-  { id: 104, verb: "sehen", preterite: "sah", participle: "gesehen", caseType: "Akkusativ", meaning: "to see", example: "Ich sehe den Tisch.", status: "Mastered" },
-  { id: 105, verb: "haben", preterite: "hatte", participle: "gehabt", caseType: "Akkusativ", meaning: "to have", example: "Er hat einen Hund.", status: "Mastered" },
-  { id: 106, verb: "brauchen", preterite: "brauchte", participle: "gebraucht", caseType: "Akkusativ", meaning: "to need", example: "Wir brauchen einen Stift.", status: "In Progress" },
-  { id: 107, verb: "geben", preterite: "gab", participle: "gegeben", caseType: "Both / Common", meaning: "to give", example: "Ich gebe dem Kind das Buch.", status: "Mastered" },
-  { id: 108, verb: "schenken", preterite: "schenkte", participle: "geschenkt", caseType: "Both / Common", meaning: "to gift", example: "Er schenkt ihr eine Blume.", status: "In Progress" },
+  // --- ESSENTIAL AUXILIARIES & MODALS ---
+  {
+    id: 101,
+    verb: "sein",
+    preterite: "war",
+    participle: "gewesen",
+    auxiliary: "ist",
+    caseType: "Nominativ",
+    meaning: "to be",
+    example: "Ich war gestern zu Hause. (Ich bin gewesen)",
+    status: "Mastered"
+  },
+  {
+    id: 102,
+    verb: "haben",
+    preterite: "hatte",
+    participle: "gehabt",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "to have",
+    example: "Er hatte keine Zeit. (Er hat gehabt)",
+    status: "Mastered"
+  },
+  {
+    id: 103,
+    verb: "werden",
+    preterite: "wurde",
+    participle: "geworden",
+    auxiliary: "ist",
+    caseType: "Nominativ",
+    meaning: "to become",
+    example: "Sie wurde Ärztin. (Sie ist geworden)",
+    status: "In Progress"
+  },
+  {
+    id: 104,
+    verb: "können",
+    preterite: "konnte",
+    participle: "gekonnt",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "can / to be able to",
+    example: "Wir konnten den Zug nicht erreichen.",
+    status: "Mastered"
+  },
+  {
+    id: 105,
+    verb: "müssen",
+    preterite: "musste",
+    participle: "gemusst",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "must / to have to",
+    example: "Er musste lange im Büro bleiben.",
+    status: "Mastered"
+  },
+
+  // --- MOVEMENT & CHANGE OF STATE (AUXILIARY: SEIN) ---
+  {
+    id: 106,
+    verb: "gehen",
+    preterite: "ging",
+    participle: "gegangen",
+    auxiliary: "ist",
+    caseType: "Both / Common",
+    meaning: "to go / walk",
+    example: "Wir gingen in den Park. (Wir sind gegangen)",
+    status: "Mastered"
+  },
+  {
+    id: 107,
+    verb: "fahren",
+    preterite: "fuhr",
+    participle: "gefahren",
+    auxiliary: "ist",
+    caseType: "Both / Common",
+    meaning: "to drive / ride",
+    example: "Er fuhr mit dem Bus nach Berlin.",
+    status: "Mastered"
+  },
+  {
+    id: 108,
+    verb: "kommen",
+    preterite: "kam",
+    participle: "gekommen",
+    auxiliary: "ist",
+    caseType: "Both / Common",
+    meaning: "to come",
+    example: "Sie kam viel zu spät zur Besprechung.",
+    status: "Mastered"
+  },
+  {
+    id: 109,
+    verb: "bleiben",
+    preterite: "blieb",
+    participle: "geblieben",
+    auxiliary: "ist",
+    caseType: "Dativ",
+    meaning: "to stay / remain",
+    example: "Er blieb das ganze Wochenende im Bett.",
+    status: "In Progress"
+  },
+  {
+    id: 110,
+    verb: "laufen",
+    preterite: "lief",
+    participle: "gelaufen",
+    auxiliary: "ist",
+    caseType: "Akkusativ",
+    meaning: "to run / walk",
+    example: "Das Kind lief schnell über die Straße.",
+    status: "In Progress"
+  },
+
+  // --- STRONG DATIV VERBS ---
+  {
+    id: 111,
+    verb: "helfen",
+    preterite: "half",
+    participle: "geholfen",
+    auxiliary: "hat",
+    caseType: "Dativ",
+    meaning: "to help",
+    example: "Der Kollege half dem Mann sofort.",
+    status: "Mastered"
+  },
+  {
+    id: 112,
+    verb: "danken",
+    preterite: "dankte",
+    participle: "gedankt",
+    auxiliary: "hat",
+    caseType: "Dativ",
+    meaning: "to thank",
+    example: "Wir dankten der Lehrerin für ihre Geduld.",
+    status: "In Progress"
+  },
+  {
+    id: 113,
+    verb: "gefallen",
+    preterite: "gefiel",
+    participle: "gefallen",
+    auxiliary: "hat",
+    caseType: "Dativ",
+    meaning: "to appeal to / to please",
+    example: "Das neue Design gefiel dem Chef sehr gut.",
+    status: "In Progress"
+  },
+  {
+    id: 114,
+    verb: "gehören",
+    preterite: "gehörte",
+    participle: "gehört",
+    auxiliary: "hat",
+    caseType: "Dativ",
+    meaning: "to belong to",
+    example: "Dieses alte Buch gehörte meinem Großvater.",
+    status: "Mastered"
+  },
+
+  // --- STRONG AKKUSATIV VERBS ---
+  {
+    id: 115,
+    verb: "sehen",
+    preterite: "sah",
+    participle: "gesehen",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "to see",
+    example: "Ich sah einen Vogel auf dem Dach.",
+    status: "Mastered"
+  },
+  {
+    id: 116,
+    verb: "lesen",
+    preterite: "las",
+    participle: "gelesen",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "to read",
+    example: "Er las den Vertrag sehr aufmerksam.",
+    status: "In Progress"
+  },
+  {
+    id: 117,
+    verb: "schreiben",
+    preterite: "schrieb",
+    participle: "geschrieben",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "to write",
+    example: "Sie schrieb eine lange E-Mail.",
+    status: "Mastered"
+  },
+  {
+    id: 118,
+    verb: "finden",
+    preterite: "fand",
+    participle: "gefunden",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "to find",
+    example: "Endlich fand er den passenden Schlüssel.",
+    status: "Mastered"
+  },
+  {
+    id: 119,
+    verb: "trinken",
+    preterite: "trank",
+    participle: "getrunken",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "to drink",
+    example: "Wir tranken zusammen einen warmen Tee.",
+    status: "In Progress"
+  },
+  {
+    id: 120,
+    verb: "essen",
+    preterite: "aß",
+    participle: "gegessen",
+    auxiliary: "hat",
+    caseType: "Akkusativ",
+    meaning: "to eat",
+    example: "Er aß ein frisches Brötchen zum Frühstück.",
+    status: "Mastered"
+  },
+
+  // --- TWO-OBJECT DUAL VERBS (DATIV PERSON + AKKUSATIV THING) ---
+  {
+    id: 121,
+    verb: "geben",
+    preterite: "gab",
+    participle: "gegeben",
+    auxiliary: "hat",
+    caseType: "Both / Common",
+    meaning: "to give (jemandem [Dat] etwas [Akk])",
+    example: "Ich gab dem Kind das bunte Buch.",
+    status: "Mastered"
+  },
+  {
+    id: 122,
+    verb: "bringen",
+    preterite: "brachte",
+    participle: "gebracht",
+    auxiliary: "hat",
+    caseType: "Both / Common",
+    meaning: "to bring (jemandem [Dat] etwas [Akk])",
+    example: "Der Kellner brachte dem Gast das Essen.",
+    status: "In Progress"
+  },
+  {
+    id: 123,
+    verb: "schenken",
+    preterite: "schenkte",
+    participle: "geschenkt",
+    auxiliary: "hat",
+    caseType: "Both / Common",
+    meaning: "to gift (jemandem [Dat] etwas [Akk])",
+    example: "Er schenkte seiner Freundin eine weiße Blume.",
+    status: "In Progress"
+  },
+  {
+    id: 124,
+    verb: "erklären",
+    preterite: "erklärte",
+    participle: "erklärt",
+    auxiliary: "hat",
+    caseType: "Both / Common",
+    meaning: "to explain (jemandem [Dat] etwas [Akk])",
+    example: "Der Lehrer erklärte den Schülern die Grammatikregel.",
+    status: "Mastered"
+  }
 ];
 
 const SEED_PATTERNS = [
@@ -530,31 +794,54 @@ export default function App() {
   const [grammarQuizScore, setGrammarQuizScore] = useState(0);
   const [grammarQuizFeedback, setGrammarQuizFeedback] = useState(null);
 
-  useEffect(() => {
-    async function initVault() {
-      try {
-        const storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
-        setVocabList(storedVocab && storedVocab.length ? storedVocab : (await writeToVaultDB(STORE_NAME, BACKUP_KEY, SEED_DATA), SEED_DATA));
+useEffect(() => {
+  async function initVault() {
+    try {
+      // Load stored verbs
+      let storedVerbs = await loadFromVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY);
 
-        const storedVerbs = await loadFromVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY);
-        setVerbsList(storedVerbs && storedVerbs.length ? storedVerbs : (await writeToVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY, SEED_VERBS), SEED_VERBS));
+      // Check if existing verbs lack past-tense forms:
+      const needsMigration = !storedVerbs || storedVerbs.some(v => v.preterite === undefined);
 
-        const storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
-        setPatternsList(storedPatterns && storedPatterns.length ? storedPatterns : (await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, SEED_PATTERNS), SEED_PATTERNS));
+      if (needsMigration) {
+        // Merge missing preterite & participle from SEED_VERBS, or replace with SEED_VERBS
+        const mergedVerbs = (storedVerbs && storedVerbs.length > 0)
+          ? storedVerbs.map(existing => {
+              const seedMatch = SEED_VERBS.find(s => s.verb === existing.verb || s.id === existing.id);
+              return {
+                ...existing,
+                preterite: existing.preterite || (seedMatch ? seedMatch.preterite : ""),
+                participle: existing.participle || (seedMatch ? seedMatch.participle : ""),
+              };
+            })
+          : SEED_VERBS;
 
-        const storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
-        setPrepsList(storedPreps && storedPreps.length ? storedPreps : (await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, SEED_PREPOSITIONS), SEED_PREPOSITIONS));
-      } catch (err) {
-        setVocabList(SEED_DATA);
-        setVerbsList(SEED_VERBS);
-        setPatternsList(SEED_PATTERNS);
-        setPrepsList(SEED_PREPOSITIONS);
-      } finally {
-        setIsReady(true);
+        await writeToVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY, mergedVerbs);
+        setVerbsList(mergedVerbs);
+      } else {
+        setVerbsList(storedVerbs);
       }
+
+      // Remaining stores
+      const storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
+      setVocabList(storedVocab && storedVocab.length ? storedVocab : (await writeToVaultDB(STORE_NAME, BACKUP_KEY, SEED_DATA), SEED_DATA));
+
+      const storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
+      setPatternsList(storedPatterns && storedPatterns.length ? storedPatterns : (await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, SEED_PATTERNS), SEED_PATTERNS));
+
+      const storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
+      setPrepsList(storedPreps && storedPreps.length ? storedPreps : (await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, SEED_PREPOSITIONS), SEED_PREPOSITIONS));
+
+    } catch (err) {
+      console.error("IndexedDB load error:", err);
+      setVerbsList(SEED_VERBS);
+    } finally {
+      setIsReady(true);
     }
-    initVault();
-  }, []);
+  }
+
+  initVault();
+}, []);
 
   const commitNouns = async (newList) => {
     setVocabList(newList);

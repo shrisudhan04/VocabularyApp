@@ -85,21 +85,27 @@ export default function App() {
     async function initVault() {
       try {
         let storedVerbs = await loadFromVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY);
-        const needsVerbMigration = !storedVerbs || storedVerbs.some((v) => v.preterite === undefined || !v.createdAt);
+        const needsVerbMigration =
+          !storedVerbs || storedVerbs.some((v) => v.preterite === undefined || !v.createdAt);
 
         if (needsVerbMigration) {
-          const mergedVerbs = storedVerbs && storedVerbs.length > 0
-            ? storedVerbs.map((existing) => {
-                const seedMatch = SEED_VERBS.find((s) => s.verb === existing.verb || s.id === existing.id);
-                return {
-                  ...existing,
-                  preterite: existing.preterite || (seedMatch ? seedMatch.preterite : ""),
-                  participle: existing.participle || (seedMatch ? seedMatch.participle : ""),
-                  auxiliary: existing.auxiliary || (seedMatch ? seedMatch.auxiliary : "hat"),
-                  createdAt: existing.createdAt || (seedMatch ? seedMatch.createdAt : new Date().toISOString()),
-                };
-              })
-            : SEED_VERBS;
+          const mergedVerbs =
+            storedVerbs && storedVerbs.length > 0
+              ? storedVerbs.map((existing) => {
+                  const seedMatch = SEED_VERBS.find(
+                    (s) => s.verb === existing.verb || s.id === existing.id
+                  );
+                  return {
+                    ...existing,
+                    preterite: existing.preterite || (seedMatch ? seedMatch.preterite : ""),
+                    participle: existing.participle || (seedMatch ? seedMatch.participle : ""),
+                    auxiliary: existing.auxiliary || (seedMatch ? seedMatch.auxiliary : "hat"),
+                    createdAt:
+                      existing.createdAt ||
+                      (seedMatch ? seedMatch.createdAt : new Date().toISOString()),
+                  };
+                })
+              : SEED_VERBS;
 
           await writeToVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY, mergedVerbs);
           setVerbsList(mergedVerbs);
@@ -109,12 +115,16 @@ export default function App() {
 
         let storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
         if (!storedVocab || storedVocab.some((n) => !n.createdAt)) {
-          const merged = storedVocab && storedVocab.length
-            ? storedVocab.map((item) => {
-                const match = SEED_DATA.find((s) => s.id === item.id);
-                return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
-              })
-            : SEED_DATA;
+          const merged =
+            storedVocab && storedVocab.length
+              ? storedVocab.map((item) => {
+                  const match = SEED_DATA.find((s) => s.id === item.id);
+                  return {
+                    ...item,
+                    createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()),
+                  };
+                })
+              : SEED_DATA;
           await writeToVaultDB(STORE_NAME, BACKUP_KEY, merged);
           setVocabList(merged);
         } else {
@@ -123,12 +133,16 @@ export default function App() {
 
         let storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
         if (!storedPatterns || storedPatterns.some((p) => !p.createdAt)) {
-          const merged = storedPatterns && storedPatterns.length
-            ? storedPatterns.map((item) => {
-                const match = SEED_PATTERNS.find((s) => s.id === item.id);
-                return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
-              })
-            : SEED_PATTERNS;
+          const merged =
+            storedPatterns && storedPatterns.length
+              ? storedPatterns.map((item) => {
+                  const match = SEED_PATTERNS.find((s) => s.id === item.id);
+                  return {
+                    ...item,
+                    createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()),
+                  };
+                })
+              : SEED_PATTERNS;
           await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, merged);
           setPatternsList(merged);
         } else {
@@ -137,12 +151,16 @@ export default function App() {
 
         let storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
         if (!storedPreps || storedPreps.some((p) => !p.createdAt)) {
-          const merged = storedPreps && storedPreps.length
-            ? storedPreps.map((item) => {
-                const match = SEED_PREPOSITIONS.find((s) => s.id === item.id);
-                return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
-              })
-            : SEED_PREPOSITIONS;
+          const merged =
+            storedPreps && storedPreps.length
+              ? storedPreps.map((item) => {
+                  const match = SEED_PREPOSITIONS.find((s) => s.id === item.id);
+                  return {
+                    ...item,
+                    createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()),
+                  };
+                })
+              : SEED_PREPOSITIONS;
           await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, merged);
           setPrepsList(merged);
         } else {
@@ -197,7 +215,11 @@ export default function App() {
   };
 
   if (!isReady) {
-    return <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>Loading Deutschly...</div>;
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
+        Loading Deutschly...
+      </div>
+    );
   }
 
   const categoryItems = [
@@ -211,21 +233,29 @@ export default function App() {
 
   return (
     <div className="page-shell" data-theme={theme}>
+      {/* 1. Global Header */}
       <Header onOpenSidebar={() => setSidebarOpen(true)} />
 
+      {/* 2. Drawer Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         categories={categoryItems}
         activeCategory={mainCategory}
-        onSelectCategory={setMainCategory}
+        onSelectCategory={(cat) => {
+          setMainCategory(cat);
+          setSidebarOpen(false);
+        }}
       />
 
-      <div className="page">
+      {/* 3. Main Content Area */}
+      <main className="page">
         <div className="container">
           <SubTabs
             currentView={subViews[mainCategory]}
-            onChangeView={(view) => setSubViews((prev) => ({ ...prev, [mainCategory]: view }))}
+            onChangeView={(view) =>
+              setSubViews((prev) => ({ ...prev, [mainCategory]: view }))
+            }
           />
 
           {mainCategory === "Nouns" && (
@@ -277,7 +307,7 @@ export default function App() {
             <GrammarPage viewMode={subViews.Grammar} />
           )}
         </div>
-      </div>
+      </main>
 
       <ConfirmModal
         isOpen={confirmModal.isOpen}

@@ -1,11 +1,33 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
+import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
+
+// Dropdown configuration options
+const GENDER_OPTIONS = [
+  { label: "All Genders", value: "all" },
+  { label: "der (Masculine)", value: "der" },
+  { label: "die (Feminine)", value: "die" },
+  { label: "das (Neuter)", value: "das" },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { label: "All Status", value: "all" },
+  { label: "In Progress", value: "In Progress" },
+  { label: "Mastered", value: "Mastered" },
+];
+
+const EXCEL_ACTIONS = [
+  { label: "Excel Actions ▾", value: "" },
+  { label: "📥 Import", value: "import" },
+  { label: "📤 Export", value: "export" },
+];
 
 export default function NounsPage({
   viewMode,
@@ -29,11 +51,15 @@ export default function NounsPage({
     status: "In Progress",
   });
 
-  // Alert & Success Modal states
+  // Alert, Success, & Reset Modal states
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateWordName, setDuplicateWordName] = useState("");
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [successWordInfo, setSuccessWordInfo] = useState({ article: "", noun: "" });
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+
+  // Import Summary Modal state (green: added, yellow: duplicates)
+  const [importSummary, setImportSummary] = useState(null);
 
   // AI / Generation helper states
   const [aiLoading, setAiLoading] = useState(false);
@@ -45,6 +71,142 @@ export default function NounsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
+  // Hidden file input reference for Excel import
+  const fileInputRef = useRef(null);
+
+  // -------------------------------------------------------------
+  // Reset All Data Handler
+  // -------------------------------------------------------------
+  const handleConfirmReset = () => {
+    onCommitNouns([]);
+    setCardIndex(0);
+    setCardFlipped(false);
+    setQuizIndex(0);
+    setQuizScore(0);
+    setQuizFeedback(null);
+    setResetModalOpen(false);
+  };
+
+  // -------------------------------------------------------------
+  // Excel Export Handler
+  // -------------------------------------------------------------
+  const exportToExcel = () => {
+    if (!vocabList || vocabList.length === 0) {
+      alert("No nouns to export.");
+      return;
+    }
+
+    const exportData = vocabList.map((item, index) => ({
+      "#": index + 1,
+      Article: item.article,
+      Noun: item.noun,
+      Plural: item.plural || "",
+      Meaning: item.meaning || "",
+      Gender: item.gender || GENDER_MAP[item.article] || "",
+      Status: item.status || "In Progress",
+      CreatedAt: item.createdAt || new Date().toISOString(),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Nouns");
+
+    XLSX.writeFile(workbook, `German_Nouns_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  // -------------------------------------------------------------
+  // Excel Import Handler
+  // -------------------------------------------------------------
+  const handleImportButtonClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  };
+
+  const importFromExcel = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target?.result;
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rawJson = XLSX.utils.sheet_to_json(worksheet);
+
+        if (!rawJson || rawJson.length === 0) {
+          alert("The uploaded Excel sheet contains no rows.");
+          return;
+        }
+
+        const existingNounSet = new Set(
+          vocabList.map((v) => v.noun?.trim().toLowerCase())
+        );
+
+        const newEntries = [];
+        const duplicateWords = [];
+
+        rawJson.forEach((row, i) => {
+          const rowLower = {};
+          Object.keys(row).forEach((k) => {
+            rowLower[k.trim().toLowerCase()] = row[k];
+          });
+
+          const noun = (rowLower.noun || rowLower["german noun"] || "").toString().trim();
+          let article = (rowLower.article || "").toString().trim().toLowerCase();
+          const plural = (rowLower.plural || rowLower["plural (die)"] || "").toString().trim();
+          const meaning = (rowLower.meaning || rowLower["english meaning"] || "").toString().trim();
+          const status = (rowLower.status || "In Progress").toString().trim();
+
+          if (!["der", "die", "das"].includes(article)) {
+            article = "der";
+          }
+
+          if (noun) {
+            const lowerNoun = noun.toLowerCase();
+            if (existingNounSet.has(lowerNoun)) {
+              duplicateWords.push(noun);
+            } else {
+              existingNounSet.add(lowerNoun);
+              newEntries.push({
+                id: Date.now() + i,
+                article,
+                noun,
+                plural,
+                meaning,
+                gender: GENDER_MAP[article] || "",
+                status: status.toLowerCase() === "mastered" ? "Mastered" : "In Progress",
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+        });
+
+        if (newEntries.length > 0) {
+          onCommitNouns([...vocabList, ...newEntries]);
+        }
+
+        setImportSummary({
+          total: rawJson.length,
+          added: newEntries.length,
+          duplicates: duplicateWords.length,
+          duplicateWords,
+        });
+      } catch (err) {
+        console.error("Import error:", err);
+        alert("Failed to parse Excel file. Please ensure it has proper column headers (Article, Noun, Plural, Meaning).");
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  // -------------------------------------------------------------
+  // Gemini AI Generation
+  // -------------------------------------------------------------
   const generateGermanNoun = async () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -155,63 +317,51 @@ export default function NounsPage({
   const nounsMastered = vocabList.filter((i) => i.status === "Mastered").length;
   const countNoun = (art) => vocabList.filter((i) => i.article === art).length;
 
-const handleSaveModal = (e) => {
-  e.preventDefault();
-  console.log("1. Form submit triggered", nounFormData);
+  const handleSaveModal = (e) => {
+    e.preventDefault();
 
-  const cleanNoun = nounFormData.noun.trim();
-  if (!cleanNoun || !nounFormData.meaning.trim()) {
-    console.warn("2. Validation failed! Missing noun or meaning.");
-    return;
-  }
+    const cleanNoun = nounFormData.noun.trim();
+    if (!cleanNoun || !nounFormData.meaning.trim()) {
+      return;
+    }
 
-  // Duplicate check...
-  const isDuplicate = vocabList.some(
-    (item) =>
-      item.noun.trim().toLowerCase() === cleanNoun.toLowerCase() &&
-      item.id !== editingNounId
-  );
+    const isDuplicate = vocabList.some(
+      (item) =>
+        item.noun.trim().toLowerCase() === cleanNoun.toLowerCase() &&
+        item.id !== editingNounId
+    );
 
-  if (isDuplicate) {
-    console.log("3. Word is duplicate");
-    setDuplicateWordName(cleanNoun);
-    setDuplicateModalOpen(true);
-    return;
-  }
+    if (isDuplicate) {
+      setDuplicateWordName(cleanNoun);
+      setDuplicateModalOpen(true);
+      return;
+    }
 
-  console.log("4. Saving noun and opening success modal...");
-  const gender = GENDER_MAP[nounFormData.article] || "";
-  const updated = editingNounId
-    ? vocabList.map((item) =>
-        item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
-      )
-    : [
-        ...vocabList,
-        {
-          id: Date.now(),
-          ...nounFormData,
-          gender,
-          createdAt: new Date().toISOString(),
-        },
-      ];
+    const gender = GENDER_MAP[nounFormData.article] || "";
+    const updated = editingNounId
+      ? vocabList.map((item) =>
+          item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
+        )
+      : [
+          ...vocabList,
+          {
+            id: Date.now(),
+            ...nounFormData,
+            gender,
+            createdAt: new Date().toISOString(),
+          },
+        ];
 
-  onCommitNouns(updated);
-  setModalOpen(false);
+    onCommitNouns(updated);
+    setModalOpen(false);
 
-  setSuccessWordInfo({
-    article: nounFormData.article,
-    noun: cleanNoun,
-    isEdit: Boolean(editingNounId),
-  });
-  setSuccessModalOpen(true);
-
-  // Temporarily comment out the timer so it stays open forever while testing
-  /*
-  setTimeout(() => {
-    setSuccessModalOpen(false);
-  }, 2200);
-  */
-};
+    setSuccessWordInfo({
+      article: nounFormData.article,
+      noun: cleanNoun,
+      isEdit: Boolean(editingNounId),
+    });
+    setSuccessModalOpen(true);
+  };
 
   const nounCard = vocabList[cardIndex];
   const nounQuizWord = vocabList[quizIndex];
@@ -257,23 +407,28 @@ const handleSaveModal = (e) => {
             </div>
 
             <div className="filters-cluster">
+              {/* Gender Dropdown */}
               <div className="filters">
-                <span className="filters-label">Gender:</span>
-                <button onClick={() => setArticleFilter("all")} className={`chip all ${articleFilter === "all" ? "on" : ""}`}>All</button>
-                {["der", "die", "das"].map((a) => (
-                  <button key={a} onClick={() => setArticleFilter(a)} className={`chip ${a} ${articleFilter === a ? "on" : ""}`}>{a}</button>
-                ))}
+                <CustomDropdown
+                  icon="🏷️"
+                  value={articleFilter}
+                  options={GENDER_OPTIONS}
+                  onChange={(val) => setArticleFilter(val)}
+                />
               </div>
 
+              {/* Status Dropdown */}
               <div className="filters">
-                <span className="filters-label">Status:</span>
-                <button onClick={() => setNounStatusFilter("all")} className={`chip all ${nounStatusFilter === "all" ? "on" : ""}`}>All</button>
-                <button onClick={() => setNounStatusFilter("In Progress")} className={`chip all ${nounStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
-                <button onClick={() => setNounStatusFilter("Mastered")} className={`chip das ${nounStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                <CustomDropdown
+                  icon="📌"
+                  value={nounStatusFilter}
+                  options={STATUS_FILTER_OPTIONS}
+                  onChange={(val) => setNounStatusFilter(val)}
+                />
               </div>
 
+              {/* Created Date Dropdown */}
               <div className="filters">
-                <span className="filters-label">Created:</span>
                 <CustomDropdown
                   icon="📅"
                   value={dateFilter}
@@ -281,15 +436,64 @@ const handleSaveModal = (e) => {
                   onChange={(val) => setDateFilter(val)}
                 />
                 {dateFilter === "custom" && (
-                  <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                  <input
+                    type="date"
+                    className="date-select"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                  />
                 )}
               </div>
 
+              {/* Hidden file input for Excel upload */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                accept=".xlsx, .xls, .csv"
+                onChange={importFromExcel}
+              />
+
+              {/* Excel Import/Export Dropdown */}
+              <div className="filters">
+                <CustomDropdown
+                  icon="📊"
+                  value=""
+                  options={EXCEL_ACTIONS}
+                  onChange={(val) => {
+                    if (val === "import") handleImportButtonClick();
+                    if (val === "export") exportToExcel();
+                  }}
+                />
+              </div>
+
+              {/* Reset Data Button */}
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(true)}
+                className="btn btn-secondary"
+                style={{
+                  color: "#dc2626",
+                  borderColor: "#fca5a5",
+                  backgroundColor: "#fef2f2",
+                }}
+                title="Reset all nouns"
+              >
+                🔄 Reset
+              </button>
+
+              {/* Add Noun Button */}
               <button
                 onClick={() => {
                   setEditingNounId(null);
                   setAiError("");
-                  setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" });
+                  setNounFormData({
+                    noun: "",
+                    plural: "",
+                    article: "der",
+                    meaning: "",
+                    status: "In Progress",
+                  });
                   setModalOpen(true);
                 }}
                 className="btn btn-primary"
@@ -352,7 +556,7 @@ const handleSaveModal = (e) => {
                     }
                     className="icon-btn"
                   >
-                    🗑️
+                    🗑
                   </button>
                 </div>
               </div>
@@ -555,6 +759,69 @@ const handleSaveModal = (e) => {
         </div>
       )}
 
+      {/* Reset Confirmation Modal with WarningRed.gif */}
+      {resetModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setResetModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              animation: "fadeIn 0.2s ease-in-out",
+            }}
+          >
+            <img
+              src={warningRedGif}
+              alt="Warning"
+              style={{
+                width: 90,
+                height: 90,
+                objectFit: "contain",
+                marginBottom: 16,
+              }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>
+              Reset All Nouns?
+            </h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              Are you sure you want to delete all nouns? This action will permanently remove your entire vocabulary list and cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, width: "100%" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => setResetModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  backgroundColor: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "#ffffff",
+                }}
+                onClick={handleConfirmReset}
+              >
+                Yes, Reset All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Duplicate Word Alert Modal with GIF */}
       {duplicateModalOpen && (
         <div
@@ -641,6 +908,112 @@ const handleSaveModal = (e) => {
               onClick={() => setSuccessModalOpen(false)}
             >
               Great! 🎉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Import Summary Modal (Green for Added, Yellow for Duplicates) */}
+      {importSummary && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setImportSummary(null)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 380,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <h3 style={{ margin: "0 0 16px", fontSize: 20, color: "var(--ink)" }}>
+              Import Summary
+            </h3>
+
+            {/* Color-Coded Stats Badges */}
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                width: "100%",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              {/* Added Card - Green */}
+              <div
+                style={{
+                  flex: 1,
+                  padding: "14px 8px",
+                  borderRadius: 10,
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  color: "#166534",
+                  fontWeight: 700,
+                }}
+              >
+                <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.added}</div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>
+                  Added
+                </div>
+              </div>
+
+              {/* Duplicate Card - Yellow */}
+              <div
+                style={{
+                  flex: 1,
+                  padding: "14px 8px",
+                  borderRadius: 10,
+                  backgroundColor: "#fef9c3",
+                  border: "1px solid #fde047",
+                  color: "#854d0e",
+                  fontWeight: 700,
+                }}
+              >
+                <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.duplicates}</div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>
+                  Duplicates
+                </div>
+              </div>
+            </div>
+
+            {/* Skipped duplicate items preview list */}
+            {importSummary.duplicateWords.length > 0 && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#854d0e",
+                  backgroundColor: "#fefce8",
+                  border: "1px dashed #facc15",
+                  borderRadius: 6,
+                  padding: "8px 12px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  maxHeight: 90,
+                  overflowY: "auto",
+                  marginBottom: 16,
+                  textAlign: "left",
+                }}
+              >
+                <strong>Skipped words:</strong>{" "}
+                {importSummary.duplicateWords.slice(0, 8).join(", ")}
+                {importSummary.duplicateWords.length > 8 &&
+                  ` and ${importSummary.duplicateWords.length - 8} more...`}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setImportSummary(null)}
+            >
+              Done
             </button>
           </div>
         </div>

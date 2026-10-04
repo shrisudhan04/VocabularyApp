@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap');
+
+/* ==========================================================================
+   THEME VARIABLES
+   ========================================================================== */
 
 :root {
   --bg: #fcfaf7;
@@ -11,6 +15,7 @@
   --muted: #78716c;
   --faint: #a8a29e;
   --brand: #b45309;
+  --brand-light: #f59e0b;
   --danger: #dc2626;
 
   --der: #0369a1;
@@ -43,6 +48,7 @@
   --muted: #a8a29e;
   --faint: #78716c;
   --brand: #f59e0b;
+  --brand-light: #fbbf24;
   --danger: #ef4444;
 
   --der: #38bdf8;
@@ -64,9 +70,17 @@
   --input-bg: #1c1917;
 }
 
-/* =========================
-   GLOBAL
-========================= */
+/* ==========================================================================
+   GLOBAL RESET & BASE
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
 
 html,
 body,
@@ -78,14 +92,6 @@ body,
   background: var(--bg);
   color: var(--ink);
   font-family: 'Poppins', sans-serif !important;
-}
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  font-family: inherit;
-  -webkit-tap-highlight-color: transparent;
 }
 
 button,
@@ -107,74 +113,86 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
-/* =========================
-   HEADER
-========================= */
+/* ==========================================================================
+   HEADER & LOGO
+   ========================================================================== */
 
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 80;
+  z-index: 100;
   width: 100%;
   background: var(--bg);
-  border-bottom: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
+  padding: 14px 20px;
+  box-sizing: border-box;
+}
+
+.kebab-btn,
+.header-spacer {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
 }
 
 .kebab-btn {
   background: transparent;
   border: none;
-  width: 40px;
-  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   cursor: pointer;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.kebab-btn:hover {
+  background: var(--card-inner);
 }
 
 .hamburger-icon {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  width: 22px;
-  height: 18px;
+  width: 24px;
+  height: 16px;
 }
 
 .hamburger-icon span {
   display: block;
-  height: 4px;
+  height: 3.5px;
   width: 100%;
-  background: #b85202;
+  background-color: #b45309;
   border-radius: 999px;
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
-.kebab-btn:hover {
-  background: var(--card-inner);
-  border-color: var(--brand);
-  color: var(--brand);
-}
-
-.app-title {
+/* 3D Bubble Wordmark */
+.app-title,
+.sidebar-logo {
   margin: 0;
-  font-size: 24px;
-  font-weight: 800;
+  font-family: 'Poppins', sans-serif !important;
+  font-size: 28px;
+  font-weight: 900;
   letter-spacing: -0.5px;
-  color: var(--brand);
+  text-transform: lowercase;
+  color: #f59e0b;
+  text-shadow:
+    1px 1px 0 #d97706,
+    2px 2px 0 #b45309,
+    3px 3px 0 #78350f,
+    2px 4px 6px rgba(0, 0, 0, 0.22);
+  line-height: 1;
   text-align: center;
+  user-select: none;
 }
 
-.header-spacer {
-  width: 40px;
-}
-
-/* =========================
-   SIDEBAR
-========================= */
+/* ==========================================================================
+   SIDEBAR & DRAWER
+   ========================================================================== */
 
 .sidebar-overlay {
   position: fixed;
@@ -220,21 +238,15 @@ textarea:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
-.sidebar-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--ink);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
 .sidebar-close-btn {
   background: transparent;
   border: none;
-  font-size: 20px;
+  font-size: 22px;
   color: var(--muted);
   padding: 4px 8px;
   border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .sidebar-close-btn:hover {
@@ -278,9 +290,9 @@ textarea:focus-visible {
   box-shadow: 0 4px 10px rgba(180, 83, 9, 0.3);
 }
 
-/* =========================
-   PAGE
-========================= */
+/* ==========================================================================
+   PAGE LAYOUT & CONTAINER
+   ========================================================================== */
 
 .page {
   background: var(--bg);
@@ -289,7 +301,6 @@ textarea:focus-visible {
   padding: 20px 32px 36px;
   display: flex;
   justify-content: center;
-  font-family: 'Poppins', sans-serif !important;
   color: var(--ink);
 }
 
@@ -302,9 +313,9 @@ textarea:focus-visible {
   min-width: 0;
 }
 
-/* =========================
+/* ==========================================================================
    BUTTONS
-========================= */
+   ========================================================================== */
 
 .btn {
   border-radius: 8px;
@@ -317,12 +328,14 @@ textarea:focus-visible {
   gap: 6px;
   white-space: nowrap;
   min-height: 40px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
 }
 
 .btn-primary {
   background: var(--brand);
   color: #fff;
-  border: none;
 }
 
 .btn-secondary {
@@ -334,7 +347,6 @@ textarea:focus-visible {
 .btn-danger {
   background: var(--danger);
   color: #fff;
-  border: none;
 }
 
 .btn[disabled] {
@@ -346,9 +358,9 @@ textarea:focus-visible {
   display: none;
 }
 
-/* =========================
+/* ==========================================================================
    SUB TABS
-========================= */
+   ========================================================================== */
 
 .sub-tabs-bar {
   display: flex;
@@ -380,6 +392,7 @@ textarea:focus-visible {
   color: var(--muted);
   text-align: center;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .sub-tab.active {
@@ -388,9 +401,9 @@ textarea:focus-visible {
   box-shadow: 0 2px 6px rgba(180, 83, 9, 0.35);
 }
 
-/* =========================
-   STATS
-========================= */
+/* ==========================================================================
+   STATS CARDS
+   ========================================================================== */
 
 .stats-grid {
   display: grid;
@@ -401,9 +414,9 @@ textarea:focus-visible {
 .stat {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 18px;
   padding: 18px 20px;
-  min-height: 105px;
+  min-height: 125px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -411,22 +424,25 @@ textarea:focus-visible {
 
 .stat.dark {
   background: #1c1917;
-  border-color: #3c3836;
-  color: #fff;
+  border: 1px solid #292524;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
 .stat-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 
 .stat-label {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--muted);
-  letter-spacing: 0.6px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  line-height: 1.3;
 }
 
 .stat.dark .stat-label {
@@ -436,14 +452,25 @@ textarea:focus-visible {
 .stat-pill {
   font-size: 11px;
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
 }
 
 .stat-pill.dark {
-  background: #292524;
+  background: rgba(255, 255, 255, 0.07);
   color: #f59e0b;
   font-weight: 600;
+  padding: 6px 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  border-radius: 12px;
+}
+
+.stat-pill.dark strong {
+  font-size: 13px;
+  color: #f59e0b;
 }
 
 .stat-foot {
@@ -454,86 +481,44 @@ textarea:focus-visible {
 }
 
 .stat-value {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 32px;
+  font-weight: 800;
   line-height: 1;
 }
 
 .stat-note {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
+  color: var(--muted);
 }
 
-/* =========================
-   COLORS
-========================= */
-
-.c-der {
-  color: var(--der);
+.stat.dark .stat-note {
+  color: #a8a29e;
 }
 
-.c-die {
-  color: var(--die);
-}
+/* ==========================================================================
+   COLOR SYSTEM
+   ========================================================================== */
 
-.c-das {
-  color: var(--das);
-}
+.c-der { color: var(--der); }
+.c-die { color: var(--die); }
+.c-das { color: var(--das); }
+.c-dativ { color: var(--dativ); }
+.c-akku { color: var(--akku); }
+.c-both { color: var(--both); }
+.c-wechsel { color: var(--wechsel); }
 
-.c-dativ {
-  color: var(--dativ);
-}
+.bg-der { background: var(--der-bg); color: var(--der); }
+.bg-die { background: var(--die-bg); color: var(--die); }
+.bg-das { background: var(--das-bg); color: var(--das); }
+.bg-dativ { background: var(--dativ-bg); color: var(--dativ); }
+.bg-akku { background: var(--akku-bg); color: var(--akku); }
+.bg-both { background: var(--both-bg); color: var(--both); }
+.bg-wechsel { background: var(--wechsel-bg); color: var(--wechsel); }
 
-.c-akku {
-  color: var(--akku);
-}
-
-.c-both {
-  color: var(--both);
-}
-
-.c-wechsel {
-  color: var(--wechsel);
-}
-
-.bg-der {
-  background: var(--der-bg);
-  color: var(--der);
-}
-
-.bg-die {
-  background: var(--die-bg);
-  color: var(--die);
-}
-
-.bg-das {
-  background: var(--das-bg);
-  color: var(--das);
-}
-
-.bg-dativ {
-  background: var(--dativ-bg);
-  color: var(--dativ);
-}
-
-.bg-akku {
-  background: var(--akku-bg);
-  color: var(--akku);
-}
-
-.bg-both {
-  background: var(--both-bg);
-  color: var(--both);
-}
-
-.bg-wechsel {
-  background: var(--wechsel-bg);
-  color: var(--wechsel);
-}
-
-/* =========================
-   SECTION / TOOLBAR
-========================= */
+/* ==========================================================================
+   TOOLBAR & FILTERS
+   ========================================================================== */
 
 .section {
   display: flex;
@@ -607,107 +592,27 @@ textarea:focus-visible {
   font-weight: 600;
   white-space: nowrap;
   min-height: 34px;
+  cursor: pointer;
+  background: transparent;
 }
 
-.chip.all {
-  background: var(--card-inner);
-  color: var(--ink-2);
-  border-color: var(--line-2);
-}
+.chip.all { background: var(--card-inner); color: var(--ink-2); border-color: var(--line-2); }
+.chip.der { background: var(--der-bg); color: var(--der); border-color: var(--der); }
+.chip.die { background: var(--die-bg); color: var(--die); border-color: var(--die); }
+.chip.das { background: var(--das-bg); color: var(--das); border-color: var(--das); }
+.chip.dativ { background: var(--dativ-bg); color: var(--dativ); border-color: var(--dativ); }
+.chip.akku { background: var(--akku-bg); color: var(--akku); border-color: var(--akku); }
+.chip.both { background: var(--both-bg); color: var(--both); border-color: var(--both); }
+.chip.wechsel { background: var(--wechsel-bg); color: var(--wechsel); border-color: var(--wechsel); }
 
-.chip.der {
-  background: var(--der-bg);
-  color: var(--der);
-  border-color: var(--der);
-}
-
-.chip.die {
-  background: var(--die-bg);
-  color: var(--die);
-  border-color: var(--die);
-}
-
-.chip.das {
-  background: var(--das-bg);
-  color: var(--das);
-  border-color: var(--das);
-}
-
-.chip.dativ {
-  background: var(--dativ-bg);
-  color: var(--dativ);
-  border-color: var(--dativ);
-}
-
-.chip.akku {
-  background: var(--akku-bg);
-  color: var(--akku);
-  border-color: var(--akku);
-}
-
-.chip.both {
-  background: var(--both-bg);
-  color: var(--both);
-  border-color: var(--both);
-}
-
-.chip.wechsel {
-  background: var(--wechsel-bg);
-  color: var(--wechsel);
-  border-color: var(--wechsel);
-}
-
-.chip.all.on {
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
-}
-
-.chip.der.on {
-  background: var(--der);
-  color: #fff;
-  border-color: var(--der);
-}
-
-.chip.die.on {
-  background: var(--die);
-  color: #fff;
-  border-color: var(--die);
-}
-
-.chip.das.on {
-  background: var(--das);
-  color: #fff;
-  border-color: var(--das);
-}
-
-.chip.dativ.on {
-  background: var(--dativ);
-  color: #fff;
-  border-color: var(--dativ);
-}
-
-.chip.akku.on {
-  background: var(--akku);
-  color: #fff;
-  border-color: var(--akku);
-}
-
-.chip.both.on {
-  background: var(--both);
-  color: #fff;
-  border-color: var(--both);
-}
-
-.chip.wechsel.on {
-  background: var(--wechsel);
-  color: #fff;
-  border-color: var(--wechsel);
-}
-
-/* =========================
-   DATE SELECT
-========================= */
+.chip.all.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip.der.on { background: var(--der); color: #fff; border-color: var(--der); }
+.chip.die.on { background: var(--die); color: #fff; border-color: var(--die); }
+.chip.das.on { background: var(--das); color: #fff; border-color: var(--das); }
+.chip.dativ.on { background: var(--dativ); color: #fff; border-color: var(--dativ); }
+.chip.akku.on { background: var(--akku); color: #fff; border-color: var(--akku); }
+.chip.both.on { background: var(--both); color: #fff; border-color: var(--both); }
+.chip.wechsel.on { background: var(--wechsel); color: #fff; border-color: var(--wechsel); }
 
 .date-select {
   padding: 8px 12px;
@@ -720,9 +625,9 @@ textarea:focus-visible {
   min-height: 36px;
 }
 
-/* =========================
+/* ==========================================================================
    DROPDOWN
-========================= */
+   ========================================================================== */
 
 .dropdown-container {
   position: relative;
@@ -750,6 +655,7 @@ textarea:focus-visible {
   gap: 10px;
   width: 100%;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
 }
 
 .dropdown-trigger:hover {
@@ -813,6 +719,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
@@ -827,9 +734,9 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-/* =========================
-   LISTS
-========================= */
+/* ==========================================================================
+   LISTS & TABLES
+   ========================================================================== */
 
 .list {
   background: var(--card);
@@ -851,8 +758,7 @@ textarea:focus-visible {
 .nouns-head,
 .noun-row {
   display: grid;
-  grid-template-columns:
-    48px 80px 180px 180px 1fr 140px 120px !important;
+  grid-template-columns: 48px 80px 180px 180px 1fr 140px 120px !important;
   gap: 16px;
   align-items: center;
 }
@@ -860,8 +766,7 @@ textarea:focus-visible {
 .verbs-head,
 .verb-row {
   display: grid;
-  grid-template-columns:
-    44px 90px 140px 170px 160px 1fr 130px 110px !important;
+  grid-template-columns: 44px 90px 140px 170px 160px 1fr 130px 110px !important;
   gap: 14px;
   align-items: center;
 }
@@ -869,8 +774,7 @@ textarea:focus-visible {
 .preps-head,
 .prep-row {
   display: grid;
-  grid-template-columns:
-    48px 110px 140px 200px 1fr 130px 120px !important;
+  grid-template-columns: 48px 110px 140px 200px 1fr 130px 120px !important;
   gap: 16px;
   align-items: center;
 }
@@ -922,7 +826,6 @@ textarea:focus-visible {
   color: var(--brand);
   font-size: 12.5px;
   font-weight: 600;
-  font-family: 'Poppins', sans-serif !important;
 }
 
 .c-mean {
@@ -976,11 +879,12 @@ textarea:focus-visible {
   border: 1px solid var(--line-2);
   border-radius: 8px;
   color: var(--ink);
+  cursor: pointer;
 }
 
-/* =========================
+/* ==========================================================================
    PATTERNS
-========================= */
+   ========================================================================== */
 
 .patterns-grid {
   display: grid;
@@ -999,17 +903,9 @@ textarea:focus-visible {
   gap: 14px;
 }
 
-.pattern-col.der {
-  border-top-color: var(--der);
-}
-
-.pattern-col.die {
-  border-top-color: var(--die);
-}
-
-.pattern-col.das {
-  border-top-color: var(--das);
-}
+.pattern-col.der { border-top-color: var(--der); }
+.pattern-col.die { border-top-color: var(--die); }
+.pattern-col.das { border-top-color: var(--das); }
 
 .pattern-header {
   display: flex;
@@ -1044,7 +940,6 @@ textarea:focus-visible {
   align-self: flex-start;
   font-weight: 700;
   font-size: 13px;
-  font-family: 'Poppins', sans-serif !important;
   padding: 3px 8px;
   border-radius: 6px;
 }
@@ -1078,9 +973,9 @@ textarea:focus-visible {
   margin: 0;
 }
 
-/* =========================
+/* ==========================================================================
    GRAMMAR
-========================= */
+   ========================================================================== */
 
 .grammar-hub-card {
   background: var(--card);
@@ -1109,6 +1004,7 @@ textarea:focus-visible {
   font-size: 13px;
   color: var(--ink-2);
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .grammar-topic-btn.active {
@@ -1162,9 +1058,9 @@ textarea:focus-visible {
   color: var(--ink-2);
 }
 
-/* =========================
+/* ==========================================================================
    FLASHCARDS
-========================= */
+   ========================================================================== */
 
 .panel {
   background: var(--card);
@@ -1210,9 +1106,9 @@ textarea:focus-visible {
   align-items: center;
 }
 
-/* =========================
+/* ==========================================================================
    QUIZ
-========================= */
+   ========================================================================== */
 
 .quiz {
   max-width: 480px;
@@ -1260,39 +1156,20 @@ textarea:focus-visible {
   font-weight: 700;
   min-height: 48px;
   background: var(--brand);
+  cursor: pointer;
 }
 
-.quiz-opt.der {
-  background: var(--der);
-}
+.quiz-opt.der { background: var(--der); }
+.quiz-opt.die { background: var(--die); }
+.quiz-opt.das { background: var(--das); }
+.quiz-opt.Dativ { background: var(--dativ); }
+.quiz-opt.Akkusativ { background: var(--akku); }
+.quiz-opt.Both { background: var(--both); }
+.quiz-opt.Wechsel { background: var(--wechsel); }
 
-.quiz-opt.die {
-  background: var(--die);
-}
-
-.quiz-opt.das {
-  background: var(--das);
-}
-
-.quiz-opt.Dativ {
-  background: var(--dativ);
-}
-
-.quiz-opt.Akkusativ {
-  background: var(--akku);
-}
-
-.quiz-opt.Both {
-  background: var(--both);
-}
-
-.quiz-opt.Wechsel {
-  background: var(--wechsel);
-}
-
-/* =========================
-   MODAL
-========================= */
+/* ==========================================================================
+   MODAL & DIALOGS
+   ========================================================================== */
 
 .overlay {
   position: fixed;
@@ -1386,10 +1263,6 @@ textarea:focus-visible {
   margin-top: 12px;
 }
 
-/* =========================
-   CONFIRM
-========================= */
-
 .confirm-box {
   text-align: center;
   display: flex;
@@ -1408,9 +1281,9 @@ textarea:focus-visible {
   line-height: 1.4;
 }
 
-/* =========================
-   RESPONSIVE
-========================= */
+/* ==========================================================================
+   RESPONSIVE DESIGN (MEDIA QUERIES)
+   ========================================================================== */
 
 @media (max-width: 1024px) {
   .page {
@@ -1494,7 +1367,6 @@ textarea:focus-visible {
 
   .c-past {
     color: var(--brand);
-    font-family: 'Poppins', sans-serif !important;
     font-weight: 600;
   }
 
@@ -1572,46 +1444,4 @@ textarea:focus-visible {
     box-shadow: 0 8px 20px rgba(180, 83, 9, 0.35);
     font-size: 14px;
   }
-}
-
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-}
-
-.app-title {
-  font-family: "Tiempos Headline", "Source Serif 4", Georgia, serif;
-  font-weight: 600;
-  font-size: 1.5rem;
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-
-.kebab-btn {
-  background: none;
-  border: none;
-  padding: 8px;
-  cursor: pointer;
-  border-radius: 8px;
-}
-
-.hamburger-icon {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 20px;
-}
-
-.hamburger-icon span {
-  display: block;
-  height: 2px;
-  background: currentColor;
-  border-radius: 2px;
-}
-
-/* Keeps the title centered by matching the button's width */
-.header-spacer {
-  width: 36px;
 }

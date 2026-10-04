@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 
 const DB_NAME = "GermanVocabVault";
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STORE_NAME = "vocabulary_store";
 const VERBS_STORE_NAME = "verbs_store";
 const PATTERNS_STORE_NAME = "patterns_store";
@@ -15,79 +15,78 @@ const PREPOSITIONS_BACKUP_KEY = "current_prepositions_data";
 
 // ---------- SEED DATA ----------
 const SEED_DATA = [
-  { id: 1, article: "der", noun: "Mann", plural: "die Männer", gender: "Masculine", meaning: "Male / Man", status: "Mastered" },
-  { id: 2, article: "die", noun: "Frau", plural: "die Frauen", gender: "Feminine", meaning: "Woman / Wife", status: "In Progress" },
-  { id: 3, article: "das", noun: "Kind", plural: "die Kinder", gender: "Neuter", meaning: "Child", status: "In Progress" },
-  { id: 4, article: "der", noun: "Tisch", plural: "die Tische", gender: "Masculine", meaning: "Table", status: "Mastered" },
-  { id: 5, article: "die", noun: "Sonne", plural: "die Sonnen", gender: "Feminine", meaning: "Sun", status: "Mastered" },
-  { id: 6, article: "das", noun: "Buch", plural: "die Bücher", gender: "Neuter", meaning: "Book", status: "In Progress" },
+  { id: 1, article: "der", noun: "Mann", plural: "die Männer", gender: "Masculine", meaning: "Male / Man", status: "Mastered", createdAt: "2026-09-01T10:00:00.000Z" },
+  { id: 2, article: "die", noun: "Frau", plural: "die Frauen", gender: "Feminine", meaning: "Woman / Wife", status: "In Progress", createdAt: "2026-09-05T11:00:00.000Z" },
+  { id: 3, article: "das", noun: "Kind", plural: "die Kinder", gender: "Neuter", meaning: "Child", status: "In Progress", createdAt: "2026-09-10T14:30:00.000Z" },
+  { id: 4, article: "der", noun: "Tisch", plural: "die Tische", gender: "Masculine", meaning: "Table", status: "Mastered", createdAt: "2026-09-15T09:20:00.000Z" },
+  { id: 5, article: "die", noun: "Sonne", plural: "die Sonnen", gender: "Feminine", meaning: "Sun", status: "Mastered", createdAt: "2026-09-20T16:00:00.000Z" },
+  { id: 6, article: "das", noun: "Buch", plural: "die Bücher", gender: "Neuter", meaning: "Book", status: "In Progress", createdAt: "2026-09-25T18:45:00.000Z" },
 ];
 
 const SEED_VERBS = [
-  { id: 101, verb: "sein", preterite: "war", participle: "gewesen", auxiliary: "ist", caseType: "Nominativ", meaning: "to be", example: "Ich war gestern zu Hause. (Ich bin gewesen)", status: "Mastered" },
-  { id: 102, verb: "haben", preterite: "hatte", participle: "gehabt", auxiliary: "hat", caseType: "Akkusativ", meaning: "to have", example: "Er hatte keine Zeit. (Er hat gehabt)", status: "Mastered" },
-  { id: 103, verb: "werden", preterite: "wurde", participle: "geworden", auxiliary: "ist", caseType: "Nominativ", meaning: "to become", example: "Sie wurde Ärztin. (Sie ist geworden)", status: "In Progress" },
-  { id: 104, verb: "können", preterite: "konnte", participle: "gekonnt", auxiliary: "hat", caseType: "Akkusativ", meaning: "can / to be able to", example: "Wir konnten den Zug nicht erreichen.", status: "Mastered" },
-  { id: 105, verb: "müssen", preterite: "musste", participle: "gemusst", auxiliary: "hat", caseType: "Akkusativ", meaning: "must / to have to", example: "Er musste lange im Büro bleiben.", status: "Mastered" },
-  { id: 106, verb: "gehen", preterite: "ging", participle: "gegangen", auxiliary: "ist", caseType: "Both / Common", meaning: "to go / walk", example: "Wir gingen in den Park. (Wir sind gegangen)", status: "Mastered" },
-  { id: 107, verb: "fahren", preterite: "fuhr", participle: "gefahren", auxiliary: "ist", caseType: "Both / Common", meaning: "to drive / ride", example: "Er fuhr mit dem Bus nach Berlin.", status: "Mastered" },
-  { id: 108, verb: "kommen", preterite: "kam", participle: "gekommen", auxiliary: "ist", caseType: "Both / Common", meaning: "to come", example: "Sie kam viel zu spät zur Besprechung.", status: "Mastered" },
-  { id: 109, verb: "bleiben", preterite: "blieb", participle: "geblieben", auxiliary: "ist", caseType: "Dativ", meaning: "to stay / remain", example: "Er blieb das ganze Wochenende im Bett.", status: "In Progress" },
-  { id: 110, verb: "laufen", preterite: "lief", participle: "gelaufen", auxiliary: "ist", caseType: "Akkusativ", meaning: "to run / walk", example: "Das Kind lief schnell über die Straße.", status: "In Progress" },
-  { id: 111, verb: "helfen", preterite: "half", participle: "geholfen", auxiliary: "hat", caseType: "Dativ", meaning: "to help", example: "Der Kollege half dem Mann sofort.", status: "Mastered" },
-  { id: 112, verb: "danken", preterite: "dankte", participle: "gedankt", auxiliary: "hat", caseType: "Dativ", meaning: "to thank", example: "Wir dankten der Lehrerin für ihre Geduld.", status: "In Progress" },
-  { id: 113, verb: "gefallen", preterite: "gefiel", participle: "gefallen", auxiliary: "hat", caseType: "Dativ", meaning: "to appeal to / to please", example: "Das neue Design gefiel dem Chef sehr gut.", status: "In Progress" },
-  { id: 114, verb: "gehören", preterite: "gehörte", participle: "gehört", auxiliary: "hat", caseType: "Dativ", meaning: "to belong to", example: "Dieses alte Buch gehörte meinem Großvater.", status: "Mastered" },
-  { id: 115, verb: "sehen", preterite: "sah", participle: "gesehen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to see", example: "Ich sah einen Vogel auf dem Dach.", status: "Mastered" },
-  { id: 116, verb: "lesen", preterite: "las", participle: "gelesen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to read", example: "Er las den Vertrag sehr aufmerksam.", status: "In Progress" },
-  { id: 117, verb: "schreiben", preterite: "schrieb", participle: "geschrieben", auxiliary: "hat", caseType: "Akkusativ", meaning: "to write", example: "Sie schrieb eine lange E-Mail.", status: "Mastered" },
-  { id: 118, verb: "finden", preterite: "fand", participle: "gefunden", auxiliary: "hat", caseType: "Akkusativ", meaning: "to find", example: "Endlich fand er den passenden Schlüssel.", status: "Mastered" },
-  { id: 119, verb: "trinken", preterite: "trank", participle: "getrunken", auxiliary: "hat", caseType: "Akkusativ", meaning: "to drink", example: "Wir tranken zusammen einen warmen Tee.", status: "In Progress" },
-  { id: 120, verb: "essen", preterite: "aß", participle: "gegessen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to eat", example: "Er aß ein frisches Brötchen zum Frühstück.", status: "Mastered" },
-  { id: 121, verb: "geben", preterite: "gab", participle: "gegeben", auxiliary: "hat", caseType: "Both / Common", meaning: "to give (jemandem [Dat] etwas [Akk])", example: "Ich gab dem Kind das bunte Buch.", status: "Mastered" },
-  { id: 122, verb: "bringen", preterite: "brachte", participle: "gebracht", auxiliary: "hat", caseType: "Both / Common", meaning: "to bring (jemandem [Dat] etwas [Akk])", example: "Der Kellner brachte dem Gast das Essen.", status: "In Progress" },
-  { id: 123, verb: "schenken", preterite: "schenkte", participle: "geschenkt", auxiliary: "hat", caseType: "Both / Common", meaning: "to gift (jemandem [Dat] etwas [Akk])", example: "Er schenkte seiner Freundin eine weiße Blume.", status: "In Progress" },
-  { id: 124, verb: "erklären", preterite: "erklärte", participle: "erklärt", auxiliary: "hat", caseType: "Both / Common", meaning: "to explain (jemandem [Dat] etwas [Akk])", example: "Der Lehrer erklärte den Schülern die Grammatikregel.", status: "Mastered" }
+  { id: 101, verb: "sein", preterite: "war", participle: "gewesen", auxiliary: "ist", caseType: "Nominativ", meaning: "to be", example: "Ich war gestern zu Hause.", status: "Mastered", createdAt: "2026-09-01T08:00:00.000Z" },
+  { id: 102, verb: "haben", preterite: "hatte", participle: "gehabt", auxiliary: "hat", caseType: "Akkusativ", meaning: "to have", example: "Er hatte keine Zeit.", status: "Mastered", createdAt: "2026-09-02T08:00:00.000Z" },
+  { id: 103, verb: "werden", preterite: "wurde", participle: "geworden", auxiliary: "ist", caseType: "Nominativ", meaning: "to become", example: "Sie wurde Ärztin.", status: "In Progress", createdAt: "2026-09-05T12:00:00.000Z" },
+  { id: 104, verb: "können", preterite: "konnte", participle: "gekonnt", auxiliary: "hat", caseType: "Akkusativ", meaning: "can / to be able to", example: "Wir konnten den Zug nicht erreichen.", status: "Mastered", createdAt: "2026-09-07T13:00:00.000Z" },
+  { id: 105, verb: "müssen", preterite: "musste", participle: "gemusst", auxiliary: "hat", caseType: "Akkusativ", meaning: "must / to have to", example: "Er musste lange im Büro bleiben.", status: "Mastered", createdAt: "2026-09-10T14:00:00.000Z" },
+  { id: 106, verb: "gehen", preterite: "ging", participle: "gegangen", auxiliary: "ist", caseType: "Both / Common", meaning: "to go / walk", example: "Wir gingen in den Park.", status: "Mastered", createdAt: "2026-09-12T15:00:00.000Z" },
+  { id: 107, verb: "fahren", preterite: "fuhr", participle: "gefahren", auxiliary: "ist", caseType: "Both / Common", meaning: "to drive / ride", example: "Er fuhr mit dem Bus nach Berlin.", status: "Mastered", createdAt: "2026-09-15T09:00:00.000Z" },
+  { id: 108, verb: "kommen", preterite: "kam", participle: "gekommen", auxiliary: "ist", caseType: "Both / Common", meaning: "to come", example: "Sie kam viel zu spät zur Besprechung.", status: "Mastered", createdAt: "2026-09-18T10:00:00.000Z" },
+  { id: 109, verb: "bleiben", preterite: "blieb", participle: "geblieben", auxiliary: "ist", caseType: "Dativ", meaning: "to stay / remain", example: "Er blieb das ganze Wochenende im Bett.", status: "In Progress", createdAt: "2026-09-20T11:00:00.000Z" },
+  { id: 110, verb: "laufen", preterite: "lief", participle: "gelaufen", auxiliary: "ist", caseType: "Akkusativ", meaning: "to run / walk", example: "Das Kind lief schnell über die Straße.", status: "In Progress", createdAt: "2026-09-22T17:00:00.000Z" },
+  { id: 111, verb: "helfen", preterite: "half", participle: "geholfen", auxiliary: "hat", caseType: "Dativ", meaning: "to help", example: "Der Kollege half dem Mann sofort.", status: "Mastered", createdAt: "2026-09-24T18:00:00.000Z" },
+  { id: 112, verb: "danken", preterite: "dankte", participle: "gedankt", auxiliary: "hat", caseType: "Dativ", meaning: "to thank", example: "Wir dankten der Lehrerin für ihre Geduld.", status: "In Progress", createdAt: "2026-09-26T19:00:00.000Z" },
+  { id: 113, verb: "gefallen", preterite: "gefiel", participle: "gefallen", auxiliary: "hat", caseType: "Dativ", meaning: "to appeal to / to please", example: "Das neue Design gefiel dem Chef sehr gut.", status: "In Progress", createdAt: "2026-09-28T20:00:00.000Z" },
+  { id: 114, verb: "gehören", preterite: "gehörte", participle: "gehört", auxiliary: "hat", caseType: "Dativ", meaning: "to belong to", example: "Dieses alte Buch gehörte meinem Großvater.", status: "Mastered", createdAt: "2026-09-29T21:00:00.000Z" },
+  { id: 115, verb: "sehen", preterite: "sah", participle: "gesehen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to see", example: "Ich sah einen Vogel auf dem Dach.", status: "Mastered", createdAt: "2026-09-30T07:30:00.000Z" },
+  { id: 116, verb: "lesen", preterite: "las", participle: "gelesen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to read", example: "Er las den Vertrag sehr aufmerksam.", status: "In Progress", createdAt: "2026-10-01T08:45:00.000Z" },
+  { id: 117, verb: "schreiben", preterite: "schrieb", participle: "geschrieben", auxiliary: "hat", caseType: "Akkusativ", meaning: "to write", example: "Sie schrieb eine lange E-Mail.", status: "Mastered", createdAt: "2026-10-02T10:15:00.000Z" },
+  { id: 118, verb: "finden", preterite: "fand", participle: "gefunden", auxiliary: "hat", caseType: "Akkusativ", meaning: "to find", example: "Endlich fand er den passenden Schlüssel.", status: "Mastered", createdAt: "2026-10-03T11:00:00.000Z" },
+  { id: 119, verb: "trinken", preterite: "trank", participle: "getrunken", auxiliary: "hat", caseType: "Akkusativ", meaning: "to drink", example: "Wir tranken zusammen einen warmen Tee.", status: "In Progress", createdAt: "2026-10-03T14:20:00.000Z" },
+  { id: 120, verb: "essen", preterite: "aß", participle: "gegessen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to eat", example: "Er aß ein frisches Brötchen zum Frühstück.", status: "Mastered", createdAt: "2026-10-04T09:00:00.000Z" },
+  { id: 121, verb: "geben", preterite: "gab", participle: "gegeben", auxiliary: "hat", caseType: "Both / Common", meaning: "to give", example: "Ich gab dem Kind das bunte Buch.", status: "Mastered", createdAt: "2026-10-04T11:15:00.000Z" },
+  { id: 122, verb: "bringen", preterite: "brachte", participle: "gebracht", auxiliary: "hat", caseType: "Both / Common", meaning: "to bring", example: "Der Kellner brachte dem Gast das Essen.", status: "In Progress", createdAt: "2026-10-04T12:00:00.000Z" },
+  { id: 123, verb: "schenken", preterite: "schenkte", participle: "geschenkt", auxiliary: "hat", caseType: "Both / Common", meaning: "to gift", example: "Er schenkte seiner Freundin eine weiße Blume.", status: "In Progress", createdAt: "2026-10-04T13:30:00.000Z" },
+  { id: 124, verb: "erklären", preterite: "erklärte", participle: "erklärt", auxiliary: "hat", caseType: "Both / Common", meaning: "to explain", example: "Der Lehrer erklärte den Schülern die Grammatikregel.", status: "Mastered", createdAt: "2026-10-04T14:45:00.000Z" }
 ];
 
 const SEED_PATTERNS = [
-  { id: "p1", article: "der", ending: "-ling", rule: "Living beings or objects with qualities", examples: "der Schmetterling, der Lehrling" },
-  { id: "p2", article: "der", ending: "-or", rule: "Mostly professions / technical terms", examples: "der Motor, der Reaktor, der Autor" },
-  { id: "p3", article: "der", ending: "-ismus", rule: "Doctrines, movements, or ideologies", examples: "der Optimismus, der Realismus" },
-  { id: "p4", article: "der", ending: "-er", rule: "Male agents, tools, nationalities", examples: "der Fahrer, der Lehrer, der Computer" },
-  { id: "p5", article: "der", ending: "Days & Seasons", rule: "Days of week, months, seasons, compass points", examples: "der Montag, der Juli, der Sommer, der Norden" },
-  { id: "p6", article: "die", ending: "-ung", rule: "Action or state nouns from verbs (almost 100%)", examples: "die Zeitung, die Hoffnung, die Wohnung" },
-  { id: "p7", article: "die", ending: "-heit / -keit", rule: "Abstract qualities or traits", examples: "die Freiheit, die Schönheit, die Möglichkeit" },
-  { id: "p8", article: "die", ending: "-schaft", rule: "Collectives, relationships, conditions", examples: "die Freundschaft, die Mannschaft" },
-  { id: "p9", article: "die", ending: "-tät / -ion", rule: "Words of Latin origin", examples: "die Universität, die Station, die Nation" },
-  { id: "p10", article: "die", ending: "-in", rule: "Female job titles and roles", examples: "die Ärztin, die Lehrerin, die Studentin" },
-  { id: "p11", article: "das", ending: "-chen / -lein", rule: "Diminutives (small things/affectionate)", examples: "das Mädchen, das Brötchen, das Fräulein" },
-  { id: "p12", article: "das", ending: "-ment", rule: "Objects, concepts of French/Latin origin", examples: "das Instrument, das Dokument, das Experiment" },
-  { id: "p13", article: "das", ending: "-um", rule: "Latin origin nouns", examples: "das Zentrum, das Museum, das Datum" },
-  { id: "p14", article: "das", ending: "-tum", rule: "States, properties (most)", examples: "das Eigentum, das Wachstum" },
-  { id: "p15", article: "das", ending: "Verbal Nouns", rule: "Infinitive verbs used as nouns", examples: "das Essen, das Leben, das Schwimmen" },
+  { id: "p1", article: "der", ending: "-ling", rule: "Living beings or objects with qualities", examples: "der Schmetterling, der Lehrling", createdAt: "2026-09-01T10:00:00.000Z" },
+  { id: "p2", article: "der", ending: "-or", rule: "Mostly professions / technical terms", examples: "der Motor, der Reaktor, der Autor", createdAt: "2026-09-05T10:00:00.000Z" },
+  { id: "p3", article: "der", ending: "-ismus", rule: "Doctrines, movements, or ideologies", examples: "der Optimismus, der Realismus", createdAt: "2026-09-10T10:00:00.000Z" },
+  { id: "p4", article: "der", ending: "-er", rule: "Male agents, tools, nationalities", examples: "der Fahrer, der Lehrer, der Computer", createdAt: "2026-09-15T10:00:00.000Z" },
+  { id: "p5", article: "der", ending: "Days & Seasons", rule: "Days of week, months, seasons, compass points", examples: "der Montag, der Juli, der Sommer, der Norden", createdAt: "2026-09-20T10:00:00.000Z" },
+  { id: "p6", article: "die", ending: "-ung", rule: "Action or state nouns from verbs (almost 100%)", examples: "die Zeitung, die Hoffnung, die Wohnung", createdAt: "2026-09-22T10:00:00.000Z" },
+  { id: "p7", article: "die", ending: "-heit / -keit", rule: "Abstract qualities or traits", examples: "die Freiheit, die Schönheit, die Möglichkeit", createdAt: "2026-09-25T10:00:00.000Z" },
+  { id: "p8", article: "die", ending: "-schaft", rule: "Collectives, relationships, conditions", examples: "die Freundschaft, die Mannschaft", createdAt: "2026-09-28T10:00:00.000Z" },
+  { id: "p9", article: "die", ending: "-tät / -ion", rule: "Words of Latin origin", examples: "die Universität, die Station, die Nation", createdAt: "2026-10-01T10:00:00.000Z" },
+  { id: "p10", article: "die", ending: "-in", rule: "Female job titles and roles", examples: "die Ärztin, die Lehrerin, die Studentin", createdAt: "2026-10-02T10:00:00.000Z" },
+  { id: "p11", article: "das", ending: "-chen / -lein", rule: "Diminutives (small things/affectionate)", examples: "das Mädchen, das Brötchen, das Fräulein", createdAt: "2026-10-02T12:00:00.000Z" },
+  { id: "p12", article: "das", ending: "-ment", rule: "Objects, concepts of French/Latin origin", examples: "das Instrument, das Dokument, das Experiment", createdAt: "2026-10-03T10:00:00.000Z" },
+  { id: "p13", article: "das", ending: "-um", rule: "Latin origin nouns", examples: "das Zentrum, das Museum, das Datum", createdAt: "2026-10-03T11:00:00.000Z" },
+  { id: "p14", article: "das", ending: "-tum", rule: "States, properties (most)", examples: "das Eigentum, das Wachstum", createdAt: "2026-10-04T08:00:00.000Z" },
+  { id: "p15", article: "das", ending: "Verbal Nouns", rule: "Infinitive verbs used as nouns", examples: "das Essen, das Leben, das Schwimmen", createdAt: "2026-10-04T09:00:00.000Z" },
 ];
 
 const SEED_PREPOSITIONS = [
-  { id: 201, prep: "durch", caseType: "Akkusativ", meaning: "through", example: "Wir gehen durch den Park.", status: "Mastered" },
-  { id: 202, prep: "für", caseType: "Akkusativ", meaning: "for", example: "Das Geschenk ist für dich.", status: "Mastered" },
-  { id: 203, prep: "ohne", caseType: "Akkusativ", meaning: "without", example: "Ohne meinen Kaffee kann ich nicht aufstehen.", status: "Mastered" },
-  { id: 204, prep: "aus", caseType: "Dativ", meaning: "out of / from", example: "Er kommt aus der Schweiz.", status: "Mastered" },
-  { id: 205, prep: "mit", caseType: "Dativ", meaning: "with", example: "Ich fahre mit dem Zug.", status: "Mastered" },
-  { id: 206, prep: "nach", caseType: "Dativ", meaning: "after / to (city/country)", example: "Nach der Arbeit gehe ich nach Hause.", status: "In Progress" },
-  { id: 207, prep: "in", caseType: "Wechsel", meaning: "in / into (Dat: location, Akk: direction)", example: "Ich bin im Haus (Dat). Ich gehe ins Haus (Akk).", status: "Mastered" },
-  { id: 208, prep: "auf", caseType: "Wechsel", meaning: "on / onto (horizontal)", example: "Das Buch liegt auf dem Tisch (Dat).", status: "In Progress" },
-  { id: 209, prep: "an", caseType: "Wechsel", meaning: "at / on (vertical edge)", example: "Das Bild hängt an der Wand (Dat).", status: "In Progress" },
+  { id: 201, prep: "durch", caseType: "Akkusativ", meaning: "through", example: "Wir gehen durch den Park.", status: "Mastered", createdAt: "2026-09-01T10:00:00.000Z" },
+  { id: 202, prep: "für", caseType: "Akkusativ", meaning: "for", example: "Das Geschenk ist für dich.", status: "Mastered", createdAt: "2026-09-05T10:00:00.000Z" },
+  { id: 203, prep: "ohne", caseType: "Akkusativ", meaning: "without", example: "Ohne meinen Kaffee kann ich nicht aufstehen.", status: "Mastered", createdAt: "2026-09-10T10:00:00.000Z" },
+  { id: 204, prep: "aus", caseType: "Dativ", meaning: "out of / from", example: "Er kommt aus der Schweiz.", status: "Mastered", createdAt: "2026-09-15T10:00:00.000Z" },
+  { id: 205, prep: "mit", caseType: "Dativ", meaning: "with", example: "Ich fahre mit dem Zug.", status: "Mastered", createdAt: "2026-09-20T10:00:00.000Z" },
+  { id: 206, prep: "nach", caseType: "Dativ", meaning: "after / to (city/country)", example: "Nach der Arbeit gehe ich nach Hause.", status: "In Progress", createdAt: "2026-09-25T10:00:00.000Z" },
+  { id: 207, prep: "in", caseType: "Wechsel", meaning: "in / into (Dat: location, Akk: direction)", example: "Ich bin im Haus (Dat). Ich gehe ins Haus (Akk).", status: "Mastered", createdAt: "2026-09-30T10:00:00.000Z" },
+  { id: 208, prep: "auf", caseType: "Wechsel", meaning: "on / onto (horizontal)", example: "Das Buch liegt auf dem Tisch (Dat).", status: "In Progress", createdAt: "2026-10-02T10:00:00.000Z" },
+  { id: 209, prep: "an", caseType: "Wechsel", meaning: "at / on (vertical edge)", example: "Das Bild hängt an der Wand (Dat).", status: "In Progress", createdAt: "2026-10-04T10:00:00.000Z" },
 ];
 
-// ---------- GRAMMAR DATA ----------
+// ---------- GRAMMAR & TIME DATA ----------
 const GRAMMAR_TOPICS = [
   { id: "possessives", label: "Possessivartikel (mein, dein)" },
   { id: "articles", label: "Articles (der / ein / kein)" },
   { id: "demonstratives", label: "Demonstratives (dieser, welcher)" },
   { id: "personal", label: "Personal Pronouns (mich, mir)" },
   { id: "adjectives", label: "Adjective Endings" },
-  { id: "time", label: "⏰ Uhrzeit (Formal vs. Informal)" },
 ];
 
 const POSSESSIVE_STEMS = [
@@ -142,26 +141,41 @@ const ADJECTIVE_ENDINGS_RULES = [
 ];
 
 const TIME_COMPARISON_DATA = [
-  { digital: "08:00", formal: "Es ist acht Uhr.", informal: "Es ist acht.", rule: "Exact hour (volle Stunde)" },
-  { digital: "08:05", formal: "Es ist acht Uhr fünf.", informal: "Es ist fünf nach acht.", rule: "5 past (nach)" },
-  { digital: "08:15", formal: "Es ist acht Uhr fünfzehn.", informal: "Es ist Viertel nach acht.", rule: "Quarter past (Viertel nach)" },
-  { digital: "08:20", formal: "Es ist acht Uhr zwanzig.", informal: "Es ist zwanzig nach acht / zehn vor halb neun.", rule: "20 past or 10 before half" },
-  { digital: "08:25", formal: "Es ist acht Uhr fünfundzwanzig.", informal: "Es ist fünf vor halb neun.", rule: "5 before half past" },
-  { digital: "08:30", formal: "Es ist acht Uhr dreißig.", informal: "Es ist halb neun.", rule: "Half past ('halfway to nine')" },
-  { digital: "08:35", formal: "Es ist acht Uhr fünfunddreißig.", informal: "Es ist fünf nach halb neun.", rule: "5 past half past" },
-  { digital: "08:40", formal: "Es ist acht Uhr vierzig.", informal: "Es ist zwanzig vor neun / zehn nach halb neun.", rule: "20 to or 10 past half" },
-  { digital: "08:45", formal: "Es ist acht Uhr fünfundvierzig.", informal: "Es ist Viertel vor neun.", rule: "Quarter to (Viertel vor)" },
-  { digital: "08:50", formal: "Es ist acht Uhr fünfzig.", informal: "Es ist zehn vor neun.", rule: "10 to (vor)" },
-  { digital: "14:15", formal: "Es ist vierzehn Uhr fünfzehn.", informal: "Es ist Viertel nach zwei.", rule: "Afternoon 24h vs. 12h" },
-  { digital: "20:30", formal: "Es ist zwanzig Uhr dreißig.", informal: "Es ist halb neun (abends).", rule: "Evening 24h vs. 12h" },
+  { id: "t1", digital: "08:00", formal: "Es ist acht Uhr.", informal: "Es ist acht.", rule: "Exact hour (volle Stunde)" },
+  { id: "t2", digital: "08:05", formal: "Es ist acht Uhr fünf.", informal: "Es ist fünf nach acht.", rule: "5 past (nach)" },
+  { id: "t3", digital: "08:15", formal: "Es ist acht Uhr fünfzehn.", informal: "Es ist Viertel nach acht.", rule: "Quarter past (Viertel nach)" },
+  { id: "t4", digital: "08:20", formal: "Es ist acht Uhr zwanzig.", informal: "Es ist zwanzig nach acht / zehn vor halb neun.", rule: "20 past or 10 before half" },
+  { id: "t5", digital: "08:25", formal: "Es ist acht Uhr fünfundzwanzig.", informal: "Es ist fünf vor halb neun.", rule: "5 before half past" },
+  { id: "t6", digital: "08:30", formal: "Es ist acht Uhr dreißig.", informal: "Es ist halb neun.", rule: "Half past ('halfway to next hour')" },
+  { id: "t7", digital: "08:35", formal: "Es ist acht Uhr fünfunddreißig.", informal: "Es ist fünf nach halb neun.", rule: "5 past half past" },
+  { id: "t8", digital: "08:40", formal: "Es ist acht Uhr vierzig.", informal: "Es ist zwanzig vor neun / zehn nach halb neun.", rule: "20 to or 10 past half" },
+  { id: "t9", digital: "08:45", formal: "Es ist acht Uhr fünfundvierzig.", informal: "Es ist Viertel vor neun.", rule: "Quarter to (Viertel vor)" },
+  { id: "t10", digital: "08:50", formal: "Es ist acht Uhr fünfzig.", informal: "Es ist zehn vor neun.", rule: "10 to (vor)" },
+  { id: "t11", digital: "14:15", formal: "Es ist vierzehn Uhr fünfzehn.", informal: "Es ist Viertel nach zwei.", rule: "Afternoon 24h vs. 12h" },
+  { id: "t12", digital: "20:30", formal: "Es ist zwanzig Uhr dreißig.", informal: "Es ist halb neun (abends).", rule: "Evening 24h vs. 12h" },
 ];
 
 const TIME_RULES = [
   { term: "Formal (Offiziell)", desc: "Uses the 24-hour clock. Pattern: [Stunde] + Uhr + [Minute]. No 'vor', 'nach', or 'halb'." },
-  { term: "Informal (Umgangssprachlich)", desc: "Uses the 12-hour clock. Minutes are spoken relative to the hour using 'vor' (before), 'nach' (after), and 'halb' (halfway to)." },
+  { term: "Informal (Umgangssprachlich)", desc: "Uses the 12-hour clock. Expressed relative to the hour using 'vor' (before), 'nach' (after), and 'halb' (halfway to)." },
   { term: "halb [Stunde]", desc: "Crucial rule: 'halb neun' means 08:30 (halfway to nine), NOT 09:30." },
   { term: "Viertel vor / nach", desc: "'Viertel nach' = 15 minutes past; 'Viertel vor' = 15 minutes before the next hour." },
   { term: "Key Questions", desc: "Wie spät ist es? / Wie viel Uhr ist es? (What time is it?) | Um wie viel Uhr...? (At what time...?)" },
+];
+
+const TIME_FLASHCARDS = [
+  { id: "tf1", prompt: "Informal Time: 07:30", answer: "Es ist halb acht.", note: "'halb' looks forward to the next hour (8)." },
+  { id: "tf2", prompt: "Formal Time: 15:45", answer: "Es ist fünfzehn Uhr fünfundvierzig.", note: "Pattern: [Hour 24h] + Uhr + [Minute]." },
+  { id: "tf3", prompt: "Informal Time: 10:15", answer: "Es ist Viertel nach zehn.", note: "Quarter past takes 'nach'." },
+  { id: "tf4", prompt: "Informal Time: 11:25", answer: "Es ist fünf vor halb zwölf.", note: "Measured relative to 11:30 (halb zwölf)." },
+  { id: "tf5", prompt: "Informal Time: 09:40", answer: "Es ist zwanzig vor zehn.", note: "20 minutes before 10 o'clock." },
+];
+
+const TIME_QUIZ = [
+  { q: "Wie spät ist es um 14:30? (Informell)", answer: "halb drei", options: ["halb zwei", "halb drei", "zwei Uhr dreißig"], expl: "'halb' points to the upcoming hour (3), so 14:30 is 'halb drei'." },
+  { q: "Wie sagt man 18:15 offiziell (Formal)?", answer: "achtzehn Uhr fünfzehn", options: ["Viertel nach sechs", "achtzehn Uhr fünfzehn", "sechs Uhr fünfzehn"], expl: "Formal uses 24h format: [Hour] Uhr [Minutes]." },
+  { q: "Was bedeutet 'Es ist Viertel vor fünf'?", answer: "04:45 / 16:45", options: ["04:15 / 16:15", "05:15 / 17:15", "04:45 / 16:45"], expl: "'Viertel vor' means 15 minutes before the hour." },
+  { q: "Wie heißt 08:25 umgangssprachlich?", answer: "fünf vor halb neun", options: ["fünfundzwanzig nach acht", "fünf nach halb acht", "fünf vor halb neun"], expl: "German relates 25 past to half-past: 5 before half 9." }
 ];
 
 const GRAMMAR_FLASHCARDS = [
@@ -173,10 +187,6 @@ const GRAMMAR_FLASHCARDS = [
   { id: "g6", prompt: "Negative: kein + Akkusativ Maskulin", answer: "keinen", note: "z.B. Ich habe keinen Hunger." },
   { id: "g7", prompt: "Definite: Dativ Plural Article", answer: "den (+n)", note: "z.B. mit den Freunden." },
   { id: "g8", prompt: "Adjective: ein + groß- + Maskulin Nominativ", answer: "ein großer", note: "Mixed declension takes -er for masculine." },
-  { id: "g9", prompt: "Informal Time: 07:30", answer: "Es ist halb acht.", note: "'halb' looks forward to the next hour (8)." },
-  { id: "g10", prompt: "Formal Time: 15:45", answer: "Es ist fünfzehn Uhr fünfundvierzig.", note: "Pattern: [Hour 24h] + Uhr + [Minute]." },
-  { id: "g11", prompt: "Informal Time: 10:15", answer: "Es ist Viertel nach zehn.", note: "Quarter past takes 'nach'." },
-  { id: "g12", prompt: "Informal Time: 11:25", answer: "Es ist fünf vor halb zwölf.", note: "Measured relative to 11:30 (halb zwölf)." }
 ];
 
 const GRAMMAR_QUIZ = [
@@ -188,9 +198,6 @@ const GRAMMAR_QUIZ = [
   { q: "Kannst du ___ bitte helfen? (ich, Dativ)", answer: "mir", options: ["mich", "mir", "meinem"], expl: "helfen verlangt Dativ -> mir" },
   { q: "Das ist das Auto ___ Vaters. (dieser, Genitiv)", answer: "dieses", options: ["diesem", "dieser", "dieses"], expl: "Genitiv Maskulin: dieses Vaters" },
   { q: "Das ist ein ___ Tag. (schön, Nom Masc)", answer: "schöner", options: ["schöne", "schöner", "schönen"], expl: "ein + Adjektiv (Maskulin Nominativ: -er)" },
-  { q: "Wie spät ist es um 14:30? (Informell)", answer: "halb drei", options: ["halb zwei", "halb drei", "zwei Uhr dreißig"], expl: "'halb' points to the upcoming hour (3), so 14:30 is 'halb drei'." },
-  { q: "Wie sagt man 18:15 offiziell (Formal)?", answer: "achtzehn Uhr fünfzehn", options: ["Viertel nach sechs", "achtzehn Uhr fünfzehn", "sechs Uhr fünfzehn"], expl: "Formal uses the 24-hour cycle: [Hour] Uhr [Minutes]." },
-  { q: "Was bedeutet 'Es ist Viertel vor fünf'?", answer: "04:45 / 16:45", options: ["04:15 / 16:15", "05:15 / 17:15", "04:45 / 16:45"], expl: "'Viertel vor' means 15 minutes before the hour." }
 ];
 
 // ---------- INDEXEDDB HELPERS ----------
@@ -332,13 +339,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .bg-wechsel { background: var(--wechsel-bg); color: var(--wechsel); }
 
 .section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.search { position: relative; flex: 1 1 340px; max-width: 520px; }
+.toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--card); padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); }
+.search { position: relative; flex: 1 1 240px; max-width: 380px; }
 .search span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 13px; }
-.search input { width: 100%; padding: 10px 14px 10px 38px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 14px; min-height: 42px; }
-.filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.filters-label { font-size: 12px; color: var(--muted); font-weight: 600; margin-right: 4px; }
-.chip { border: 1px solid; padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; min-height: 34px; }
+.search input { width: 100%; padding: 10px 14px 10px 38px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); font-size: 14px; min-height: 40px; }
+
+.filters-cluster { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.filters-label { font-size: 12px; color: var(--muted); font-weight: 700; }
+.chip { border: 1px solid; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; min-height: 34px; }
 .chip.all  { background: var(--card-inner); color: var(--ink-2); border-color: var(--line-2); }
 .chip.der  { background: var(--der-bg); color: var(--der); border-color: var(--der); }
 .chip.die  { background: var(--die-bg); color: var(--die); border-color: var(--die); }
@@ -356,6 +365,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chip.akku.on { background: var(--akku); color: #fff; border-color: var(--akku); }
 .chip.both.on { background: var(--both); color: #fff; border-color: var(--both); }
 .chip.wechsel.on { background: var(--wechsel); color: #fff; border-color: var(--wechsel); }
+
+.date-select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); font-size: 12.5px; font-weight: 600; min-height: 36px; }
 
 .list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 16px 16px; overflow-x: auto; }
 .list-head { padding: 12px 8px; font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: .5px; border-bottom: 1px solid var(--line); }
@@ -456,9 +467,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .confirm-icon { font-size: 38px; }
 .confirm-box p { margin: 0; font-size: 14.5px; color: var(--muted); line-height: 1.4; }
 
-/* ==========================================================================
-   MOBILE RESPONSIVENESS: LEFT-MOST CONTENT & RIGHT-MOST VERTICAL BUTTONS
-   ========================================================================== */
+/* Mobile Card Formatting */
 @media (max-width: 1024px) {
   .page { padding: 20px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -470,7 +479,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .list { background: transparent; border: none; padding: 0; display: flex; flex-direction: column; gap: 12px; }
   .list-head { display: none; }
 
-  /* Two-column card grid */
   .noun-row,
   .verb-row,
   .prep-row {
@@ -487,7 +495,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
   .c-idx { display: none !important; }
 
-  /* Left-most stacked elements */
   .c-art, .c-case {
     grid-column: 1;
     display: flex;
@@ -549,7 +556,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     justify-content: flex-start !important;
   }
 
-  /* Right-most vertical buttons */
   .actions {
     grid-column: 2;
     grid-row: 1 / span 8;
@@ -563,24 +569,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     margin-left: auto;
   }
 
-  .icon-btn {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-  }
-
-  .status {
-    padding: 6px 12px;
-    min-height: 34px;
-    font-size: 12px;
-    align-self: flex-start;
-  }
-
-  .grammar-table td, .grammar-table th {
-    padding: 10px 8px;
-    font-size: 12.5px;
-    white-space: nowrap;
-  }
+  .icon-btn { width: 38px; height: 38px; min-width: 38px; }
+  .status { padding: 6px 12px; min-height: 34px; font-size: 12px; align-self: flex-start; }
+  .grammar-table td, .grammar-table th { padding: 10px 8px; font-size: 12.5px; white-space: nowrap; }
 
   .fab {
     display: inline-flex;
@@ -610,6 +601,8 @@ export default function App() {
   const [isReady, setIsReady] = useState(false);
 
   const [theme] = useState(() => localStorage.getItem("vocab_vault_theme") || "light");
+
+  // PRIMARY TABS
   const [mainCategory, setMainCategory] = useState("Nouns");
 
   // Sub-views
@@ -618,16 +611,27 @@ export default function App() {
   const [verbSubView, setVerbSubView] = useState("list");
   const [prepSubView, setPrepSubView] = useState("list");
   const [grammarSubView, setGrammarSubView] = useState("list");
+  const [timeSubView, setTimeSubView] = useState("list");
 
+  // Grammar & Time views
   const [activeGrammarTopic, setActiveGrammarTopic] = useState("possessives");
   const [grammarCaseFilter, setGrammarCaseFilter] = useState("Nominativ");
   const [timeViewMode, setTimeViewMode] = useState("all");
 
-  // Filters & Search
+  // Primary filters
   const [search, setSearch] = useState("");
   const [articleFilter, setArticleFilter] = useState("all");
   const [verbFilter, setVerbFilter] = useState("all");
   const [prepFilter, setPrepFilter] = useState("all");
+
+  // NEW: Status Filters ("all" | "In Progress" | "Mastered")
+  const [nounStatusFilter, setNounStatusFilter] = useState("all");
+  const [verbStatusFilter, setVerbStatusFilter] = useState("all");
+  const [prepStatusFilter, setPrepStatusFilter] = useState("all");
+
+  // Created Date Filter State
+  const [dateFilter, setDateFilter] = useState("all");
+  const [customDate, setCustomDate] = useState("");
 
   // Modals
   const [nounModalOpen, setNounModalOpen] = useState(false);
@@ -696,13 +700,19 @@ export default function App() {
   const [grammarQuizScore, setGrammarQuizScore] = useState(0);
   const [grammarQuizFeedback, setGrammarQuizFeedback] = useState(null);
 
+  const [timeCardIndex, setTimeCardIndex] = useState(0);
+  const [timeCardFlipped, setTimeCardFlipped] = useState(false);
+  const [timeQuizIndex, setTimeQuizIndex] = useState(0);
+  const [timeQuizScore, setTimeQuizScore] = useState(0);
+  const [timeQuizFeedback, setTimeQuizFeedback] = useState(null);
+
   useEffect(() => {
     async function initVault() {
       try {
         let storedVerbs = await loadFromVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY);
-        const needsMigration = !storedVerbs || storedVerbs.some((v) => v.preterite === undefined);
+        const needsVerbMigration = !storedVerbs || storedVerbs.some((v) => v.preterite === undefined || !v.createdAt);
 
-        if (needsMigration) {
+        if (needsVerbMigration) {
           const mergedVerbs = (storedVerbs && storedVerbs.length > 0)
             ? storedVerbs.map((existing) => {
                 const seedMatch = SEED_VERBS.find((s) => s.verb === existing.verb || s.id === existing.id);
@@ -711,6 +721,7 @@ export default function App() {
                   preterite: existing.preterite || (seedMatch ? seedMatch.preterite : ""),
                   participle: existing.participle || (seedMatch ? seedMatch.participle : ""),
                   auxiliary: existing.auxiliary || (seedMatch ? seedMatch.auxiliary : "hat"),
+                  createdAt: existing.createdAt || (seedMatch ? seedMatch.createdAt : new Date().toISOString()),
                 };
               })
             : SEED_VERBS;
@@ -721,14 +732,41 @@ export default function App() {
           setVerbsList(storedVerbs);
         }
 
-        const storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
-        setVocabList(storedVocab && storedVocab.length ? storedVocab : (await writeToVaultDB(STORE_NAME, BACKUP_KEY, SEED_DATA), SEED_DATA));
+        let storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
+        if (!storedVocab || storedVocab.some(n => !n.createdAt)) {
+          const merged = (storedVocab && storedVocab.length) ? storedVocab.map(item => {
+            const match = SEED_DATA.find(s => s.id === item.id);
+            return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
+          }) : SEED_DATA;
+          await writeToVaultDB(STORE_NAME, BACKUP_KEY, merged);
+          setVocabList(merged);
+        } else {
+          setVocabList(storedVocab);
+        }
 
-        const storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
-        setPatternsList(storedPatterns && storedPatterns.length ? storedPatterns : (await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, SEED_PATTERNS), SEED_PATTERNS));
+        let storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
+        if (!storedPatterns || storedPatterns.some(p => !p.createdAt)) {
+          const merged = (storedPatterns && storedPatterns.length) ? storedPatterns.map(item => {
+            const match = SEED_PATTERNS.find(s => s.id === item.id);
+            return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
+          }) : SEED_PATTERNS;
+          await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, merged);
+          setPatternsList(merged);
+        } else {
+          setPatternsList(storedPatterns);
+        }
 
-        const storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
-        setPrepsList(storedPreps && storedPreps.length ? storedPreps : (await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, SEED_PREPOSITIONS), SEED_PREPOSITIONS));
+        let storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
+        if (!storedPreps || storedPreps.some(p => !p.createdAt)) {
+          const merged = (storedPreps && storedPreps.length) ? storedPreps.map(item => {
+            const match = SEED_PREPOSITIONS.find(s => s.id === item.id);
+            return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
+          }) : SEED_PREPOSITIONS;
+          await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, merged);
+          setPrepsList(merged);
+        } else {
+          setPrepsList(storedPreps);
+        }
       } catch (err) {
         console.error("IndexedDB error:", err);
         setVerbsList(SEED_VERBS);
@@ -769,7 +807,7 @@ export default function App() {
     const gender = GENDER_MAP[nounFormData.article];
     const updated = editingNounId
       ? vocabList.map((item) => (item.id === editingNounId ? { ...item, ...nounFormData, gender } : item))
-      : [...vocabList, { id: Date.now(), ...nounFormData, gender }];
+      : [...vocabList, { id: Date.now(), ...nounFormData, gender, createdAt: new Date().toISOString() }];
     commitNouns(updated);
     setNounModalOpen(false);
   };
@@ -779,7 +817,7 @@ export default function App() {
     if (!verbFormData.verb.trim() || !verbFormData.meaning.trim()) return;
     const updated = editingVerbId
       ? verbsList.map((item) => (item.id === editingVerbId ? { ...item, ...verbFormData } : item))
-      : [...verbsList, { id: Date.now(), ...verbFormData }];
+      : [...verbsList, { id: Date.now(), ...verbFormData, createdAt: new Date().toISOString() }];
     commitVerbs(updated);
     setVerbModalOpen(false);
   };
@@ -787,7 +825,7 @@ export default function App() {
   const handleSavePatternModal = (e) => {
     e.preventDefault();
     if (!patternFormData.ending.trim() || !patternFormData.rule.trim()) return;
-    commitPatterns([...patternsList, { id: `p-${Date.now()}`, ...patternFormData }]);
+    commitPatterns([...patternsList, { id: `p-${Date.now()}`, ...patternFormData, createdAt: new Date().toISOString() }]);
     setPatternModalOpen(false);
   };
 
@@ -796,7 +834,7 @@ export default function App() {
     if (!prepFormData.prep.trim() || !prepFormData.meaning.trim()) return;
     const updated = editingPrepId
       ? prepsList.map((item) => (item.id === editingPrepId ? { ...item, ...prepFormData } : item))
-      : [...prepsList, { id: Date.now(), ...prepFormData }];
+      : [...prepsList, { id: Date.now(), ...prepFormData, createdAt: new Date().toISOString() }];
     commitPreps(updated);
     setPrepModalOpen(false);
   };
@@ -821,43 +859,68 @@ export default function App() {
     return `${base}${ending}`;
   };
 
+  const matchesDateFilter = (isoDate) => {
+    if (!isoDate || dateFilter === "all") return true;
+    const itemDate = new Date(isoDate);
+    const now = new Date();
+
+    if (dateFilter === "today") {
+      return itemDate.toDateString() === now.toDateString();
+    }
+    if (dateFilter === "week") {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return itemDate >= sevenDaysAgo;
+    }
+    if (dateFilter === "month") {
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return itemDate >= thirtyDaysAgo;
+    }
+    if (dateFilter === "custom" && customDate) {
+      return isoDate.slice(0, 10) === customDate;
+    }
+    return true;
+  };
+
   if (!isReady) {
     return <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>Loading German Vault...</div>;
   }
 
+  // Filtered lists with Category, Search, Date, and NEW Status filters
   const filteredNouns = vocabList.filter((item) => {
     const q = search.toLowerCase();
-    return (
-      (articleFilter === "all" || item.article === articleFilter) &&
-      (item.noun.toLowerCase().includes(q) || (item.plural && item.plural.toLowerCase().includes(q)) || item.meaning.toLowerCase().includes(q))
-    );
+    const matchesSearch = item.noun.toLowerCase().includes(q) || (item.plural && item.plural.toLowerCase().includes(q)) || item.meaning.toLowerCase().includes(q);
+    const matchesArt = articleFilter === "all" || item.article === articleFilter;
+    const matchesStatus = nounStatusFilter === "all" || item.status === nounStatusFilter;
+    return matchesSearch && matchesArt && matchesStatus && matchesDateFilter(item.createdAt);
   });
 
   const filteredVerbs = verbsList.filter((item) => {
     const q = search.toLowerCase();
-    return (
-      (verbFilter === "all" || item.caseType === verbFilter) &&
-      (item.verb.toLowerCase().includes(q) ||
-        (item.preterite && item.preterite.toLowerCase().includes(q)) ||
-        (item.participle && item.participle.toLowerCase().includes(q)) ||
-        item.meaning.toLowerCase().includes(q) ||
-        item.example.toLowerCase().includes(q))
-    );
+    const matchesSearch =
+      item.verb.toLowerCase().includes(q) ||
+      (item.preterite && item.preterite.toLowerCase().includes(q)) ||
+      (item.participle && item.participle.toLowerCase().includes(q)) ||
+      item.meaning.toLowerCase().includes(q) ||
+      item.example.toLowerCase().includes(q);
+    const matchesCase = verbFilter === "all" || item.caseType === verbFilter;
+    const matchesStatus = verbStatusFilter === "all" || item.status === verbStatusFilter;
+    return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt);
   });
 
   const filteredPreps = prepsList.filter((item) => {
     const q = search.toLowerCase();
-    return (
-      (prepFilter === "all" || item.caseType === prepFilter) &&
-      (item.prep.toLowerCase().includes(q) || item.meaning.toLowerCase().includes(q) || item.example.toLowerCase().includes(q))
-    );
+    const matchesSearch = item.prep.toLowerCase().includes(q) || item.meaning.toLowerCase().includes(q) || item.example.toLowerCase().includes(q);
+    const matchesCase = prepFilter === "all" || item.caseType === prepFilter;
+    const matchesStatus = prepStatusFilter === "all" || item.status === prepStatusFilter;
+    return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt);
   });
 
   const currentSubView =
     mainCategory === "Nouns" ? nounSubView :
     mainCategory === "Patterns" ? patternSubView :
     mainCategory === "Verbs" ? verbSubView :
-    mainCategory === "Prepositions" ? prepSubView : grammarSubView;
+    mainCategory === "Prepositions" ? prepSubView :
+    mainCategory === "Time" ? timeSubView : grammarSubView;
 
   const nounsMastered = vocabList.filter((i) => i.status === "Mastered").length;
   const countNoun = (art) => vocabList.filter((i) => i.article === art).length;
@@ -877,13 +940,15 @@ export default function App() {
   const prepQuizWord = prepsList[prepQuizIndex];
   const grammarCard = GRAMMAR_FLASHCARDS[grammarCardIndex];
   const grammarQuizWord = GRAMMAR_QUIZ[grammarQuizIndex];
+  const timeCard = TIME_FLASHCARDS[timeCardIndex];
+  const timeQuizWord = TIME_QUIZ[timeQuizIndex];
 
   return (
     <div className="page" data-theme={theme}>
       <style>{CSS}</style>
 
       <div className="container">
-        {/* Navigation Tabs */}
+        {/* PRIMARY TABS */}
         <div className="main-tabs-row">
           <div className="main-tabs" role="tablist">
             {[
@@ -891,6 +956,7 @@ export default function App() {
               { id: "Patterns", icon: "📐", count: patternsList.length },
               { id: "Verbs", icon: "⚡", count: verbsList.length },
               { id: "Prepositions", icon: "🎯", count: prepsList.length },
+              { id: "Time", icon: "⏰", count: TIME_COMPARISON_DATA.length },
               { id: "Grammar", icon: "📚", count: GRAMMAR_TOPICS.length },
             ].map((tab) => (
               <button
@@ -916,6 +982,7 @@ export default function App() {
                   if (mainCategory === "Patterns") setPatternSubView("list");
                   if (mainCategory === "Verbs") setVerbSubView("list");
                   if (mainCategory === "Prepositions") setPrepSubView("list");
+                  if (mainCategory === "Time") setTimeSubView("list");
                   if (mainCategory === "Grammar") setGrammarSubView("list");
                 }}
               >
@@ -928,6 +995,7 @@ export default function App() {
                   if (mainCategory === "Patterns") { setPatternSubView("flashcards"); setPatternCardFlipped(false); }
                   if (mainCategory === "Verbs") { setVerbSubView("flashcards"); setVerbCardFlipped(false); }
                   if (mainCategory === "Prepositions") { setPrepSubView("flashcards"); setPrepCardFlipped(false); }
+                  if (mainCategory === "Time") { setTimeSubView("flashcards"); setTimeCardFlipped(false); }
                   if (mainCategory === "Grammar") { setGrammarSubView("flashcards"); setGrammarCardFlipped(false); }
                 }}
               >
@@ -940,6 +1008,7 @@ export default function App() {
                   if (mainCategory === "Patterns") setPatternSubView("quiz");
                   if (mainCategory === "Verbs") setVerbSubView("quiz");
                   if (mainCategory === "Prepositions") setPrepSubView("quiz");
+                  if (mainCategory === "Time") setTimeSubView("quiz");
                   if (mainCategory === "Grammar") setGrammarSubView("quiz");
                 }}
               >
@@ -956,9 +1025,9 @@ export default function App() {
               <div className="section">
                 <div className="stats-grid">
                   <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL NOUNS</span><span className="stat-pill dark">{nounsMastered} mastered</span></div><div className="stat-foot"><span className="stat-value">{vocabList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>all genders</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">MASCULINE</span><span className="stat-pill bg-der">der</span></div><div className="stat-foot"><span className="stat-value c-der">{countNoun("der")}</span><span className="stat-note c-der">Blue</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">FEMININE</span><span className="stat-pill bg-die">die</span></div><div className="stat-foot"><span className="stat-value c-die">{countNoun("die")}</span><span className="stat-note c-die">Pink</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">NEUTER</span><span className="stat-pill bg-das">das</span></div><div className="stat-foot"><span className="stat-value c-das">{countNoun("das")}</span><span className="stat-note c-das">Green</span></div></div>
+                  <div className="stat"><div className="stat-head"><span className="stat-label">MASCULINE</span><span className="stat-pill bg-der">der</span></div><div className="stat-foot"><span className="stat-value c-der">{countNoun("der")}</span></div></div>
+                  <div className="stat"><div className="stat-head"><span className="stat-label">FEMININE</span><span className="stat-pill bg-die">die</span></div><div className="stat-foot"><span className="stat-value c-die">{countNoun("die")}</span></div></div>
+                  <div className="stat"><div className="stat-head"><span className="stat-label">NEUTER</span><span className="stat-pill bg-das">das</span></div><div className="stat-foot"><span className="stat-value c-das">{countNoun("das")}</span></div></div>
                 </div>
 
                 <div className="toolbar">
@@ -966,13 +1035,41 @@ export default function App() {
                     <span>🔍</span>
                     <input type="search" placeholder="Search noun, plural, or meaning..." value={search} onChange={(e) => setSearch(e.target.value)} />
                   </div>
-                  <div className="filters">
-                    <span className="filters-label">Filter:</span>
-                    <button onClick={() => setArticleFilter("all")} className={`chip all ${articleFilter === "all" ? "on" : ""}`}>All ({vocabList.length})</button>
-                    {["der", "die", "das"].map((a) => (
-                      <button key={a} onClick={() => setArticleFilter(a)} className={`chip ${a} ${articleFilter === a ? "on" : ""}`}>{a}</button>
-                    ))}
-                    <button onClick={() => { setEditingNounId(null); setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" }); setNounModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Noun</button>
+
+                  <div className="filters-cluster">
+                    <div className="filters">
+                      <span className="filters-label">Gender:</span>
+                      <button onClick={() => setArticleFilter("all")} className={`chip all ${articleFilter === "all" ? "on" : ""}`}>All</button>
+                      {["der", "die", "das"].map((a) => (
+                        <button key={a} onClick={() => setArticleFilter(a)} className={`chip ${a} ${articleFilter === a ? "on" : ""}`}>{a}</button>
+                      ))}
+                    </div>
+
+                    {/* STATUS FILTER: NOUNS */}
+                    <div className="filters">
+                      <span className="filters-label">Status:</span>
+                      <button onClick={() => setNounStatusFilter("all")} className={`chip all ${nounStatusFilter === "all" ? "on" : ""}`}>All</button>
+                      <button onClick={() => setNounStatusFilter("In Progress")} className={`chip all ${nounStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
+                      <button onClick={() => setNounStatusFilter("Mastered")} className={`chip das ${nounStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                    </div>
+
+                    <div className="filters">
+                      <span className="filters-label">📅 Created:</span>
+                      <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+                        <option value="all">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="week">Past 7 Days</option>
+                        <option value="month">Past 30 Days</option>
+                        <option value="custom">Specific Date...</option>
+                      </select>
+                      {dateFilter === "custom" && (
+                        <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                      )}
+                    </div>
+
+                    <button onClick={() => { setEditingNounId(null); setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" }); setNounModalOpen(true); }} className="btn btn-primary">
+                      + Add Noun
+                    </button>
                   </div>
                 </div>
 
@@ -1077,30 +1174,57 @@ export default function App() {
           </>
         )}
 
-        {/* ==================== 2. PATTERNS ==================== */}
+        {/* ==================== 2. PATTERNS (SUBTITLES REMOVED) ==================== */}
         {mainCategory === "Patterns" && (
           <>
             {patternSubView === "list" && (
               <div className="section">
                 <div className="stats-grid">
-                  <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL PATTERNS</span><span className="stat-pill dark">Active Rules</span></div><div className="stat-foot"><span className="stat-value">{patternsList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>suffixes</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">DER PATTERNS</span><span className="stat-pill bg-der">der</span></div><div className="stat-foot"><span className="stat-value c-der">{countPattern("der")}</span><span className="stat-note c-der">-ling, -or</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">DIE PATTERNS</span><span className="stat-pill bg-die">die</span></div><div className="stat-foot"><span className="stat-value c-die">{countPattern("die")}</span><span className="stat-note c-die">-ung, -heit</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">DAS PATTERNS</span><span className="stat-pill bg-das">das</span></div><div className="stat-foot"><span className="stat-value c-das">{countPattern("das")}</span><span className="stat-note c-das">-chen, -ment</span></div></div>
+                  <div className="stat dark">
+                    <div className="stat-head"><span className="stat-label">TOTAL PATTERNS</span><span className="stat-pill dark">Active Rules</span></div>
+                    <div className="stat-foot"><span className="stat-value">{patternsList.length}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">DER PATTERNS</span><span className="stat-pill bg-der">der</span></div>
+                    <div className="stat-foot"><span className="stat-value c-der">{countPattern("der")}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">DIE PATTERNS</span><span className="stat-pill bg-die">die</span></div>
+                    <div className="stat-foot"><span className="stat-value c-die">{countPattern("die")}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">DAS PATTERNS</span><span className="stat-pill bg-das">das</span></div>
+                    <div className="stat-foot"><span className="stat-value c-das">{countPattern("das")}</span></div>
+                  </div>
                 </div>
 
                 <div className="toolbar">
-                  <button onClick={() => { setPatternFormData({ article: "der", ending: "", rule: "", examples: "" }); setPatternModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Suffix Pattern</button>
+                  <div className="filters">
+                    <span className="filters-label">📅 Created:</span>
+                    <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+                      <option value="all">All Dates</option>
+                      <option value="today">Today</option>
+                      <option value="week">Past 7 Days</option>
+                      <option value="month">Past 30 Days</option>
+                      <option value="custom">Specific Date...</option>
+                    </select>
+                    {dateFilter === "custom" && (
+                      <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                    )}
+                  </div>
+                  <button onClick={() => { setPatternFormData({ article: "der", ending: "", rule: "", examples: "" }); setPatternModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>
+                    + Add Suffix Pattern
+                  </button>
                 </div>
 
                 <div className="patterns-grid">
                   {["der", "die", "das"].map((art) => (
                     <div key={art} className={`pattern-col ${art}`}>
                       <div className="pattern-header">
-                        <div><h3 className={`c-${art}`}>{GENDER_MAP[art]} Rules</h3><span style={{ fontSize: 12, color: "var(--muted)" }}>{patternsList.filter((p) => p.article === art).length} patterns</span></div>
+                        <div><h3 className={`c-${art}`}>{GENDER_MAP[art]} Rules</h3><span style={{ fontSize: 12, color: "var(--muted)" }}>{patternsList.filter((p) => p.article === art && matchesDateFilter(p.createdAt)).length} patterns</span></div>
                         <span className={`stat-pill ${ARTICLE_CLASS[art]}`}>{art}</span>
                       </div>
-                      {patternsList.filter((p) => p.article === art).map((rule) => (
+                      {patternsList.filter((p) => p.article === art && matchesDateFilter(p.createdAt)).map((rule) => (
                         <div key={rule.id} className="pattern-card">
                           <div className="pattern-card-top">
                             <span className={`pattern-badge ${ARTICLE_CLASS[art]}`}>{rule.ending}</span>
@@ -1182,27 +1306,67 @@ export default function App() {
           </>
         )}
 
-        {/* ==================== 3. VERBS ==================== */}
+        {/* ==================== 3. VERBS (SUBTITLES REMOVED) ==================== */}
         {mainCategory === "Verbs" && (
           <>
             {verbSubView === "list" && (
               <div className="section">
                 <div className="stats-grid">
-                  <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL VERBS</span><span className="stat-pill dark">{verbsMastered} mastered</span></div><div className="stat-foot"><span className="stat-value">{verbsList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>with past forms</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div><div className="stat-foot"><span className="stat-value c-dativ">{countVerb("Dativ")}</span><span className="stat-note c-dativ">+ Dativ</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akkusativ</span></div><div className="stat-foot"><span className="stat-value c-akku">{countVerb("Akkusativ")}</span><span className="stat-note c-akku">+ Akkusativ</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">BOTH / COMMON</span><span className="stat-pill bg-both">Both</span></div><div className="stat-foot"><span className="stat-value c-both">{countVerb("Both / Common")}</span><span className="stat-note c-both">Dat + Akk</span></div></div>
+                  <div className="stat dark">
+                    <div className="stat-head"><span className="stat-label">TOTAL VERBS</span><span className="stat-pill dark">{verbsMastered} mastered</span></div>
+                    <div className="stat-foot"><span className="stat-value">{verbsList.length}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div>
+                    <div className="stat-foot"><span className="stat-value c-dativ">{countVerb("Dativ")}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akkusativ</span></div>
+                    <div className="stat-foot"><span className="stat-value c-akku">{countVerb("Akkusativ")}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">BOTH / COMMON</span><span className="stat-pill bg-both">Both</span></div>
+                    <div className="stat-foot"><span className="stat-value c-both">{countVerb("Both / Common")}</span></div>
+                  </div>
                 </div>
 
                 <div className="toolbar">
-                  <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search verb, past forms, meaning, example..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-                  <div className="filters">
-                    <span className="filters-label">Case:</span>
-                    <button onClick={() => setVerbFilter("all")} className={`chip all ${verbFilter === "all" ? "on" : ""}`}>All ({verbsList.length})</button>
-                    <button onClick={() => setVerbFilter("Dativ")} className={`chip dativ ${verbFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
-                    <button onClick={() => setVerbFilter("Akkusativ")} className={`chip akku ${verbFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
-                    <button onClick={() => setVerbFilter("Both / Common")} className={`chip both ${verbFilter === "Both / Common" ? "on" : ""}`}>Both</button>
-                    <button onClick={() => { setEditingVerbId(null); setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Verb</button>
+                  <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search verb, past forms, meaning..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+
+                  <div className="filters-cluster">
+                    <div className="filters">
+                      <span className="filters-label">Case:</span>
+                      <button onClick={() => setVerbFilter("all")} className={`chip all ${verbFilter === "all" ? "on" : ""}`}>All</button>
+                      <button onClick={() => setVerbFilter("Dativ")} className={`chip dativ ${verbFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
+                      <button onClick={() => setVerbFilter("Akkusativ")} className={`chip akku ${verbFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
+                      <button onClick={() => setVerbFilter("Both / Common")} className={`chip both ${verbFilter === "Both / Common" ? "on" : ""}`}>Both</button>
+                    </div>
+
+                    {/* STATUS FILTER: VERBS */}
+                    <div className="filters">
+                      <span className="filters-label">Status:</span>
+                      <button onClick={() => setVerbStatusFilter("all")} className={`chip all ${verbStatusFilter === "all" ? "on" : ""}`}>All</button>
+                      <button onClick={() => setVerbStatusFilter("In Progress")} className={`chip all ${verbStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
+                      <button onClick={() => setVerbStatusFilter("Mastered")} className={`chip das ${verbStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                    </div>
+
+                    <div className="filters">
+                      <span className="filters-label">📅 Created:</span>
+                      <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+                        <option value="all">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="week">Past 7 Days</option>
+                        <option value="month">Past 30 Days</option>
+                        <option value="custom">Specific Date...</option>
+                      </select>
+                      {dateFilter === "custom" && (
+                        <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                      )}
+                    </div>
+
+                    <button onClick={() => { setEditingVerbId(null); setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }} className="btn btn-primary">
+                      + Add Verb
+                    </button>
                   </div>
                 </div>
 
@@ -1287,8 +1451,8 @@ export default function App() {
                     </div>
                     <div className="quiz-opts">
                       {[{ l: "Dativ", v: "Dativ" }, { l: "Akkusativ", v: "Akkusativ" }, { l: "Both", v: "Both / Common" }].map((opt) => (
-                        <button key={opt.v} disabled={verbQuizFeedback !== null} className={`quiz-opt ${opt.v === "Both / Common" ? "Both" : opt.v}`} onClick={() => {
-                          const ok = opt.v === verbQuizWord.caseType;
+                        <button key={opt.v} disabled={verbQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
+                          const ok = opt === verbQuizWord.caseType;
                           if (ok) setVerbQuizScore((s) => s + 1);
                           setVerbQuizFeedback(ok ? "Correct! 🎉" : `Wrong! "${verbQuizWord.verb}" governs "${verbQuizWord.caseType}".`);
                         }}>{opt.l}</button>
@@ -1311,27 +1475,67 @@ export default function App() {
           </>
         )}
 
-        {/* ==================== 4. PREPOSITIONS ==================== */}
+        {/* ==================== 4. PREPOSITIONS (SUBTITLES REMOVED) ==================== */}
         {mainCategory === "Prepositions" && (
           <>
             {prepSubView === "list" && (
               <div className="section">
                 <div className="stats-grid">
-                  <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL PREPOSITIONS</span><span className="stat-pill dark">{prepsMastered} mastered</span></div><div className="stat-foot"><span className="stat-value">{prepsList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>by case</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akk</span></div><div className="stat-foot"><span className="stat-value c-akku">{countPrep("Akkusativ")}</span><span className="stat-note c-akku">durch, für, ohne</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dat</span></div><div className="stat-foot"><span className="stat-value c-dativ">{countPrep("Dativ")}</span><span className="stat-note c-dativ">aus, bei, mit</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">WECHSEL</span><span className="stat-pill bg-wechsel">Dat / Akk</span></div><div className="stat-foot"><span className="stat-value c-wechsel">{countPrep("Wechsel")}</span><span className="stat-note c-wechsel">in, auf, an</span></div></div>
+                  <div className="stat dark">
+                    <div className="stat-head"><span className="stat-label">TOTAL PREPOSITIONS</span><span className="stat-pill dark">{prepsMastered} mastered</span></div>
+                    <div className="stat-foot"><span className="stat-value">{prepsList.length}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akk</span></div>
+                    <div className="stat-foot"><span className="stat-value c-akku">{countPrep("Akkusativ")}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dat</span></div>
+                    <div className="stat-foot"><span className="stat-value c-dativ">{countPrep("Dativ")}</span></div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-head"><span className="stat-label">WECHSEL</span><span className="stat-pill bg-wechsel">Dat / Akk</span></div>
+                    <div className="stat-foot"><span className="stat-value c-wechsel">{countPrep("Wechsel")}</span></div>
+                  </div>
                 </div>
 
                 <div className="toolbar">
                   <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search preposition, meaning, or sentence..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-                  <div className="filters">
-                    <span className="filters-label">Case:</span>
-                    <button onClick={() => setPrepFilter("all")} className={`chip all ${prepFilter === "all" ? "on" : ""}`}>All ({prepsList.length})</button>
-                    <button onClick={() => setPrepFilter("Akkusativ")} className={`chip akku ${prepFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
-                    <button onClick={() => setPrepFilter("Dativ")} className={`chip dativ ${prepFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
-                    <button onClick={() => setPrepFilter("Wechsel")} className={`chip wechsel ${prepFilter === "Wechsel" ? "on" : ""}`}>Wechsel</button>
-                    <button onClick={() => { setEditingPrepId(null); setPrepFormData({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" }); setPrepModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Preposition</button>
+
+                  <div className="filters-cluster">
+                    <div className="filters">
+                      <span className="filters-label">Case:</span>
+                      <button onClick={() => setPrepFilter("all")} className={`chip all ${prepFilter === "all" ? "on" : ""}`}>All</button>
+                      <button onClick={() => setPrepFilter("Akkusativ")} className={`chip akku ${prepFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
+                      <button onClick={() => setPrepFilter("Dativ")} className={`chip dativ ${prepFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
+                      <button onClick={() => setPrepFilter("Wechsel")} className={`chip wechsel ${prepFilter === "Wechsel" ? "on" : ""}`}>Wechsel</button>
+                    </div>
+
+                    {/* STATUS FILTER: PREPOSITIONS */}
+                    <div className="filters">
+                      <span className="filters-label">Status:</span>
+                      <button onClick={() => setPrepStatusFilter("all")} className={`chip all ${prepStatusFilter === "all" ? "on" : ""}`}>All</button>
+                      <button onClick={() => setPrepStatusFilter("In Progress")} className={`chip all ${prepStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
+                      <button onClick={() => setPrepStatusFilter("Mastered")} className={`chip das ${prepStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                    </div>
+
+                    <div className="filters">
+                      <span className="filters-label">📅 Created:</span>
+                      <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+                        <option value="all">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="week">Past 7 Days</option>
+                        <option value="month">Past 30 Days</option>
+                        <option value="custom">Specific Date...</option>
+                      </select>
+                      {dateFilter === "custom" && (
+                        <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                      )}
+                    </div>
+
+                    <button onClick={() => { setEditingPrepId(null); setPrepFormData({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" }); setPrepModalOpen(true); }} className="btn btn-primary">
+                      + Add Preposition
+                    </button>
                   </div>
                 </div>
 
@@ -1426,7 +1630,138 @@ export default function App() {
           </>
         )}
 
-        {/* ==================== 5. GRAMMAR HUB ==================== */}
+        {/* ==================== 5. TIME (UHRZEIT) ==================== */}
+        {mainCategory === "Time" && (
+          <>
+            {timeSubView === "list" && (
+              <div className="grammar-hub-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Uhrzeit (Formal 24h vs. Informal 12h Format):</span>
+                  <div className="filters">
+                    <button onClick={() => setTimeViewMode("all")} className={`chip all ${timeViewMode === "all" ? "on" : ""}`}>
+                      ⚖️ Compare Both
+                    </button>
+                    <button onClick={() => setTimeViewMode("formal")} className={`chip der ${timeViewMode === "formal" ? "on" : ""}`}>
+                      🏢 Formal (24h)
+                    </button>
+                    <button onClick={() => setTimeViewMode("informal")} className={`chip die ${timeViewMode === "informal" ? "on" : ""}`}>
+                      ☕ Informal (12h)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="table-wrap">
+                  <table className="grammar-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 90 }}>Digital</th>
+                        {(timeViewMode === "all" || timeViewMode === "formal") && <th>Formal (Offiziell / 24h)</th>}
+                        {(timeViewMode === "all" || timeViewMode === "informal") && <th>Informal (Umgangssprachlich / 12h)</th>}
+                        <th>Rule / Structure</th>
+                        <th style={{ textAlign: "right" }}>Listen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {TIME_COMPARISON_DATA.map((t) => (
+                        <tr key={t.digital}>
+                          <td style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 14 }}>{t.digital}</td>
+                          {(timeViewMode === "all" || timeViewMode === "formal") && (
+                            <td style={{ color: "var(--der)", fontWeight: 600 }}>{t.formal}</td>
+                          )}
+                          {(timeViewMode === "all" || timeViewMode === "informal") && (
+                            <td style={{ color: "var(--die)", fontWeight: 600 }}>{t.informal}</td>
+                          )}
+                          <td style={{ fontSize: 13, color: "var(--muted)" }}>{t.rule}</td>
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              onClick={() => speakGerman(timeViewMode === "formal" ? t.formal : t.informal)}
+                              className="icon-btn"
+                              title="Pronounce"
+                            >
+                              🔊
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grammar-rule-box">
+                  <strong>Essential Uhrzeit Rules:</strong>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 10 }}>
+                    {TIME_RULES.map((r, i) => (
+                      <div key={i} style={{ background: "var(--card)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line-2)" }}>
+                        <span style={{ fontWeight: 700, color: "var(--brand)", fontSize: 13 }}>{r.term}</span>
+                        <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.4 }}>{r.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {timeSubView === "flashcards" && (
+              <div className="panel">
+                <div className="flash-wrap">
+                  <div className="flash" onClick={() => setTimeCardFlipped(!timeCardFlipped)}>
+                    {!timeCardFlipped ? (
+                      <>
+                        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>HOW DO YOU SAY THIS TIME IN GERMAN?</span>
+                        <h2 style={{ fontSize: 32 }}>{timeCard.prompt}</h2>
+                        <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="pill bg-der" style={{ fontSize: 24, padding: "8px 24px" }}>{timeCard.answer}</span>
+                        <h3 style={{ fontSize: 18, margin: "14px 0 6px", color: "var(--ink-2)" }}>{timeCard.note}</h3>
+                      </>
+                    )}
+                  </div>
+                  <div className="flash-controls">
+                    <button className="btn btn-secondary" disabled={timeCardIndex === 0} onClick={() => { setTimeCardIndex(timeCardIndex - 1); setTimeCardFlipped(false); }}>◀ Previous</button>
+                    <button className="btn btn-secondary mid" onClick={() => speakGerman(timeCard.answer)}>🔊 Pronounce</button>
+                    <button className="btn btn-secondary" disabled={timeCardIndex >= TIME_FLASHCARDS.length - 1} onClick={() => { setTimeCardIndex(timeCardIndex + 1); setTimeCardFlipped(false); }}>Next ▶</button>
+                  </div>
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>Flashcard {timeCardIndex + 1} of {TIME_FLASHCARDS.length}</span>
+                </div>
+              </div>
+            )}
+
+            {timeSubView === "quiz" && (
+              <div className="panel">
+                <div className="quiz">
+                  <div className="quiz-head"><span>Question {timeQuizIndex + 1} of {TIME_QUIZ.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {timeQuizScore}</span></div>
+                  <div className="quiz-card">
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Select the correct time:</span>
+                    <h1 style={{ fontSize: 24 }}>{timeQuizWord.q}</h1>
+                  </div>
+                  <div className="quiz-opts" style={{ gridTemplateColumns: "1fr" }}>
+                    {timeQuizWord.options.map((opt) => (
+                      <button key={opt} disabled={timeQuizFeedback !== null} className="quiz-opt" onClick={() => {
+                        const ok = opt === timeQuizWord.answer;
+                        if (ok) setTimeQuizScore((s) => s + 1);
+                        setTimeQuizFeedback(ok ? `Correct! 🎉 ${timeQuizWord.expl}` : `Wrong! Correct phrasing is "${timeQuizWord.answer}". (${timeQuizWord.expl})`);
+                      }}>{opt}</button>
+                    ))}
+                  </div>
+                  {timeQuizFeedback && (
+                    <div style={{ marginTop: 24 }}>
+                      <p style={{ fontSize: 15, fontWeight: 600 }}>{timeQuizFeedback}</p>
+                      <button className="btn btn-primary" onClick={() => {
+                        setTimeQuizFeedback(null);
+                        if (timeQuizIndex < TIME_QUIZ.length - 1) setTimeQuizIndex((i) => i + 1);
+                        else { alert(`Time Quiz finished! Final Score: ${timeQuizScore}/${TIME_QUIZ.length}`); setTimeQuizIndex(0); setTimeQuizScore(0); }
+                      }}>{timeQuizIndex < TIME_QUIZ.length - 1 ? "Next Question" : "Restart"}</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ==================== 6. GRAMMAR HUB ==================== */}
         {mainCategory === "Grammar" && (
           <>
             {grammarSubView === "list" && (
@@ -1594,75 +1929,6 @@ export default function App() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* 6. Uhrzeit (Formal vs. Informal Clock) */}
-                {activeGrammarTopic === "time" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Uhrzeit (Formal vs. Informal Clock):</span>
-                      <div className="filters">
-                        <button onClick={() => setTimeViewMode("all")} className={`chip all ${timeViewMode === "all" ? "on" : ""}`}>
-                          ⚖️ Compare Both
-                        </button>
-                        <button onClick={() => setTimeViewMode("formal")} className={`chip der ${timeViewMode === "formal" ? "on" : ""}`}>
-                          🏢 Formal (24h)
-                        </button>
-                        <button onClick={() => setTimeViewMode("informal")} className={`chip die ${timeViewMode === "informal" ? "on" : ""}`}>
-                          ☕ Informal (12h)
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="table-wrap">
-                      <table className="grammar-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: 90 }}>Digital</th>
-                            {(timeViewMode === "all" || timeViewMode === "formal") && <th>Formal (Offiziell / 24h)</th>}
-                            {(timeViewMode === "all" || timeViewMode === "informal") && <th>Informal (Umgangssprachlich / 12h)</th>}
-                            <th>Rule / Structure</th>
-                            <th style={{ textAlign: "right" }}>Listen</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {TIME_COMPARISON_DATA.map((t) => (
-                            <tr key={t.digital}>
-                              <td style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 14 }}>{t.digital}</td>
-                              {(timeViewMode === "all" || timeViewMode === "formal") && (
-                                <td style={{ color: "var(--der)", fontWeight: 600 }}>{t.formal}</td>
-                              )}
-                              {(timeViewMode === "all" || timeViewMode === "informal") && (
-                                <td style={{ color: "var(--die)", fontWeight: 600 }}>{t.informal}</td>
-                              )}
-                              <td style={{ fontSize: 13, color: "var(--muted)" }}>{t.rule}</td>
-                              <td style={{ textAlign: "right" }}>
-                                <button
-                                  onClick={() => speakGerman(timeViewMode === "formal" ? t.formal : t.informal)}
-                                  className="icon-btn"
-                                  title="Pronounce"
-                                >
-                                  🔊
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="grammar-rule-box">
-                      <strong>Essential Uhrzeit Rules:</strong>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 10 }}>
-                        {TIME_RULES.map((r, i) => (
-                          <div key={i} style={{ background: "var(--card)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line-2)" }}>
-                            <span style={{ fontWeight: 700, color: "var(--brand)", fontSize: 13 }}>{r.term}</span>
-                            <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.4 }}>{r.desc}</p>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   </div>
                 )}

@@ -3,6 +3,8 @@ import CustomDropdown from "../components/CustomDropdown";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
+import alertGif from "../assets/alert.gif";
+import successGif from "../assets/success.gif";
 import "../App.css";
 
 export default function NounsPage({
@@ -27,6 +29,13 @@ export default function NounsPage({
     status: "In Progress",
   });
 
+  // Alert & Success Modal states
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [duplicateWordName, setDuplicateWordName] = useState("");
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [successWordInfo, setSuccessWordInfo] = useState({ article: "", noun: "" });
+
+  // AI / Generation helper states
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
 
@@ -36,90 +45,89 @@ export default function NounsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
- const generateGermanNoun = async () => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const generateGermanNoun = async () => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-  if (!apiKey) {
-    setAiError("VITE_GEMINI_API_KEY is not defined. Ensure .env is in the root directory and restart Vite.");
-    return;
-  }
+    if (!apiKey) {
+      setAiError("VITE_GEMINI_API_KEY is not defined. Ensure .env is in the root directory and restart Vite.");
+      return;
+    }
 
-  if (!nounFormData.meaning.trim()) {
-    setAiError("Please provide an English word first.");
-    return;
-  }
+    if (!nounFormData.meaning.trim()) {
+      setAiError("Please provide an English word first.");
+      return;
+    }
 
-  try {
-    setAiLoading(true);
-    setAiError("");
+    try {
+      setAiLoading(true);
+      setAiError("");
 
-    const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey });
 
-    const promptConfig = {
-      contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            article: {
-              type: Type.STRING,
-              enum: ["der", "die", "das"],
+      const promptConfig = {
+        contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              article: {
+                type: Type.STRING,
+                enum: ["der", "die", "das"],
+              },
+              noun: {
+                type: Type.STRING,
+              },
+              plural: {
+                type: Type.STRING,
+              },
             },
-            noun: {
-              type: Type.STRING,
-            },
-            plural: {
-              type: Type.STRING,
-            },
+            required: ["article", "noun", "plural"],
           },
-          required: ["article", "noun", "plural"],
         },
-      },
-    };
+      };
 
-    // Helper to attempt model generation with a fallback
-    const callWithFallback = async () => {
       const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3-flash"];
-      
+      let response;
+
       for (const modelName of candidateModels) {
         try {
-          return await ai.models.generateContent({
+          response = await ai.models.generateContent({
             model: modelName,
             ...promptConfig,
           });
+          break;
         } catch (err) {
-          // If 503 (high demand) or 404, try the next model in the list
-          const isOverloadedOrNotFound = err?.status === "UNAVAILABLE" || err?.message?.includes("503") || err?.message?.includes("404");
+          const isOverloadedOrNotFound =
+            err?.status === "UNAVAILABLE" ||
+            err?.message?.includes("503") ||
+            err?.message?.includes("404");
           if (isOverloadedOrNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
-            // Brief pause before fallback attempt
             await new Promise((res) => setTimeout(res, 800));
             continue;
           }
           throw err;
         }
       }
-    };
 
-    const response = await callWithFallback();
-    const parsed = JSON.parse(response.text);
+      const parsed = JSON.parse(response.text);
 
-    setNounFormData((prev) => ({
-      ...prev,
-      article: parsed.article,
-      noun: parsed.noun,
-      plural: parsed.plural,
-    }));
-  } catch (err) {
-    if (err?.message?.includes("503") || err?.status === "UNAVAILABLE") {
-      setAiError("Servers are currently experiencing high demand. Please tap 'Generate' again in a few moments.");
-    } else {
-      setAiError(err.message || "Failed to generate noun.");
+      setNounFormData((prev) => ({
+        ...prev,
+        article: parsed.article,
+        noun: parsed.noun,
+        plural: parsed.plural,
+      }));
+    } catch (err) {
+      if (err?.message?.includes("503") || err?.status === "UNAVAILABLE") {
+        setAiError("Servers are currently experiencing high demand. Please tap 'Generate' again in a few moments.");
+      } else {
+        setAiError(err.message || "Failed to generate noun.");
+      }
+    } finally {
+      setAiLoading(false);
     }
-  } finally {
-    setAiLoading(false);
-  }
-};
+  };
 
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
@@ -149,7 +157,22 @@ export default function NounsPage({
 
   const handleSaveModal = (e) => {
     e.preventDefault();
-    if (!nounFormData.noun.trim() || !nounFormData.meaning.trim()) return;
+    const cleanNoun = nounFormData.noun.trim();
+    if (!cleanNoun || !nounFormData.meaning.trim()) return;
+
+    // Check duplicate
+    const isDuplicate = vocabList.some(
+      (item) =>
+        item.noun.trim().toLowerCase() === cleanNoun.toLowerCase() &&
+        item.id !== editingNounId
+    );
+
+    if (isDuplicate) {
+      setDuplicateWordName(cleanNoun);
+      setDuplicateModalOpen(true);
+      return;
+    }
+
     const gender = GENDER_MAP[nounFormData.article] || "";
     const updated = editingNounId
       ? vocabList.map((item) =>
@@ -164,8 +187,22 @@ export default function NounsPage({
             createdAt: new Date().toISOString(),
           },
         ];
+
     onCommitNouns(updated);
     setModalOpen(false);
+
+    // Trigger Success GIF Popup
+    setSuccessWordInfo({
+      article: nounFormData.article,
+      noun: cleanNoun,
+      isEdit: Boolean(editingNounId),
+    });
+    setSuccessModalOpen(true);
+
+    // Optional: automatically dismiss after 2.2 seconds
+    setTimeout(() => {
+      setSuccessModalOpen(false);
+    }, 2200);
   };
 
   const nounCard = vocabList[cardIndex];
@@ -418,6 +455,7 @@ export default function NounsPage({
         </div>
       )}
 
+      {/* Add / Edit Noun Modal */}
       {modalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
           <div className="modal">
@@ -505,6 +543,97 @@ export default function NounsPage({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Word Alert Modal with GIF */}
+      {duplicateModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setDuplicateModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <img
+              src={alertGif}
+              alt="Alert"
+              style={{
+                width: 100,
+                height: 100,
+                objectFit: "contain",
+                marginBottom: 16,
+              }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--ink)" }}>Word Already Exists!</h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              <strong>"{duplicateWordName}"</strong> is already in your vocabulary list.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setDuplicateModalOpen(false)}
+            >
+              Understood
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal with GIF */}
+      {successModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setSuccessModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              animation: "fadeIn 0.2s ease-in-out",
+            }}
+          >
+            <img
+              src={successGif}
+              alt="Success"
+              style={{
+                width: 100,
+                height: 100,
+                objectFit: "contain",
+                marginBottom: 16,
+              }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--brand, #16a34a)" }}>
+              {successWordInfo.isEdit ? "Noun Updated!" : "Noun Added Successfully!"}
+            </h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              <strong>"{successWordInfo.article} {successWordInfo.noun}"</strong> has been saved to your vocabulary.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setSuccessModalOpen(false)}
+            >
+              Great! 🎉
+            </button>
           </div>
         </div>
       )}

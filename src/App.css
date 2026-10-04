@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'Adani';
+  src: url('./assets/adani.ttf') format('truetype'); 
+}
+
+@theme {
+  --font-adani: 'Adani', sans-serif;
+}
+.font-adani{
+  font-family: monospace;
+}

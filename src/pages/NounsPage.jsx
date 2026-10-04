@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
@@ -268,44 +269,70 @@ export default function NounsPage({
     reader.readAsArrayBuffer(file);
   };
 
+
+// Inside NounsPage component:
 const generateGermanNoun = async () => {
-    if (!nounFormData.meaning.trim()) {
-      setAiError("Please provide an English word first.");
-      return;
-    }
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-    try {
-      setAiLoading(true);
-      setAiError("");
+  if (!apiKey) {
+    setAiError("VITE_GEMINI_API_KEY is not defined in your .env file.");
+    return;
+  }
 
-      const response = await fetch("/api/generate-noun", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+  if (!nounFormData.meaning.trim()) {
+    setAiError("Please provide an English word first.");
+    return;
+  }
+
+  try {
+    setAiLoading(true);
+    setAiError("");
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    const promptConfig = {
+      contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            article: {
+              type: Type.STRING,
+              enum: ["der", "die", "das"],
+            },
+            noun: {
+              type: Type.STRING,
+            },
+            plural: {
+              type: Type.STRING,
+            },
+          },
+          required: ["article", "noun", "plural"],
         },
-        body: JSON.stringify({
-          meaning: nounFormData.meaning.trim(),
-        }),
-      });
+      },
+    };
 
-      const data = await response.json();
+   // Change "gemini-2.5-flash" to "gemini-3.8-flash"
+    const response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      ...promptConfig,
+    });
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to generate noun.");
-      }
+    const parsed = JSON.parse(response.text);
 
-      setNounFormData((prev) => ({
-        ...prev,
-        article: data.article,
-        noun: data.noun,
-        plural: data.plural,
-      }));
-    } catch (err) {
-      setAiError(err.message || "Failed to generate noun.");
-    } finally {
-      setAiLoading(false);
-    }
-  };
+    setNounFormData((prev) => ({
+      ...prev,
+      article: parsed.article,
+      noun: parsed.noun,
+      plural: parsed.plural,
+    }));
+  } catch (err) {
+    setAiError(err.message || "Failed to generate noun.");
+  } finally {
+    setAiLoading(false);
+  }
+};
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
     const itemDate = new Date(isoDate);

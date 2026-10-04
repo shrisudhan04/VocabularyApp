@@ -98,8 +98,7 @@ async function writeToVaultDB(storeName, key, data) {
   });
 }
 
-const CSS = `
-:root {
+const CSS = `:root {
   --bg: #fcfaf7;
   --card: #ffffff;
   --card-inner: #f5f0e8;

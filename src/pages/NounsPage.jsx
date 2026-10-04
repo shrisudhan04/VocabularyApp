@@ -155,55 +155,63 @@ export default function NounsPage({
   const nounsMastered = vocabList.filter((i) => i.status === "Mastered").length;
   const countNoun = (art) => vocabList.filter((i) => i.article === art).length;
 
-  const handleSaveModal = (e) => {
-    e.preventDefault();
-    const cleanNoun = nounFormData.noun.trim();
-    if (!cleanNoun || !nounFormData.meaning.trim()) return;
+const handleSaveModal = (e) => {
+  e.preventDefault();
+  console.log("1. Form submit triggered", nounFormData);
 
-    // Check duplicate
-    const isDuplicate = vocabList.some(
-      (item) =>
-        item.noun.trim().toLowerCase() === cleanNoun.toLowerCase() &&
-        item.id !== editingNounId
-    );
+  const cleanNoun = nounFormData.noun.trim();
+  if (!cleanNoun || !nounFormData.meaning.trim()) {
+    console.warn("2. Validation failed! Missing noun or meaning.");
+    return;
+  }
 
-    if (isDuplicate) {
-      setDuplicateWordName(cleanNoun);
-      setDuplicateModalOpen(true);
-      return;
-    }
+  // Duplicate check...
+  const isDuplicate = vocabList.some(
+    (item) =>
+      item.noun.trim().toLowerCase() === cleanNoun.toLowerCase() &&
+      item.id !== editingNounId
+  );
 
-    const gender = GENDER_MAP[nounFormData.article] || "";
-    const updated = editingNounId
-      ? vocabList.map((item) =>
-          item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
-        )
-      : [
-          ...vocabList,
-          {
-            id: Date.now(),
-            ...nounFormData,
-            gender,
-            createdAt: new Date().toISOString(),
-          },
-        ];
+  if (isDuplicate) {
+    console.log("3. Word is duplicate");
+    setDuplicateWordName(cleanNoun);
+    setDuplicateModalOpen(true);
+    return;
+  }
 
-    onCommitNouns(updated);
-    setModalOpen(false);
+  console.log("4. Saving noun and opening success modal...");
+  const gender = GENDER_MAP[nounFormData.article] || "";
+  const updated = editingNounId
+    ? vocabList.map((item) =>
+        item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
+      )
+    : [
+        ...vocabList,
+        {
+          id: Date.now(),
+          ...nounFormData,
+          gender,
+          createdAt: new Date().toISOString(),
+        },
+      ];
 
-    // Trigger Success GIF Popup
-    setSuccessWordInfo({
-      article: nounFormData.article,
-      noun: cleanNoun,
-      isEdit: Boolean(editingNounId),
-    });
-    setSuccessModalOpen(true);
+  onCommitNouns(updated);
+  setModalOpen(false);
 
-    // Optional: automatically dismiss after 2.2 seconds
-    setTimeout(() => {
-      setSuccessModalOpen(false);
-    }, 2200);
-  };
+  setSuccessWordInfo({
+    article: nounFormData.article,
+    noun: cleanNoun,
+    isEdit: Boolean(editingNounId),
+  });
+  setSuccessModalOpen(true);
+
+  // Temporarily comment out the timer so it stays open forever while testing
+  /*
+  setTimeout(() => {
+    setSuccessModalOpen(false);
+  }, 2200);
+  */
+};
 
   const nounCard = vocabList[cardIndex];
   const nounQuizWord = vocabList[quizIndex];

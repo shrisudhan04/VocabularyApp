@@ -156,14 +156,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .fab { display: none; }
 
-/* Dashboard & Stats */
-.dashboard-section { display: flex; flex-direction: column; gap: 12px; }
-.dashboard-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-.dash-selector { display: inline-flex; background: var(--line-2); padding: 3px; border-radius: 8px; gap: 3px; }
-.dash-btn { border: none; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--muted); background: transparent; }
-.dash-btn.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; min-height: 110px;
+/* Vault Overview Grid */
+.vault-overview { display: flex; flex-direction: column; gap: 18px; }
+.vault-section-title { font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: .6px; text-transform: uppercase; margin-bottom: 8px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-height: 105px;
   display: flex; flex-direction: column; justify-content: space-between; }
 .stat.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
 .stat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -171,8 +169,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .stat.dark .stat-label { color: var(--faint); }
 .stat-pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
 .stat-pill.dark { background: var(--ink-2); color: #38bdf8; font-weight: 600; }
-.stat-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 16px; }
-.stat-value { font-size: 30px; font-weight: 700; line-height: 1; }
+.stat-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 14px; }
+.stat-value { font-size: 28px; font-weight: 700; line-height: 1; }
 .stat-note { font-size: 12px; font-weight: 600; }
 
 .c-der { color: var(--der); } .c-die { color: var(--die); } .c-das { color: var(--das); }
@@ -287,7 +285,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 /* ================= TABLET ================= */
 @media (max-width: 1024px) {
   .page { padding: 20px; }
-  .stats { grid-template-columns: repeat(2, 1fr); }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .patterns-grid { grid-template-columns: 1fr; }
   .help { display: none; }
 }
@@ -309,10 +307,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .fab { display: inline-flex; position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 50;
     padding: 0 20px; min-height: 52px; border-radius: 999px; box-shadow: 0 8px 20px rgba(79,70,229,.35); font-size: 14px; }
 
-  .stats { gap: 10px; }
+  .vault-overview { gap: 14px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stat { padding: 12px 14px; min-height: 0; border-radius: 12px; }
   .stat-foot { margin-top: 8px; }
-  .stat-value { font-size: 26px; }
+  .stat-value { font-size: 24px; }
   .stat-note { display: none; }
   .stat-label { font-size: 10px; }
   .stat-pill { font-size: 10px; padding: 2px 8px; }
@@ -390,7 +389,6 @@ export default function App() {
   const [isPersisted, setIsPersisted] = useState(false);
 
   const [activeTab, setActiveTab] = useState("Nouns");
-  const [dashboardMode, setDashboardMode] = useState("nouns"); // "nouns" | "verbs"
   const [search, setSearch] = useState("");
   const [articleFilter, setArticleFilter] = useState("all");
   const [verbFilter, setVerbFilter] = useState("all");
@@ -448,15 +446,6 @@ export default function App() {
     }
     initVault();
   }, []);
-
-  // Sync dashboard mode with active tab automatically
-  useEffect(() => {
-    if (activeTab === "Verbs") {
-      setDashboardMode("verbs");
-    } else if (activeTab === "Nouns" || activeTab === "Patterns" || activeTab === "Article Quiz") {
-      setDashboardMode("nouns");
-    }
-  }, [activeTab]);
 
   const commitNouns = async (newList) => {
     setVocabList(newList);
@@ -621,31 +610,12 @@ export default function App() {
           </div>
         </header>
 
-        {/* Dashboard Section */}
-        <div className="dashboard-section">
-          <div className="dashboard-controls">
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Vault Overview
-            </span>
-            <div className="dash-selector">
-              <button
-                className={`dash-btn ${dashboardMode === "nouns" ? "active" : ""}`}
-                onClick={() => setDashboardMode("nouns")}
-              >
-                📑 Nouns Stats
-              </button>
-              <button
-                className={`dash-btn ${dashboardMode === "verbs" ? "active" : ""}`}
-                onClick={() => setDashboardMode("verbs")}
-              >
-                ⚡ Verbs Stats
-              </button>
-            </div>
-          </div>
-
-          {dashboardMode === "nouns" ? (
-            /* NOUNS DASHBOARD */
-            <section className="stats">
+        {/* VAULT OVERVIEW: Nouns + Verbs Together */}
+        <section className="vault-overview">
+          {/* Row 1: Nouns Summary */}
+          <div>
+            <div className="vault-section-title">Nouns Overview (Genders)</div>
+            <div className="stats-grid">
               <div className="stat dark">
                 <div className="stat-head">
                   <span className="stat-label">TOTAL NOUNS</span>
@@ -653,31 +623,49 @@ export default function App() {
                 </div>
                 <div className="stat-foot">
                   <span className="stat-value">{vocabList.length}</span>
-                  <span className="stat-note" style={{ color: "#94a3b8", fontWeight: 500 }}>
-                    across 3 genders
-                  </span>
+                  <span className="stat-note" style={{ color: "#94a3b8", fontWeight: 500 }}>3 genders</span>
                 </div>
               </div>
-              {[
-                { a: "der", label: "MASCULINE", note: "Blue highlight", count: countNoun("der") },
-                { a: "die", label: "FEMININE", note: "Pink highlight", count: countNoun("die") },
-                { a: "das", label: "NEUTER", note: "Green highlight", count: countNoun("das") },
-              ].map(({ a, label, note, count }) => (
-                <div className="stat" key={a}>
-                  <div className="stat-head">
-                    <span className="stat-label">{label}</span>
-                    <span className={`stat-pill ${ARTICLE_CLASS[a]}`}>{a}</span>
-                  </div>
-                  <div className="stat-foot">
-                    <span className={`stat-value c-${a}`}>{count}</span>
-                    <span className={`stat-note c-${a}`}>{note}</span>
-                  </div>
+
+              <div className="stat">
+                <div className="stat-head">
+                  <span className="stat-label">MASCULINE</span>
+                  <span className="stat-pill bg-der">der</span>
                 </div>
-              ))}
-            </section>
-          ) : (
-            /* VERBS DASHBOARD */
-            <section className="stats">
+                <div className="stat-foot">
+                  <span className="stat-value c-der">{countNoun("der")}</span>
+                  <span className="stat-note c-der">Blue highlight</span>
+                </div>
+              </div>
+
+              <div className="stat">
+                <div className="stat-head">
+                  <span className="stat-label">FEMININE</span>
+                  <span className="stat-pill bg-die">die</span>
+                </div>
+                <div className="stat-foot">
+                  <span className="stat-value c-die">{countNoun("die")}</span>
+                  <span className="stat-note c-die">Pink highlight</span>
+                </div>
+              </div>
+
+              <div className="stat">
+                <div className="stat-head">
+                  <span className="stat-label">NEUTER</span>
+                  <span className="stat-pill bg-das">das</span>
+                </div>
+                <div className="stat-foot">
+                  <span className="stat-value c-das">{countNoun("das")}</span>
+                  <span className="stat-note c-das">Green highlight</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Verbs Summary */}
+          <div>
+            <div className="vault-section-title">Verbs Overview (Grammatical Cases)</div>
+            <div className="stats-grid">
               <div className="stat dark">
                 <div className="stat-head">
                   <span className="stat-label">TOTAL VERBS</span>
@@ -685,30 +673,45 @@ export default function App() {
                 </div>
                 <div className="stat-foot">
                   <span className="stat-value">{verbsList.length}</span>
-                  <span className="stat-note" style={{ color: "#94a3b8", fontWeight: 500 }}>
-                    governing cases
-                  </span>
+                  <span className="stat-note" style={{ color: "#94a3b8", fontWeight: 500 }}>case governed</span>
                 </div>
               </div>
-              {[
-                { key: "Dativ", label: "DATIV VERBS", pillClass: "bg-dativ", colorClass: "c-dativ", note: "+ Dativ object", count: countVerb("Dativ") },
-                { key: "Akkusativ", label: "AKKUSATIV VERBS", pillClass: "bg-akku", colorClass: "c-akku", note: "+ Akkusativ object", count: countVerb("Akkusativ") },
-                { key: "Both / Common", label: "BOTH / COMMON", pillClass: "bg-both", colorClass: "c-both", note: "Dat (person) + Akk", count: countVerb("Both / Common") },
-              ].map(({ key, label, pillClass, colorClass, note, count }) => (
-                <div className="stat" key={key}>
-                  <div className="stat-head">
-                    <span className="stat-label">{label}</span>
-                    <span className={`stat-pill ${pillClass}`}>{key === "Both / Common" ? "Both" : key}</span>
-                  </div>
-                  <div className="stat-foot">
-                    <span className={`stat-value ${colorClass}`}>{count}</span>
-                    <span className={`stat-note ${colorClass}`}>{note}</span>
-                  </div>
+
+              <div className="stat">
+                <div className="stat-head">
+                  <span className="stat-label">DATIV VERBS</span>
+                  <span className="stat-pill bg-dativ">Dativ</span>
                 </div>
-              ))}
-            </section>
-          )}
-        </div>
+                <div className="stat-foot">
+                  <span className="stat-value c-dativ">{countVerb("Dativ")}</span>
+                  <span className="stat-note c-dativ">+ Dativ object</span>
+                </div>
+              </div>
+
+              <div className="stat">
+                <div className="stat-head">
+                  <span className="stat-label">AKKUSATIV VERBS</span>
+                  <span className="stat-pill bg-akku">Akkusativ</span>
+                </div>
+                <div className="stat-foot">
+                  <span className="stat-value c-akku">{countVerb("Akkusativ")}</span>
+                  <span className="stat-note c-akku">+ Akkusativ object</span>
+                </div>
+              </div>
+
+              <div className="stat">
+                <div className="stat-head">
+                  <span className="stat-label">BOTH / COMMON</span>
+                  <span className="stat-pill bg-both">Both</span>
+                </div>
+                <div className="stat-foot">
+                  <span className="stat-value c-both">{countVerb("Both / Common")}</span>
+                  <span className="stat-note c-both">Dat (person) + Akk</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Tabs Row */}
         <div className="tab-row">
@@ -1106,7 +1109,7 @@ export default function App() {
         )}
       </div>
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button (Mobile) */}
       {!nounModalOpen && !verbModalOpen && (
         <button
           onClick={() => {

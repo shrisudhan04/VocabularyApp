@@ -808,45 +808,7 @@ export default function App() {
 
       <div className="container">
         {/* Header */}
-        <header className="header">
-          <div className="header-left">
-            <div className="logo">🛡️</div>
-            <div style={{ minWidth: 0 }}>
-              <div className="title-row">
-                <h1 className="title">German Vocabulary Vault</h1>
-                <span className="badge">{isPersisted ? "🔒 Eviction-Proof" : "💾 Auto-Protected"}</span>
-              </div>
-              <p className="subtitle">Articles, plurals, patterns, case verbs, prepositions &amp; grammar rules.</p>
-            </div>
-          </div>
-
-          <div className="header-actions">
-            <button onClick={toggleTheme} className="btn btn-theme" aria-label="Toggle theme">
-              {theme === "light" ? "🌙 Dark" : "☀️ Light"}
-            </button>
-
-            {mainCategory === "Nouns" && currentSubView === "list" && (
-              <button onClick={() => { setEditingNounId(null); setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" }); setNounModalOpen(true); }} className="btn btn-primary">
-                + Add Noun
-              </button>
-            )}
-            {mainCategory === "Patterns" && currentSubView === "list" && (
-              <button onClick={() => { setPatternFormData({ article: "der", ending: "", rule: "", examples: "" }); setPatternModalOpen(true); }} className="btn btn-primary">
-                + Add Pattern
-              </button>
-            )}
-            {mainCategory === "Verbs" && currentSubView === "list" && (
-              <button onClick={() => { setEditingVerbId(null); setVerbFormData({ verb: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }} className="btn btn-primary">
-                + Add Verb
-              </button>
-            )}
-            {mainCategory === "Prepositions" && currentSubView === "list" && (
-              <button onClick={() => { setEditingPrepId(null); setPrepFormData({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" }); setPrepModalOpen(true); }} className="btn btn-primary">
-                + Add Preposition
-              </button>
-            )}
-          </div>
-        </header>
+        
 
         {/* PRIMARY TABS */}
         <div className="main-tabs-row">

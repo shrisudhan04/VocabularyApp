@@ -640,24 +640,24 @@ const handleTriggerInstantNotification = async () => {
               
 
   {/* 🚀 NEW: Instant Notification Trigger Button */}
-  <button
+  {/* <button
     type="button"
     onClick={handleTriggerInstantNotification}
     className="btn btn-secondary"
     title="Send a sample notification right now"
   >
     ⚡ Test Notification
-  </button>
+  </button> */}
 
   
-              <button
+              {/* <button
                 type="button"
                 onClick={handleToggleHourlyNotifications}
                 className={`btn ${hourlyAlertsActive ? "btn-primary" : "btn-secondary"}`}
                 title="Get a new German noun notification every 60 minutes"
               >
                 {hourlyAlertsActive ? "🔔 Hourly Alerts: ON" : "🔕 Hourly Alerts: OFF"}
-              </button>
+              </button> */}
 
               <div className="filters">
                 <CustomDropdown
@@ -677,7 +677,7 @@ const handleTriggerInstantNotification = async () => {
                 />
               </div>
 
-              <div className="filters">
+              {/* <div className="filters">
                 <CustomDropdown
                   icon="📅"
                   value={dateFilter}
@@ -692,7 +692,7 @@ const handleTriggerInstantNotification = async () => {
                     onChange={(e) => setCustomDate(e.target.value)}
                   />
                 )}
-              </div>
+              </div> */}
 
               <input
                 type="file"

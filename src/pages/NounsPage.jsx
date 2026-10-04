@@ -574,7 +574,7 @@ const handleSaveModal = (e) => {
             }}
           >
             <img
-              src="/assets/alert.gif"
+              src={alertGif}
               alt="Alert"
               style={{
                 width: 100,
@@ -619,7 +619,7 @@ const handleSaveModal = (e) => {
             }}
           >
             <img
-              src="/assets/success.gif"
+              src={successGif}
               alt="Success"
               style={{
                 width: 100,

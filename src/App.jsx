@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 
 const DB_NAME = "GermanVocabVault";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_NAME = "vocabulary_store";
 const VERBS_STORE_NAME = "verbs_store";
 const PATTERNS_STORE_NAME = "patterns_store";
@@ -22,280 +22,32 @@ const SEED_DATA = [
   { id: 5, article: "die", noun: "Sonne", plural: "die Sonnen", gender: "Feminine", meaning: "Sun", status: "Mastered" },
   { id: 6, article: "das", noun: "Buch", plural: "die Bücher", gender: "Neuter", meaning: "Book", status: "In Progress" },
 ];
+
 const SEED_VERBS = [
-  // --- ESSENTIAL AUXILIARIES & MODALS ---
-  {
-    id: 101,
-    verb: "sein",
-    preterite: "war",
-    participle: "gewesen",
-    auxiliary: "ist",
-    caseType: "Nominativ",
-    meaning: "to be",
-    example: "Ich war gestern zu Hause. (Ich bin gewesen)",
-    status: "Mastered"
-  },
-  {
-    id: 102,
-    verb: "haben",
-    preterite: "hatte",
-    participle: "gehabt",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "to have",
-    example: "Er hatte keine Zeit. (Er hat gehabt)",
-    status: "Mastered"
-  },
-  {
-    id: 103,
-    verb: "werden",
-    preterite: "wurde",
-    participle: "geworden",
-    auxiliary: "ist",
-    caseType: "Nominativ",
-    meaning: "to become",
-    example: "Sie wurde Ärztin. (Sie ist geworden)",
-    status: "In Progress"
-  },
-  {
-    id: 104,
-    verb: "können",
-    preterite: "konnte",
-    participle: "gekonnt",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "can / to be able to",
-    example: "Wir konnten den Zug nicht erreichen.",
-    status: "Mastered"
-  },
-  {
-    id: 105,
-    verb: "müssen",
-    preterite: "musste",
-    participle: "gemusst",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "must / to have to",
-    example: "Er musste lange im Büro bleiben.",
-    status: "Mastered"
-  },
-
-  // --- MOVEMENT & CHANGE OF STATE (AUXILIARY: SEIN) ---
-  {
-    id: 106,
-    verb: "gehen",
-    preterite: "ging",
-    participle: "gegangen",
-    auxiliary: "ist",
-    caseType: "Both / Common",
-    meaning: "to go / walk",
-    example: "Wir gingen in den Park. (Wir sind gegangen)",
-    status: "Mastered"
-  },
-  {
-    id: 107,
-    verb: "fahren",
-    preterite: "fuhr",
-    participle: "gefahren",
-    auxiliary: "ist",
-    caseType: "Both / Common",
-    meaning: "to drive / ride",
-    example: "Er fuhr mit dem Bus nach Berlin.",
-    status: "Mastered"
-  },
-  {
-    id: 108,
-    verb: "kommen",
-    preterite: "kam",
-    participle: "gekommen",
-    auxiliary: "ist",
-    caseType: "Both / Common",
-    meaning: "to come",
-    example: "Sie kam viel zu spät zur Besprechung.",
-    status: "Mastered"
-  },
-  {
-    id: 109,
-    verb: "bleiben",
-    preterite: "blieb",
-    participle: "geblieben",
-    auxiliary: "ist",
-    caseType: "Dativ",
-    meaning: "to stay / remain",
-    example: "Er blieb das ganze Wochenende im Bett.",
-    status: "In Progress"
-  },
-  {
-    id: 110,
-    verb: "laufen",
-    preterite: "lief",
-    participle: "gelaufen",
-    auxiliary: "ist",
-    caseType: "Akkusativ",
-    meaning: "to run / walk",
-    example: "Das Kind lief schnell über die Straße.",
-    status: "In Progress"
-  },
-
-  // --- STRONG DATIV VERBS ---
-  {
-    id: 111,
-    verb: "helfen",
-    preterite: "half",
-    participle: "geholfen",
-    auxiliary: "hat",
-    caseType: "Dativ",
-    meaning: "to help",
-    example: "Der Kollege half dem Mann sofort.",
-    status: "Mastered"
-  },
-  {
-    id: 112,
-    verb: "danken",
-    preterite: "dankte",
-    participle: "gedankt",
-    auxiliary: "hat",
-    caseType: "Dativ",
-    meaning: "to thank",
-    example: "Wir dankten der Lehrerin für ihre Geduld.",
-    status: "In Progress"
-  },
-  {
-    id: 113,
-    verb: "gefallen",
-    preterite: "gefiel",
-    participle: "gefallen",
-    auxiliary: "hat",
-    caseType: "Dativ",
-    meaning: "to appeal to / to please",
-    example: "Das neue Design gefiel dem Chef sehr gut.",
-    status: "In Progress"
-  },
-  {
-    id: 114,
-    verb: "gehören",
-    preterite: "gehörte",
-    participle: "gehört",
-    auxiliary: "hat",
-    caseType: "Dativ",
-    meaning: "to belong to",
-    example: "Dieses alte Buch gehörte meinem Großvater.",
-    status: "Mastered"
-  },
-
-  // --- STRONG AKKUSATIV VERBS ---
-  {
-    id: 115,
-    verb: "sehen",
-    preterite: "sah",
-    participle: "gesehen",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "to see",
-    example: "Ich sah einen Vogel auf dem Dach.",
-    status: "Mastered"
-  },
-  {
-    id: 116,
-    verb: "lesen",
-    preterite: "las",
-    participle: "gelesen",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "to read",
-    example: "Er las den Vertrag sehr aufmerksam.",
-    status: "In Progress"
-  },
-  {
-    id: 117,
-    verb: "schreiben",
-    preterite: "schrieb",
-    participle: "geschrieben",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "to write",
-    example: "Sie schrieb eine lange E-Mail.",
-    status: "Mastered"
-  },
-  {
-    id: 118,
-    verb: "finden",
-    preterite: "fand",
-    participle: "gefunden",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "to find",
-    example: "Endlich fand er den passenden Schlüssel.",
-    status: "Mastered"
-  },
-  {
-    id: 119,
-    verb: "trinken",
-    preterite: "trank",
-    participle: "getrunken",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "to drink",
-    example: "Wir tranken zusammen einen warmen Tee.",
-    status: "In Progress"
-  },
-  {
-    id: 120,
-    verb: "essen",
-    preterite: "aß",
-    participle: "gegessen",
-    auxiliary: "hat",
-    caseType: "Akkusativ",
-    meaning: "to eat",
-    example: "Er aß ein frisches Brötchen zum Frühstück.",
-    status: "Mastered"
-  },
-
-  // --- TWO-OBJECT DUAL VERBS (DATIV PERSON + AKKUSATIV THING) ---
-  {
-    id: 121,
-    verb: "geben",
-    preterite: "gab",
-    participle: "gegeben",
-    auxiliary: "hat",
-    caseType: "Both / Common",
-    meaning: "to give (jemandem [Dat] etwas [Akk])",
-    example: "Ich gab dem Kind das bunte Buch.",
-    status: "Mastered"
-  },
-  {
-    id: 122,
-    verb: "bringen",
-    preterite: "brachte",
-    participle: "gebracht",
-    auxiliary: "hat",
-    caseType: "Both / Common",
-    meaning: "to bring (jemandem [Dat] etwas [Akk])",
-    example: "Der Kellner brachte dem Gast das Essen.",
-    status: "In Progress"
-  },
-  {
-    id: 123,
-    verb: "schenken",
-    preterite: "schenkte",
-    participle: "geschenkt",
-    auxiliary: "hat",
-    caseType: "Both / Common",
-    meaning: "to gift (jemandem [Dat] etwas [Akk])",
-    example: "Er schenkte seiner Freundin eine weiße Blume.",
-    status: "In Progress"
-  },
-  {
-    id: 124,
-    verb: "erklären",
-    preterite: "erklärte",
-    participle: "erklärt",
-    auxiliary: "hat",
-    caseType: "Both / Common",
-    meaning: "to explain (jemandem [Dat] etwas [Akk])",
-    example: "Der Lehrer erklärte den Schülern die Grammatikregel.",
-    status: "Mastered"
-  }
+  { id: 101, verb: "sein", preterite: "war", participle: "gewesen", auxiliary: "ist", caseType: "Nominativ", meaning: "to be", example: "Ich war gestern zu Hause. (Ich bin gewesen)", status: "Mastered" },
+  { id: 102, verb: "haben", preterite: "hatte", participle: "gehabt", auxiliary: "hat", caseType: "Akkusativ", meaning: "to have", example: "Er hatte keine Zeit. (Er hat gehabt)", status: "Mastered" },
+  { id: 103, verb: "werden", preterite: "wurde", participle: "geworden", auxiliary: "ist", caseType: "Nominativ", meaning: "to become", example: "Sie wurde Ärztin. (Sie ist geworden)", status: "In Progress" },
+  { id: 104, verb: "können", preterite: "konnte", participle: "gekonnt", auxiliary: "hat", caseType: "Akkusativ", meaning: "can / to be able to", example: "Wir konnten den Zug nicht erreichen.", status: "Mastered" },
+  { id: 105, verb: "müssen", preterite: "musste", participle: "gemusst", auxiliary: "hat", caseType: "Akkusativ", meaning: "must / to have to", example: "Er musste lange im Büro bleiben.", status: "Mastered" },
+  { id: 106, verb: "gehen", preterite: "ging", participle: "gegangen", auxiliary: "ist", caseType: "Both / Common", meaning: "to go / walk", example: "Wir gingen in den Park. (Wir sind gegangen)", status: "Mastered" },
+  { id: 107, verb: "fahren", preterite: "fuhr", participle: "gefahren", auxiliary: "ist", caseType: "Both / Common", meaning: "to drive / ride", example: "Er fuhr mit dem Bus nach Berlin.", status: "Mastered" },
+  { id: 108, verb: "kommen", preterite: "kam", participle: "gekommen", auxiliary: "ist", caseType: "Both / Common", meaning: "to come", example: "Sie kam viel zu spät zur Besprechung.", status: "Mastered" },
+  { id: 109, verb: "bleiben", preterite: "blieb", participle: "geblieben", auxiliary: "ist", caseType: "Dativ", meaning: "to stay / remain", example: "Er blieb das ganze Wochenende im Bett.", status: "In Progress" },
+  { id: 110, verb: "laufen", preterite: "lief", participle: "gelaufen", auxiliary: "ist", caseType: "Akkusativ", meaning: "to run / walk", example: "Das Kind lief schnell über die Straße.", status: "In Progress" },
+  { id: 111, verb: "helfen", preterite: "half", participle: "geholfen", auxiliary: "hat", caseType: "Dativ", meaning: "to help", example: "Der Kollege half dem Mann sofort.", status: "Mastered" },
+  { id: 112, verb: "danken", preterite: "dankte", participle: "gedankt", auxiliary: "hat", caseType: "Dativ", meaning: "to thank", example: "Wir dankten der Lehrerin für ihre Geduld.", status: "In Progress" },
+  { id: 113, verb: "gefallen", preterite: "gefiel", participle: "gefallen", auxiliary: "hat", caseType: "Dativ", meaning: "to appeal to / to please", example: "Das neue Design gefiel dem Chef sehr gut.", status: "In Progress" },
+  { id: 114, verb: "gehören", preterite: "gehörte", participle: "gehört", auxiliary: "hat", caseType: "Dativ", meaning: "to belong to", example: "Dieses alte Buch gehörte meinem Großvater.", status: "Mastered" },
+  { id: 115, verb: "sehen", preterite: "sah", participle: "gesehen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to see", example: "Ich sah einen Vogel auf dem Dach.", status: "Mastered" },
+  { id: 116, verb: "lesen", preterite: "las", participle: "gelesen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to read", example: "Er las den Vertrag sehr aufmerksam.", status: "In Progress" },
+  { id: 117, verb: "schreiben", preterite: "schrieb", participle: "geschrieben", auxiliary: "hat", caseType: "Akkusativ", meaning: "to write", example: "Sie schrieb eine lange E-Mail.", status: "Mastered" },
+  { id: 118, verb: "finden", preterite: "fand", participle: "gefunden", auxiliary: "hat", caseType: "Akkusativ", meaning: "to find", example: "Endlich fand er den passenden Schlüssel.", status: "Mastered" },
+  { id: 119, verb: "trinken", preterite: "trank", participle: "getrunken", auxiliary: "hat", caseType: "Akkusativ", meaning: "to drink", example: "Wir tranken zusammen einen warmen Tee.", status: "In Progress" },
+  { id: 120, verb: "essen", preterite: "aß", participle: "gegessen", auxiliary: "hat", caseType: "Akkusativ", meaning: "to eat", example: "Er aß ein frisches Brötchen zum Frühstück.", status: "Mastered" },
+  { id: 121, verb: "geben", preterite: "gab", participle: "gegeben", auxiliary: "hat", caseType: "Both / Common", meaning: "to give (jemandem [Dat] etwas [Akk])", example: "Ich gab dem Kind das bunte Buch.", status: "Mastered" },
+  { id: 122, verb: "bringen", preterite: "brachte", participle: "gebracht", auxiliary: "hat", caseType: "Both / Common", meaning: "to bring (jemandem [Dat] etwas [Akk])", example: "Der Kellner brachte dem Gast das Essen.", status: "In Progress" },
+  { id: 123, verb: "schenken", preterite: "schenkte", participle: "geschenkt", auxiliary: "hat", caseType: "Both / Common", meaning: "to gift (jemandem [Dat] etwas [Akk])", example: "Er schenkte seiner Freundin eine weiße Blume.", status: "In Progress" },
+  { id: 124, verb: "erklären", preterite: "erklärte", participle: "erklärt", auxiliary: "hat", caseType: "Both / Common", meaning: "to explain (jemandem [Dat] etwas [Akk])", example: "Der Lehrer erklärte den Schülern die Grammatikregel.", status: "Mastered" }
 ];
 
 const SEED_PATTERNS = [
@@ -335,6 +87,7 @@ const GRAMMAR_TOPICS = [
   { id: "demonstratives", label: "Demonstratives (dieser, welcher)" },
   { id: "personal", label: "Personal Pronouns (mich, mir)" },
   { id: "adjectives", label: "Adjective Endings" },
+  { id: "time", label: "⏰ Uhrzeit (Formal vs. Informal)" },
 ];
 
 const POSSESSIVE_STEMS = [
@@ -388,6 +141,29 @@ const ADJECTIVE_ENDINGS_RULES = [
   { type: "Strong (zero article)", nom: "m: -er, f: -e, n: -es, pl: -e", akk: "m: -en, f: -e, n: -es, pl: -e", dat: "m: -em, f: -er, n: -em, pl: -en", gen: "m: -en, f: -er, n: -en, pl: -er" },
 ];
 
+const TIME_COMPARISON_DATA = [
+  { digital: "08:00", formal: "Es ist acht Uhr.", informal: "Es ist acht.", rule: "Exact hour (volle Stunde)" },
+  { digital: "08:05", formal: "Es ist acht Uhr fünf.", informal: "Es ist fünf nach acht.", rule: "5 past (nach)" },
+  { digital: "08:15", formal: "Es ist acht Uhr fünfzehn.", informal: "Es ist Viertel nach acht.", rule: "Quarter past (Viertel nach)" },
+  { digital: "08:20", formal: "Es ist acht Uhr zwanzig.", informal: "Es ist zwanzig nach acht / zehn vor halb neun.", rule: "20 past or 10 before half" },
+  { digital: "08:25", formal: "Es ist acht Uhr fünfundzwanzig.", informal: "Es ist fünf vor halb neun.", rule: "5 before half past" },
+  { digital: "08:30", formal: "Es ist acht Uhr dreißig.", informal: "Es ist halb neun.", rule: "Half past ('halfway to nine')" },
+  { digital: "08:35", formal: "Es ist acht Uhr fünfunddreißig.", informal: "Es ist fünf nach halb neun.", rule: "5 past half past" },
+  { digital: "08:40", formal: "Es ist acht Uhr vierzig.", informal: "Es ist zwanzig vor neun / zehn nach halb neun.", rule: "20 to or 10 past half" },
+  { digital: "08:45", formal: "Es ist acht Uhr fünfundvierzig.", informal: "Es ist Viertel vor neun.", rule: "Quarter to (Viertel vor)" },
+  { digital: "08:50", formal: "Es ist acht Uhr fünfzig.", informal: "Es ist zehn vor neun.", rule: "10 to (vor)" },
+  { digital: "14:15", formal: "Es ist vierzehn Uhr fünfzehn.", informal: "Es ist Viertel nach zwei.", rule: "Afternoon 24h vs. 12h" },
+  { digital: "20:30", formal: "Es ist zwanzig Uhr dreißig.", informal: "Es ist halb neun (abends).", rule: "Evening 24h vs. 12h" },
+];
+
+const TIME_RULES = [
+  { term: "Formal (Offiziell)", desc: "Uses the 24-hour clock. Pattern: [Stunde] + Uhr + [Minute]. No 'vor', 'nach', or 'halb'." },
+  { term: "Informal (Umgangssprachlich)", desc: "Uses the 12-hour clock. Minutes are spoken relative to the hour using 'vor' (before), 'nach' (after), and 'halb' (halfway to)." },
+  { term: "halb [Stunde]", desc: "Crucial rule: 'halb neun' means 08:30 (halfway to nine), NOT 09:30." },
+  { term: "Viertel vor / nach", desc: "'Viertel nach' = 15 minutes past; 'Viertel vor' = 15 minutes before the next hour." },
+  { term: "Key Questions", desc: "Wie spät ist es? / Wie viel Uhr ist es? (What time is it?) | Um wie viel Uhr...? (At what time...?)" },
+];
+
 const GRAMMAR_FLASHCARDS = [
   { id: "g1", prompt: "ich + Akkusativ + Maskulin Possessive", answer: "meinen", note: "z.B. Ich sehe meinen Bruder." },
   { id: "g2", prompt: "ihr (you pl.) + Dativ + Maskulin Possessive", answer: "eurem", note: "Achtung: euer drops 'e' -> eurem." },
@@ -397,6 +173,10 @@ const GRAMMAR_FLASHCARDS = [
   { id: "g6", prompt: "Negative: kein + Akkusativ Maskulin", answer: "keinen", note: "z.B. Ich habe keinen Hunger." },
   { id: "g7", prompt: "Definite: Dativ Plural Article", answer: "den (+n)", note: "z.B. mit den Freunden." },
   { id: "g8", prompt: "Adjective: ein + groß- + Maskulin Nominativ", answer: "ein großer", note: "Mixed declension takes -er for masculine." },
+  { id: "g9", prompt: "Informal Time: 07:30", answer: "Es ist halb acht.", note: "'halb' looks forward to the next hour (8)." },
+  { id: "g10", prompt: "Formal Time: 15:45", answer: "Es ist fünfzehn Uhr fünfundvierzig.", note: "Pattern: [Hour 24h] + Uhr + [Minute]." },
+  { id: "g11", prompt: "Informal Time: 10:15", answer: "Es ist Viertel nach zehn.", note: "Quarter past takes 'nach'." },
+  { id: "g12", prompt: "Informal Time: 11:25", answer: "Es ist fünf vor halb zwölf.", note: "Measured relative to 11:30 (halb zwölf)." }
 ];
 
 const GRAMMAR_QUIZ = [
@@ -408,6 +188,9 @@ const GRAMMAR_QUIZ = [
   { q: "Kannst du ___ bitte helfen? (ich, Dativ)", answer: "mir", options: ["mich", "mir", "meinem"], expl: "helfen verlangt Dativ -> mir" },
   { q: "Das ist das Auto ___ Vaters. (dieser, Genitiv)", answer: "dieses", options: ["diesem", "dieser", "dieses"], expl: "Genitiv Maskulin: dieses Vaters" },
   { q: "Das ist ein ___ Tag. (schön, Nom Masc)", answer: "schöner", options: ["schöne", "schöner", "schönen"], expl: "ein + Adjektiv (Maskulin Nominativ: -er)" },
+  { q: "Wie spät ist es um 14:30? (Informell)", answer: "halb drei", options: ["halb zwei", "halb drei", "zwei Uhr dreißig"], expl: "'halb' points to the upcoming hour (3), so 14:30 is 'halb drei'." },
+  { q: "Wie sagt man 18:15 offiziell (Formal)?", answer: "achtzehn Uhr fünfzehn", options: ["Viertel nach sechs", "achtzehn Uhr fünfzehn", "sechs Uhr fünfzehn"], expl: "Formal uses the 24-hour cycle: [Hour] Uhr [Minutes]." },
+  { q: "Was bedeutet 'Es ist Viertel vor fünf'?", answer: "04:45 / 16:45", options: ["04:15 / 16:15", "05:15 / 17:15", "04:45 / 16:45"], expl: "'Viertel vor' means 15 minutes before the hour." }
 ];
 
 // ---------- INDEXEDDB HELPERS ----------
@@ -584,7 +367,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   align-items: center;
 }
 
-/* Updated Verbs layout with Past Forms */
 .verbs-head, .verb-row {
   display: grid;
   grid-template-columns: 44px 90px 140px 170px 160px 1fr 130px 110px !important;
@@ -673,8 +455,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .confirm-box { text-align: center; display: flex; flex-direction: column; gap: 14px; }
 .confirm-icon { font-size: 38px; }
 .confirm-box p { margin: 0; font-size: 14.5px; color: var(--muted); line-height: 1.4; }
-.confirm-box strong { color: var(--ink); }
 
+/* ==========================================================================
+   MOBILE RESPONSIVENESS: LEFT-MOST CONTENT & RIGHT-MOST VERTICAL BUTTONS
+   ========================================================================== */
 @media (max-width: 1024px) {
   .page { padding: 20px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -683,16 +467,133 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 @media (max-width: 640px) {
   .page { padding: 12px 12px calc(96px + env(safe-area-inset-bottom)); }
-  .list { background: transparent; border: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .list { background: transparent; border: none; padding: 0; display: flex; flex-direction: column; gap: 12px; }
   .list-head { display: none; }
-  .noun-row, .verb-row, .prep-row {
-    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px;
-    display: flex !important; flex-direction: column; align-items: flex-start; gap: 6px;
+
+  /* Two-column card grid */
+  .noun-row,
+  .verb-row,
+  .prep-row {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left-width: 5px;
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    align-items: center;
+    gap: 12px;
   }
-  .c-idx { display: none; }
-  .actions { width: 100%; justify-content: flex-end; margin-top: 6px; }
-  .fab { display: inline-flex; position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 50;
-    padding: 0 20px; min-height: 52px; border-radius: 999px; box-shadow: 0 8px 20px rgba(180, 83, 9, .35); font-size: 14px; }
+
+  .c-idx { display: none !important; }
+
+  /* Left-most stacked elements */
+  .c-art, .c-case {
+    grid-column: 1;
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 2px;
+    text-align: left;
+  }
+
+  .c-noun, .c-verb, .c-prep {
+    grid-column: 1;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 8px;
+    font-size: 17px;
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .c-plural, .c-past {
+    grid-column: 1;
+    text-align: left !important;
+    font-size: 13px;
+    margin: 2px 0;
+  }
+
+  .c-past {
+    color: var(--brand);
+    font-family: monospace;
+    font-weight: 600;
+  }
+
+  .c-mean {
+    grid-column: 1;
+    text-align: left !important;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-2);
+    margin: 2px 0;
+  }
+
+  .c-eg {
+    grid-column: 1;
+    text-align: left !important;
+    font-size: 12.5px;
+    color: var(--muted);
+    font-style: italic;
+    margin: 2px 0;
+  }
+
+  .c-status {
+    grid-column: 1;
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 6px;
+  }
+
+  .noun-wrap {
+    justify-content: flex-start !important;
+  }
+
+  /* Right-most vertical buttons */
+  .actions {
+    grid-column: 2;
+    grid-row: 1 / span 8;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding-left: 12px;
+    border-left: 1px solid var(--line);
+    margin-left: auto;
+  }
+
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+  }
+
+  .status {
+    padding: 6px 12px;
+    min-height: 34px;
+    font-size: 12px;
+    align-self: flex-start;
+  }
+
+  .grammar-table td, .grammar-table th {
+    padding: 10px 8px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+
+  .fab {
+    display: inline-flex;
+    position: fixed;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    z-index: 50;
+    padding: 0 20px;
+    min-height: 52px;
+    border-radius: 999px;
+    box-shadow: 0 8px 20px rgba(180, 83, 9, 0.35);
+    font-size: 14px;
+  }
 }
 `;
 
@@ -720,6 +621,7 @@ export default function App() {
 
   const [activeGrammarTopic, setActiveGrammarTopic] = useState("possessives");
   const [grammarCaseFilter, setGrammarCaseFilter] = useState("Nominativ");
+  const [timeViewMode, setTimeViewMode] = useState("all");
 
   // Filters & Search
   const [search, setSearch] = useState("");
@@ -794,54 +696,52 @@ export default function App() {
   const [grammarQuizScore, setGrammarQuizScore] = useState(0);
   const [grammarQuizFeedback, setGrammarQuizFeedback] = useState(null);
 
-useEffect(() => {
-  async function initVault() {
-    try {
-      // Load stored verbs
-      let storedVerbs = await loadFromVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY);
+  useEffect(() => {
+    async function initVault() {
+      try {
+        let storedVerbs = await loadFromVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY);
+        const needsMigration = !storedVerbs || storedVerbs.some((v) => v.preterite === undefined);
 
-      // Check if existing verbs lack past-tense forms:
-      const needsMigration = !storedVerbs || storedVerbs.some(v => v.preterite === undefined);
+        if (needsMigration) {
+          const mergedVerbs = (storedVerbs && storedVerbs.length > 0)
+            ? storedVerbs.map((existing) => {
+                const seedMatch = SEED_VERBS.find((s) => s.verb === existing.verb || s.id === existing.id);
+                return {
+                  ...existing,
+                  preterite: existing.preterite || (seedMatch ? seedMatch.preterite : ""),
+                  participle: existing.participle || (seedMatch ? seedMatch.participle : ""),
+                  auxiliary: existing.auxiliary || (seedMatch ? seedMatch.auxiliary : "hat"),
+                };
+              })
+            : SEED_VERBS;
 
-      if (needsMigration) {
-        // Merge missing preterite & participle from SEED_VERBS, or replace with SEED_VERBS
-        const mergedVerbs = (storedVerbs && storedVerbs.length > 0)
-          ? storedVerbs.map(existing => {
-              const seedMatch = SEED_VERBS.find(s => s.verb === existing.verb || s.id === existing.id);
-              return {
-                ...existing,
-                preterite: existing.preterite || (seedMatch ? seedMatch.preterite : ""),
-                participle: existing.participle || (seedMatch ? seedMatch.participle : ""),
-              };
-            })
-          : SEED_VERBS;
+          await writeToVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY, mergedVerbs);
+          setVerbsList(mergedVerbs);
+        } else {
+          setVerbsList(storedVerbs);
+        }
 
-        await writeToVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY, mergedVerbs);
-        setVerbsList(mergedVerbs);
-      } else {
-        setVerbsList(storedVerbs);
+        const storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
+        setVocabList(storedVocab && storedVocab.length ? storedVocab : (await writeToVaultDB(STORE_NAME, BACKUP_KEY, SEED_DATA), SEED_DATA));
+
+        const storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
+        setPatternsList(storedPatterns && storedPatterns.length ? storedPatterns : (await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, SEED_PATTERNS), SEED_PATTERNS));
+
+        const storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
+        setPrepsList(storedPreps && storedPreps.length ? storedPreps : (await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, SEED_PREPOSITIONS), SEED_PREPOSITIONS));
+      } catch (err) {
+        console.error("IndexedDB error:", err);
+        setVerbsList(SEED_VERBS);
+        setVocabList(SEED_DATA);
+        setPatternsList(SEED_PATTERNS);
+        setPrepsList(SEED_PREPOSITIONS);
+      } finally {
+        setIsReady(true);
       }
-
-      // Remaining stores
-      const storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
-      setVocabList(storedVocab && storedVocab.length ? storedVocab : (await writeToVaultDB(STORE_NAME, BACKUP_KEY, SEED_DATA), SEED_DATA));
-
-      const storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
-      setPatternsList(storedPatterns && storedPatterns.length ? storedPatterns : (await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, SEED_PATTERNS), SEED_PATTERNS));
-
-      const storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
-      setPrepsList(storedPreps && storedPreps.length ? storedPreps : (await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, SEED_PREPOSITIONS), SEED_PREPOSITIONS));
-
-    } catch (err) {
-      console.error("IndexedDB load error:", err);
-      setVerbsList(SEED_VERBS);
-    } finally {
-      setIsReady(true);
     }
-  }
 
-  initVault();
-}, []);
+    initVault();
+  }, []);
 
   const commitNouns = async (newList) => {
     setVocabList(newList);
@@ -1282,7 +1182,7 @@ useEffect(() => {
           </>
         )}
 
-        {/* ==================== 3. VERBS (WITH PAST TENSE) ==================== */}
+        {/* ==================== 3. VERBS ==================== */}
         {mainCategory === "Verbs" && (
           <>
             {verbSubView === "list" && (
@@ -1697,6 +1597,75 @@ useEffect(() => {
                     </div>
                   </div>
                 )}
+
+                {/* 6. Uhrzeit (Formal vs. Informal Clock) */}
+                {activeGrammarTopic === "time" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Uhrzeit (Formal vs. Informal Clock):</span>
+                      <div className="filters">
+                        <button onClick={() => setTimeViewMode("all")} className={`chip all ${timeViewMode === "all" ? "on" : ""}`}>
+                          ⚖️ Compare Both
+                        </button>
+                        <button onClick={() => setTimeViewMode("formal")} className={`chip der ${timeViewMode === "formal" ? "on" : ""}`}>
+                          🏢 Formal (24h)
+                        </button>
+                        <button onClick={() => setTimeViewMode("informal")} className={`chip die ${timeViewMode === "informal" ? "on" : ""}`}>
+                          ☕ Informal (12h)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="table-wrap">
+                      <table className="grammar-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 90 }}>Digital</th>
+                            {(timeViewMode === "all" || timeViewMode === "formal") && <th>Formal (Offiziell / 24h)</th>}
+                            {(timeViewMode === "all" || timeViewMode === "informal") && <th>Informal (Umgangssprachlich / 12h)</th>}
+                            <th>Rule / Structure</th>
+                            <th style={{ textAlign: "right" }}>Listen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {TIME_COMPARISON_DATA.map((t) => (
+                            <tr key={t.digital}>
+                              <td style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 14 }}>{t.digital}</td>
+                              {(timeViewMode === "all" || timeViewMode === "formal") && (
+                                <td style={{ color: "var(--der)", fontWeight: 600 }}>{t.formal}</td>
+                              )}
+                              {(timeViewMode === "all" || timeViewMode === "informal") && (
+                                <td style={{ color: "var(--die)", fontWeight: 600 }}>{t.informal}</td>
+                              )}
+                              <td style={{ fontSize: 13, color: "var(--muted)" }}>{t.rule}</td>
+                              <td style={{ textAlign: "right" }}>
+                                <button
+                                  onClick={() => speakGerman(timeViewMode === "formal" ? t.formal : t.informal)}
+                                  className="icon-btn"
+                                  title="Pronounce"
+                                >
+                                  🔊
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="grammar-rule-box">
+                      <strong>Essential Uhrzeit Rules:</strong>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 10 }}>
+                        {TIME_RULES.map((r, i) => (
+                          <div key={i} style={{ background: "var(--card)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line-2)" }}>
+                            <span style={{ fontWeight: 700, color: "var(--brand)", fontSize: 13 }}>{r.term}</span>
+                            <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.4 }}>{r.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1809,7 +1778,7 @@ useEffect(() => {
         </div>
       )}
 
-      {/* ==================== VERB MODAL (WITH PAST FORMS) ==================== */}
+      {/* ==================== VERB MODAL ==================== */}
       {verbModalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setVerbModalOpen(false)}>
           <div className="modal">

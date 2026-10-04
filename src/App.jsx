@@ -174,11 +174,35 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .radio input { display: none; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
 
+/* Patterns */
+.pat-note { margin: 0; font-size: 13px; color: var(--muted); flex: 1 1 320px; max-width: 560px; line-height: 1.5; }
+.pat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.pat-grid.single { grid-template-columns: 1fr; }
+.pat-col { background: var(--card); border: 1px solid var(--line); border-top: 4px solid; border-radius: 14px; padding: 18px; min-width: 0; }
+.pat-col.der { border-top-color: var(--der); } .pat-col.die { border-top-color: var(--die); } .pat-col.das { border-top-color: var(--das); }
+.pat-head { display: flex; align-items: center; gap: 10px; }
+.pat-head .pill { font-size: 14px; }
+.pat-count { margin-left: auto; font-size: 12px; color: var(--faint); font-weight: 600; }
+.pat-intro { margin: 10px 0 14px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.pat-rules { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.pat-grid.single .pat-rules { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.pat-card { background: #f8fafc; border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; }
+.pat-rule { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.pat-rule strong { font-size: 15px; }
+.pat-rule span { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.pat-ex { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pat-ex li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.pat-mean { color: var(--muted); }
+.pill-sm { padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 12.5px; display: inline-block; }
+.pat-mine { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #cbd5e1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
+
 /* ================= TABLET ================= */
 @media (max-width: 1024px) {
   .page { padding: 20px; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .help { display: none; }
+  .pat-grid { grid-template-columns: 1fr; }
+  .pat-grid .pat-rules { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 }
 
 /* ================= MOBILE ================= */
@@ -208,8 +232,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .stat-pill { font-size: 10px; padding: 2px 8px; }
 
   .tab-row { gap: 0; }
-  .tabs { width: 100%; }
-  .tab { flex: 1; padding: 10px 6px; font-size: 13px; }
+  .tabs { width: 100%; overflow-x: auto; scrollbar-width: none; gap: 2px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 1 0 auto; min-width: 58px; flex-direction: column; gap: 2px; padding: 8px 6px; font-size: 11px; }
+  .tab > span:first-child { font-size: 16px; line-height: 1; }
+  .pat-col { padding: 14px; }
+  .pat-note { flex-basis: 100%; }
   .tab .full { display: none; }
   .tab .short { display: inline; }
 
@@ -261,6 +289,211 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 const ARTICLE_CLASS = { der: "bg-der", die: "bg-die", das: "bg-das" };
 const GENDER_MAP = { der: "Masculine", die: "Feminine", das: "Neuter" };
 
+
+// ---------- Article patterns ----------
+const PATTERNS = {
+  der: {
+    title: "Masculine",
+    intro: "Mostly people who do things, tools, and time and weather words.",
+    rules: [
+      { rule: "-er", suffix: ["er"], note: "People who do something, tools", ex: [["Lehrer", "teacher"], ["Fahrer", "driver"], ["Computer", "computer"]] },
+      { rule: "-ling", suffix: ["ling"], note: "People and things with a trait", ex: [["Frühling", "spring"], ["Lehrling", "apprentice"]] },
+      { rule: "-ismus", suffix: ["ismus"], note: "Ideas and movements", ex: [["Tourismus", "tourism"], ["Realismus", "realism"]] },
+      { rule: "-ist", suffix: ["ist"], note: "People by belief or job", ex: [["Tourist", "tourist"], ["Optimist", "optimist"]] },
+      { rule: "-or", suffix: ["or"], note: "Machines and professions", ex: [["Motor", "engine"], ["Doktor", "doctor"]] },
+      { rule: "-ig / -ich", suffix: ["ig", "ich"], note: "Common endings", ex: [["König", "king"], ["Teppich", "carpet"]] },
+      { rule: "Days, months, seasons", note: "Time words are always der", ex: [["Montag", "Monday"], ["Januar", "January"], ["Sommer", "summer"]] },
+      { rule: "Weather and directions", note: "Wind, rain and compass points", ex: [["Regen", "rain"], ["Wind", "wind"], ["Norden", "north"]] },
+    ],
+  },
+  die: {
+    title: "Feminine",
+    intro: "Abstract ideas, female people, and most nouns ending in -e.",
+    rules: [
+      { rule: "-ung", suffix: ["ung"], note: "Actions and results", ex: [["Zeitung", "newspaper"], ["Wohnung", "apartment"], ["Übung", "exercise"]] },
+      { rule: "-heit / -keit", suffix: ["heit", "keit"], note: "Qualities and states", ex: [["Freiheit", "freedom"], ["Möglichkeit", "possibility"]] },
+      { rule: "-schaft", suffix: ["schaft"], note: "Groups and relationships", ex: [["Freundschaft", "friendship"], ["Gesellschaft", "society"]] },
+      { rule: "-ion", suffix: ["ion"], note: "Latin-based words", ex: [["Nation", "nation"], ["Station", "station"]] },
+      { rule: "-tät", suffix: ["tät"], note: "Abstract concepts", ex: [["Universität", "university"], ["Qualität", "quality"]] },
+      { rule: "-ie / -ik", suffix: ["ie", "ik"], note: "Subjects and fields", ex: [["Familie", "family"], ["Musik", "music"]] },
+      { rule: "-ur", suffix: ["ur"], note: "Culture and nature words", ex: [["Kultur", "culture"], ["Natur", "nature"]] },
+      { rule: "-in", suffix: ["in"], note: "Female version of a person", ex: [["Lehrerin", "female teacher"], ["Ärztin", "female doctor"]] },
+      { rule: "-e (most)", suffix: ["e"], note: "Most nouns ending in -e. Exceptions: der Name, das Auge", ex: [["Sonne", "sun"], ["Lampe", "lamp"], ["Blume", "flower"]] },
+    ],
+  },
+  das: {
+    title: "Neuter",
+    intro: "Small things, young beings, foreign -ment and -um words, and verbs used as nouns.",
+    rules: [
+      { rule: "-chen / -lein", suffix: ["chen", "lein"], note: "Diminutives, always das", ex: [["Mädchen", "girl"], ["Brötchen", "bread roll"], ["Fräulein", "miss"]] },
+      { rule: "-ment", suffix: ["ment"], note: "Latin-based words", ex: [["Dokument", "document"], ["Instrument", "instrument"]] },
+      { rule: "-um", suffix: ["um"], note: "Latin-based words", ex: [["Museum", "museum"], ["Datum", "date"]] },
+      { rule: "-ma", suffix: ["ma"], note: "Greek-based words", ex: [["Thema", "topic"], ["Drama", "drama"]] },
+      { rule: "-nis", suffix: ["nis"], note: "Results and states. Some are die", ex: [["Ergebnis", "result"], ["Geheimnis", "secret"]] },
+      { rule: "Verbs as nouns", note: "An infinitive used as a noun", ex: [["Essen", "food"], ["Leben", "life"], ["Lernen", "learning"]] },
+      { rule: "Colors and metals", note: "Names of colors and most metals", ex: [["Blau", "blue"], ["Gold", "gold"], ["Silber", "silver"]] },
+      { rule: "Young beings", note: "Children and baby animals", ex: [["Kind", "child"], ["Baby", "baby"], ["Kalb", "calf"]] },
+    ],
+  },
+};
+
+function wordsFor(rule, article, list) {
+  if (!rule.suffix) return [];
+  return list.filter((w) => {
+    const n = w.noun.toLowerCase();
+    return w.article === article && rule.suffix.some((sfx) => n.endsWith(sfx) && n.length > sfx.length);
+  });
+}
+
+function WordList({ list, onToggle, onEdit, onDelete, onSpeak }) {
+
+  const q = search.toLowerCase();
+  const filtered = list.filter(
+    (item) =>
+      (articleFilter === "all" || item.article === articleFilter) &&
+      (item.noun.toLowerCase().includes(q) || item.meaning.toLowerCase().includes(q))
+  );
+
+  return (
+    <div className="section">
+      <div className="toolbar">
+        <div className="search">
+          <span>🔍</span>
+          <input
+            type="search"
+            placeholder="Search German or English..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <ArticleChips value={articleFilter} onChange={setArticleFilter} total={list.length} />
+      </div>
+
+      <div className="list">
+        <div className="list-head">
+          <span style={{ textAlign: "center" }}>#</span>
+          <span>ARTICLE</span>
+          <span>GERMAN NOUN</span>
+          <span>ENGLISH MEANING</span>
+          <span>STATUS</span>
+          <span style={{ textAlign: "right" }}>ACTIONS</span>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="empty">No vocabulary found.</div>
+        ) : (
+          filtered.map((item, index) => (
+            <div className={`row ${item.article}`} key={item.id}>
+              <div className="c-idx">{index + 1}</div>
+              <div className="c-art">
+                <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span>
+              </div>
+              <div className="c-noun">
+                <div className="noun-wrap">
+                  <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
+                  <span className="gender">({item.gender})</span>
+                </div>
+              </div>
+              <div className="c-mean">{item.meaning}</div>
+              <div className="c-status">
+                <button
+                  onClick={() => onToggle(item.id)}
+                  className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
+                >
+                  {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
+                </button>
+              </div>
+              <div className="actions">
+                <button onClick={() => onSpeak(`${item.article} ${item.noun}`)} className="icon-btn" title="Listen" aria-label="Listen">🔊</button>
+                <button onClick={() => onEdit(item)} className="icon-btn" title="Edit" aria-label="Edit">✏️</button>
+                <button onClick={() => onDelete(item.id)} className="icon-btn" title="Delete" aria-label="Delete">🗑️</button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ArticleChips({ value, onChange, total }) {
+  return (
+    <div className="filters">
+      <span className="filters-label">Filter:</span>
+      <button onClick={() => onChange("all")} className={`chip all ${value === "all" ? "on" : ""}`}>
+        All ({total})
+      </button>
+      {["der", "die", "das"].map((a) => (
+        <button key={a} onClick={() => onChange(a)} className={`chip ${a} ${value === a ? "on" : ""}`}>
+          {a} <span className="hint">({{ der: "Blue", die: "Pink", das: "Green" }[a]})</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PatternView({ list }) {
+  const [filter, setFilter] = useState("all");
+  const cats = filter === "all" ? ["der", "die", "das"] : [filter];
+
+  return (
+    <div className="section">
+      <div className="toolbar">
+        <p className="pat-note">
+          Patterns are guides, not laws. Most words follow them, but exceptions exist, so always learn the article with the noun.
+        </p>
+        <ArticleChips value={filter} onChange={setFilter} total={list.length} />
+      </div>
+
+      <div className={`pat-grid ${cats.length === 1 ? "single" : ""}`}>
+        {cats.map((a) => {
+          const P = PATTERNS[a];
+          return (
+            <section className={`pat-col ${a}`} key={a}>
+              <header className="pat-head">
+                <span className={`pill ${ARTICLE_CLASS[a]}`}>{a}</span>
+                <strong>{P.title}</strong>
+                <span className="pat-count">{P.rules.length} patterns</span>
+              </header>
+              <p className="pat-intro">{P.intro}</p>
+
+              <div className="pat-rules">
+                {P.rules.map((r) => {
+                  const mine = wordsFor(r, a, list);
+                  return (
+                    <article className="pat-card" key={r.rule}>
+                      <div className="pat-rule">
+                        <strong className={`c-${a}`}>{r.rule}</strong>
+                        <span>{r.note}</span>
+                      </div>
+                      <ul className="pat-ex">
+                        {r.ex.map(([n, m]) => (
+                          <li key={n}>
+                            <span className={`pill-sm ${ARTICLE_CLASS[a]}`}>{a} {n}</span>
+                            <span className="pat-mean">{m}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {mine.length > 0 && (
+                        <div className="pat-mine">
+                          <span>Your words:</span>
+                          {mine.map((w) => (
+                            <span key={w.id} className={`pill-sm ${ARTICLE_CLASS[a]}`}>{w.article} {w.noun}</span>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [vocabList, setVocabList] = useState([]);
   const [isReady, setIsReady] = useState(false);
@@ -271,8 +504,6 @@ export default function App() {
   const [, setSyncStatus] = useState("Vault Active");
 
   const [activeTab, setActiveTab] = useState("Vocabulary List");
-  const [search, setSearch] = useState("");
-  const [articleFilter, setArticleFilter] = useState("all");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -441,14 +672,6 @@ export default function App() {
     return <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>Loading secure vault...</div>;
   }
 
-  const filteredList = vocabList.filter((item) => {
-    const q = search.toLowerCase();
-    return (
-      (articleFilter === "all" || item.article === articleFilter) &&
-      (item.noun.toLowerCase().includes(q) || item.meaning.toLowerCase().includes(q))
-    );
-  });
-
   const totalCount = vocabList.length;
   const masteredCount = vocabList.filter((i) => i.status === "Mastered").length;
   const count = (a) => vocabList.filter((i) => i.article === a).length;
@@ -458,8 +681,10 @@ export default function App() {
 
   const tabs = [
     { id: "Vocabulary List", icon: "📑", short: "List" },
+    { id: "Nouns", icon: "🗂️", short: "Nouns" },
     { id: "Flashcards", icon: "🎴", short: "Cards" },
     { id: "Article Quiz", icon: "✨", short: "Quiz" },
+    { id: "Pattern", icon: "🧩", short: "Pattern" },
   ];
 
   return (
@@ -547,80 +772,19 @@ export default function App() {
           <span className="help">* Instant hardware autosave enabled on all changes</span>
         </div>
 
-        {/* VIEW 1: List */}
-        {activeTab === "Vocabulary List" && (
-          <div className="section">
-            <div className="toolbar">
-              <div className="search">
-                <span>🔍</span>
-                <input
-                  type="search"
-                  placeholder="Search German or English..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-
-              <div className="filters">
-                <span className="filters-label">Filter:</span>
-                <button onClick={() => setArticleFilter("all")} className={`chip all ${articleFilter === "all" ? "on" : ""}`}>
-                  All ({vocabList.length})
-                </button>
-                {["der", "die", "das"].map((a) => (
-                  <button key={a} onClick={() => setArticleFilter(a)} className={`chip ${a} ${articleFilter === a ? "on" : ""}`}>
-                    {a} <span className="hint">({{ der: "Blue", die: "Pink", das: "Green" }[a]})</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="list">
-              <div className="list-head">
-                <span style={{ textAlign: "center" }}>#</span>
-                <span>ARTICLE</span>
-                <span>GERMAN NOUN</span>
-                <span>ENGLISH MEANING</span>
-                <span>STATUS</span>
-                <span style={{ textAlign: "right" }}>ACTIONS</span>
-              </div>
-
-              {filteredList.length === 0 ? (
-                <div className="empty">No vocabulary found.</div>
-              ) : (
-                filteredList.map((item, index) => (
-                  <div className={`row ${item.article}`} key={item.id}>
-                    <div className="c-idx">{index + 1}</div>
-                    <div className="c-art">
-                      <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span>
-                    </div>
-                    <div className="c-noun">
-                      <div className="noun-wrap">
-                        <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
-                        <span className="gender">({item.gender})</span>
-                      </div>
-                    </div>
-                    <div className="c-mean">{item.meaning}</div>
-                    <div className="c-status">
-                      <button
-                        onClick={() => handleToggleStatus(item.id)}
-                        className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
-                      >
-                        {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
-                      </button>
-                    </div>
-                    <div className="actions">
-                      <button onClick={() => speakGerman(`${item.article} ${item.noun}`)} className="icon-btn" title="Listen" aria-label="Listen">🔊</button>
-                      <button onClick={() => openEditModal(item)} className="icon-btn" title="Edit" aria-label="Edit">✏️</button>
-                      <button onClick={() => handleDelete(item.id)} className="icon-btn" title="Delete" aria-label="Delete">🗑️</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+        {/* VIEW 1 & 2: Vocabulary List and Nouns (same view, separate search/filter) */}
+        {(activeTab === "Vocabulary List" || activeTab === "Nouns") && (
+          <WordList
+            key={activeTab}
+            list={vocabList}
+            onToggle={handleToggleStatus}
+            onEdit={openEditModal}
+            onDelete={handleDelete}
+            onSpeak={speakGerman}
+          />
         )}
 
-        {/* VIEW 2: Flashcards */}
+        {/* VIEW 3: Flashcards */}
         {activeTab === "Flashcards" && (
           <div className="panel">
             {!card ? (
@@ -675,7 +839,7 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 3: Quiz */}
+        {/* VIEW 4: Quiz */}
         {activeTab === "Article Quiz" && (
           <div className="panel">
             {!quizWord ? (
@@ -737,10 +901,13 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* VIEW 5: Pattern */}
+        {activeTab === "Pattern" && <PatternView list={vocabList} />}
       </div>
 
       {/* Mobile add button */}
-      {activeTab === "Vocabulary List" && !modalOpen && (
+      {(activeTab === "Vocabulary List" || activeTab === "Nouns") && !modalOpen && (
         <button onClick={openAddModal} className="btn btn-primary fab" aria-label="Add noun">
           + Add Noun
         </button>

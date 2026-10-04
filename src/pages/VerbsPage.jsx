@@ -2,6 +2,7 @@ import { useState } from "react";
 import CustomDropdown from "../components/CustomDropdown";
 import { VERB_CASE_CLASS, DATE_OPTIONS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
+import { GoogleGenAI, Type } from "@google/genai";
 
 export default function VerbsPage({
   viewMode,
@@ -27,11 +28,112 @@ export default function VerbsPage({
     status: "In Progress",
   });
 
+  // AI Generation States
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
+
+  const generateGermanVerb = async () => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+    if (!apiKey) {
+      setAiError("VITE_GEMINI_API_KEY is not defined. Ensure .env is in the root directory and restart Vite.");
+      return;
+    }
+
+    if (!verbFormData.meaning.trim()) {
+      setAiError("Please provide an English meaning first.");
+      return;
+    }
+
+    try {
+      setAiLoading(true);
+      setAiError("");
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      const promptConfig = {
+        contents: `Translate the English verb "${verbFormData.meaning.trim()}" into German. Provide the infinitive verb (lowercase, e.g., 'helfen'), Präteritum (3rd person singular, e.g., 'half'), Partizip II (e.g., 'geholfen'), the primary grammatical case it governs ('Dativ', 'Akkusativ', or 'Both / Common'), and a short natural example sentence with German translation.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              verb: {
+                type: Type.STRING,
+                description: "German infinitive in lowercase",
+              },
+              preterite: {
+                type: Type.STRING,
+                description: "Simple past (Präteritum 3rd person singular)",
+              },
+              participle: {
+                type: Type.STRING,
+                description: "Past participle (Partizip II)",
+              },
+              caseType: {
+                type: Type.STRING,
+                enum: ["Dativ", "Akkusativ", "Both / Common"],
+                description: "Case governed by the verb",
+              },
+              example: {
+                type: Type.STRING,
+                description: "Short German sentence showing usage with the correct case",
+              },
+            },
+            required: ["verb", "preterite", "participle", "caseType", "example"],
+          },
+        },
+      };
+
+      const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3-flash"];
+      let response;
+
+      for (const modelName of candidateModels) {
+        try {
+          response = await ai.models.generateContent({
+            model: modelName,
+            ...promptConfig,
+          });
+          break;
+        } catch (err) {
+          const isOverloadedOrNotFound =
+            err?.status === "UNAVAILABLE" ||
+            err?.message?.includes("503") ||
+            err?.message?.includes("404");
+          if (isOverloadedOrNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
+            await new Promise((res) => setTimeout(res, 800));
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      const parsed = JSON.parse(response.text);
+
+      setVerbFormData((prev) => ({
+        ...prev,
+        verb: parsed.verb,
+        preterite: parsed.preterite,
+        participle: parsed.participle,
+        caseType: parsed.caseType,
+        example: parsed.example,
+      }));
+    } catch (err) {
+      if (err?.message?.includes("503") || err?.status === "UNAVAILABLE") {
+        setAiError("Servers are currently experiencing high demand. Please tap 'Generate' again shortly.");
+      } else {
+        setAiError(err.message || "Failed to generate verb.");
+      }
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
@@ -140,6 +242,7 @@ export default function VerbsPage({
               <button
                 onClick={() => {
                   setEditingVerbId(null);
+                  setAiError("");
                   setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" });
                   setModalOpen(true);
                 }}
@@ -184,6 +287,7 @@ export default function VerbsPage({
                   <button
                     onClick={() => {
                       setEditingVerbId(item.id);
+                      setAiError("");
                       setVerbFormData({
                         verb: item.verb,
                         preterite: item.preterite || "",
@@ -336,6 +440,29 @@ export default function VerbsPage({
                   ))}
                 </div>
               </div>
+
+              <div>
+                <label className="modal-label">English Meaning</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="modal-input"
+                    style={{ flex: 1 }}
+                    type="text"
+                    required
+                    placeholder="e.g. to help"
+                    value={verbFormData.meaning}
+                    onChange={(e) => {
+                      setAiError("");
+                      setVerbFormData({ ...verbFormData, meaning: e.target.value });
+                    }}
+                  />
+                  <button type="button" className="btn btn-secondary" onClick={generateGermanVerb} disabled={aiLoading}>
+                    {aiLoading ? "Generating..." : "✨ Generate"}
+                  </button>
+                </div>
+                {aiError && <p style={{ color: "#dc2626", fontSize: 13, margin: "6px 0 0" }}>{aiError}</p>}
+              </div>
+
               <div>
                 <label className="modal-label">Infinitive Verb</label>
                 <input
@@ -347,6 +474,7 @@ export default function VerbsPage({
                   onChange={(e) => setVerbFormData({ ...verbFormData, verb: e.target.value })}
                 />
               </div>
+
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
                   <label className="modal-label">Präteritum (Simple Past)</label>
@@ -369,17 +497,7 @@ export default function VerbsPage({
                   />
                 </div>
               </div>
-              <div>
-                <label className="modal-label">English Meaning</label>
-                <input
-                  className="modal-input"
-                  type="text"
-                  required
-                  placeholder="e.g. to help (+ Dat)"
-                  value={verbFormData.meaning}
-                  onChange={(e) => setVerbFormData({ ...verbFormData, meaning: e.target.value })}
-                />
-              </div>
+
               <div>
                 <label className="modal-label">Example Sentence</label>
                 <input
@@ -390,6 +508,7 @@ export default function VerbsPage({
                   onChange={(e) => setVerbFormData({ ...verbFormData, example: e.target.value })}
                 />
               </div>
+
               <div>
                 <label className="modal-label">Status</label>
                 <CustomDropdown
@@ -399,6 +518,7 @@ export default function VerbsPage({
                   onChange={(val) => setVerbFormData({ ...verbFormData, status: val })}
                 />
               </div>
+
               <div className="modal-actions">
                 <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Verb</button>

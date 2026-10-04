@@ -309,10 +309,44 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .main-tab { border: none; padding: 10px 18px; border-radius: 9px; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: var(--muted); white-space: nowrap; }
 .main-tab.active { background: var(--card); color: var(--brand); box-shadow: 0 2px 5px rgba(0,0,0,.15); }
 
-.sub-tabs-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-bottom: 4px; }
-.sub-tabs { display: inline-flex; background: var(--line-2); padding: 4px; border-radius: 10px; gap: 4px; }
-.sub-tab { border: none; padding: 7px 18px; border-radius: 8px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--muted); }
-.sub-tab.active { background: var(--brand); color: #fff; box-shadow: 0 1px 3px rgba(180, 83, 9, .35); }
+/* Sub View Switcher - Full Width */
+.sub-tabs-bar { 
+  display: flex; 
+  width: 100%; 
+  padding-bottom: 4px; 
+}
+
+.sub-tabs { 
+  display: flex; 
+  width: 100%; 
+  background: var(--line-2); 
+  padding: 5px; 
+  border-radius: 12px; 
+  gap: 6px; 
+}
+
+.sub-tab { 
+  flex: 1; /* Stretches each button equally across the full container width */
+  border: none; 
+  padding: 10px 16px; 
+  border-radius: 9px; 
+  font-size: 13.5px; 
+  font-weight: 700; 
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent; 
+  color: var(--muted); 
+  text-align: center;
+  white-space: nowrap;
+}
+
+.sub-tab.active { 
+  background: var(--brand); 
+  color: #fff; 
+  box-shadow: 0 2px 6px rgba(180, 83, 9, .35); 
+}
 
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-height: 105px;

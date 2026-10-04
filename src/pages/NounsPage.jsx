@@ -10,6 +10,94 @@ import successGif from "../assets/Success.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
 
+// 🔊 In-memory Web Audio Synthesizer (No external sound files required)
+const getAudioContext = () => {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  return AudioCtx ? new AudioCtx() : null;
+};
+
+// 1. Upbeat, bright chime for adding a new noun or importing entries
+const playSuccessSound = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 major triad
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + index * 0.07);
+
+      gain.gain.setValueAtTime(0.12, ctx.currentTime + index * 0.07);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + index * 0.07 + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime + index * 0.07);
+      osc.stop(ctx.currentTime + index * 0.07 + 0.3);
+    });
+  } catch (err) {
+    console.warn("Audio playback not permitted:", err);
+  }
+};
+
+// 2. Double hollow alert when a duplicate word is encountered
+const playDuplicateSound = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    [0, 0.12].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(320, ctx.currentTime + delay);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + delay + 0.15);
+
+      gain.gain.setValueAtTime(0.18, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.18);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.18);
+    });
+  } catch (err) {
+    console.warn("Audio playback not permitted:", err);
+  }
+};
+
+// 3. Low buzzing warning sound for danger/destructive reset actions
+const playDangerSound = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(150, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(80, ctx.currentTime + 0.35);
+
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (err) {
+    console.warn("Audio playback not permitted:", err);
+  }
+};
+
 const GENDER_OPTIONS = [
   { label: "All Genders", value: "all" },
   { label: "der (Masculine)", value: "der" },
@@ -147,6 +235,7 @@ export default function NounsPage({
   };
 
   const handleConfirmReset = () => {
+    playDangerSound();
     onCommitNouns([]);
     setCardIndex(0);
     setCardFlipped(false);
@@ -249,9 +338,12 @@ export default function NounsPage({
         });
 
         if (newEntries.length > 0) {
+          playSuccessSound(); // 🔊 Sound on successful bulk import
           const updatedList = [...vocabList, ...newEntries];
           verifyGoalMilestone(vocabList, updatedList, `${newEntries.length} new nouns`);
           onCommitNouns(updatedList);
+        } else if (duplicateWords.length > 0) {
+          playDuplicateSound();
         }
 
         setImportSummary({
@@ -269,70 +361,68 @@ export default function NounsPage({
     reader.readAsArrayBuffer(file);
   };
 
+  const generateGermanNoun = async () => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-// Inside NounsPage component:
-const generateGermanNoun = async () => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setAiError("VITE_GEMINI_API_KEY is not defined in your .env file.");
+      return;
+    }
 
-  if (!apiKey) {
-    setAiError("VITE_GEMINI_API_KEY is not defined in your .env file.");
-    return;
-  }
+    if (!nounFormData.meaning.trim()) {
+      setAiError("Please provide an English word first.");
+      return;
+    }
 
-  if (!nounFormData.meaning.trim()) {
-    setAiError("Please provide an English word first.");
-    return;
-  }
+    try {
+      setAiLoading(true);
+      setAiError("");
 
-  try {
-    setAiLoading(true);
-    setAiError("");
+      const ai = new GoogleGenAI({ apiKey });
 
-    const ai = new GoogleGenAI({ apiKey });
-
-    const promptConfig = {
-      contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            article: {
-              type: Type.STRING,
-              enum: ["der", "die", "das"],
+      const promptConfig = {
+        contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              article: {
+                type: Type.STRING,
+                enum: ["der", "die", "das"],
+              },
+              noun: {
+                type: Type.STRING,
+              },
+              plural: {
+                type: Type.STRING,
+              },
             },
-            noun: {
-              type: Type.STRING,
-            },
-            plural: {
-              type: Type.STRING,
-            },
+            required: ["article", "noun", "plural"],
           },
-          required: ["article", "noun", "plural"],
         },
-      },
-    };
+      };
 
-   // Change "gemini-2.5-flash" to "gemini-3.8-flash"
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      ...promptConfig,
-    });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        ...promptConfig,
+      });
 
-    const parsed = JSON.parse(response.text);
+      const parsed = JSON.parse(response.text);
 
-    setNounFormData((prev) => ({
-      ...prev,
-      article: parsed.article,
-      noun: parsed.noun,
-      plural: parsed.plural,
-    }));
-  } catch (err) {
-    setAiError(err.message || "Failed to generate noun.");
-  } finally {
-    setAiLoading(false);
-  }
-};
+      setNounFormData((prev) => ({
+        ...prev,
+        article: parsed.article,
+        noun: parsed.noun,
+        plural: parsed.plural,
+      }));
+    } catch (err) {
+      setAiError(err.message || "Failed to generate noun.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
     const itemDate = new Date(isoDate);
@@ -374,6 +464,7 @@ const generateGermanNoun = async () => {
     );
 
     if (isDuplicate) {
+      playDuplicateSound(); // ⚠️ Sound on duplicate word collision
       setDuplicateWordName(cleanNoun);
       setDuplicateModalOpen(true);
       return;
@@ -388,13 +479,15 @@ const generateGermanNoun = async () => {
         item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
       );
     } else {
+      playSuccessSound(); // 🔊 Sound on adding a new word
+
       updated = [
         ...vocabList,
         {
           id: Date.now(),
           ...nounFormData,
           gender,
-          createdAt: new Date().toISOString(), // Ensures immediate increment in goal counts
+          createdAt: new Date().toISOString(),
         },
       ];
     }
@@ -515,7 +608,10 @@ const generateGermanNoun = async () => {
 
               <button
                 type="button"
-                onClick={() => setResetModalOpen(true)}
+                onClick={() => {
+                  playDangerSound(); // 🚨 Sound when opening reset confirmation
+                  setResetModalOpen(true);
+                }}
                 className="btn btn-secondary"
                 style={{
                   color: "#dc2626",
@@ -910,7 +1006,7 @@ const generateGermanNoun = async () => {
         </div>
       )}
 
-      {/* Goal Reached Celebration Modal (Uses successGif from assets) */}
+      {/* Goal Reached Celebration Modal */}
       {goalCelebration.isOpen && (
         <div
           className="overlay"
@@ -1166,4 +1262,3 @@ const generateGermanNoun = async () => {
     </>
   );
 }
-

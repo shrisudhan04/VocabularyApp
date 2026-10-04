@@ -16,7 +16,7 @@ export default function Sidebar({
     >
       <aside className="sidebar">
         <div className="sidebar-header">
-          <span className="sidebar-logo">deutschly</span>
+          <span className="sidebar-logo">DEutschly</span>
           <button
             type="button"
             className="sidebar-close-btn"

@@ -16,7 +16,7 @@ export default function Header({ onOpenSidebar }) {
         </span>
       </button>
 
-      <h1 className="app-title">deutschly</h1>
+      <h1 className="app-title">DEutschly</h1>
 
       {/* Keeps the title centered relative to the screen */}
       <div className="header-spacer" aria-hidden="true" />

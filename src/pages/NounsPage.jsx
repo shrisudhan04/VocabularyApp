@@ -3,8 +3,8 @@ import CustomDropdown from "../components/CustomDropdown";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
-import alertGif from "../assets/alert.gif";
-import successGif from "../assets/success.gif";
+import alertGif from "../assets/Alert.gif";
+import successGif from "../assets/Success.gif";
 import "../App.css";
 
 export default function NounsPage({

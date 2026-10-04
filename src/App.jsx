@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 
 const DB_NAME = "GermanVocabVault";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_NAME = "vocabulary_store";
 const VERBS_STORE_NAME = "verbs_store";
 const PATTERNS_STORE_NAME = "patterns_store";
@@ -13,7 +13,7 @@ const VERBS_BACKUP_KEY = "current_verbs_data";
 const PATTERNS_BACKUP_KEY = "current_patterns_data";
 const PREPOSITIONS_BACKUP_KEY = "current_prepositions_data";
 
-// ---------- SEED VOCABULARY ----------
+// ---------- SEED DATA ----------
 const SEED_DATA = [
   { id: 1, article: "der", noun: "Mann", plural: "die Männer", gender: "Masculine", meaning: "Male / Man", status: "Mastered" },
   { id: 2, article: "die", noun: "Frau", plural: "die Frauen", gender: "Feminine", meaning: "Woman / Wife", status: "In Progress" },
@@ -24,14 +24,14 @@ const SEED_DATA = [
 ];
 
 const SEED_VERBS = [
-  { id: 101, verb: "helfen", caseType: "Dativ", meaning: "to help", example: "Ich helfe dem Mann.", status: "Mastered" },
-  { id: 102, verb: "danken", caseType: "Dativ", meaning: "to thank", example: "Wir danken der Lehrerin.", status: "In Progress" },
-  { id: 103, verb: "gehören", caseType: "Dativ", meaning: "to belong to", example: "Das Buch gehört mir.", status: "In Progress" },
-  { id: 104, verb: "sehen", caseType: "Akkusativ", meaning: "to see", example: "Ich sehe den Tisch.", status: "Mastered" },
-  { id: 105, verb: "haben", caseType: "Akkusativ", meaning: "to have", example: "Er hat einen Hund.", status: "Mastered" },
-  { id: 106, verb: "brauchen", caseType: "Akkusativ", meaning: "to need", example: "Wir brauchen einen Stift.", status: "In Progress" },
-  { id: 107, verb: "geben", caseType: "Both / Common", meaning: "to give (jemandem [Dat] etwas [Akk])", example: "Ich gebe dem Kind das Buch.", status: "Mastered" },
-  { id: 108, verb: "schenken", caseType: "Both / Common", meaning: "to gift (jemandem [Dat] etwas [Akk])", example: "Er schenkt ihr eine Blume.", status: "In Progress" },
+  { id: 101, verb: "helfen", preterite: "half", participle: "geholfen", caseType: "Dativ", meaning: "to help", example: "Ich helfe dem Mann.", status: "Mastered" },
+  { id: 102, verb: "danken", preterite: "dankte", participle: "gedankt", caseType: "Dativ", meaning: "to thank", example: "Wir danken der Lehrerin.", status: "In Progress" },
+  { id: 103, verb: "gehören", preterite: "gehörte", participle: "gehört", caseType: "Dativ", meaning: "to belong to", example: "Das Buch gehört mir.", status: "In Progress" },
+  { id: 104, verb: "sehen", preterite: "sah", participle: "gesehen", caseType: "Akkusativ", meaning: "to see", example: "Ich sehe den Tisch.", status: "Mastered" },
+  { id: 105, verb: "haben", preterite: "hatte", participle: "gehabt", caseType: "Akkusativ", meaning: "to have", example: "Er hat einen Hund.", status: "Mastered" },
+  { id: 106, verb: "brauchen", preterite: "brauchte", participle: "gebraucht", caseType: "Akkusativ", meaning: "to need", example: "Wir brauchen einen Stift.", status: "In Progress" },
+  { id: 107, verb: "geben", preterite: "gab", participle: "gegeben", caseType: "Both / Common", meaning: "to give", example: "Ich gebe dem Kind das Buch.", status: "Mastered" },
+  { id: 108, verb: "schenken", preterite: "schenkte", participle: "geschenkt", caseType: "Both / Common", meaning: "to gift", example: "Er schenkt ihr eine Blume.", status: "In Progress" },
 ];
 
 const SEED_PATTERNS = [
@@ -64,7 +64,7 @@ const SEED_PREPOSITIONS = [
   { id: 209, prep: "an", caseType: "Wechsel", meaning: "at / on (vertical edge)", example: "Das Bild hängt an der Wand (Dat).", status: "In Progress" },
 ];
 
-// ---------- COMPLETE GRAMMAR REFERENCE SETS ----------
+// ---------- GRAMMAR DATA ----------
 const GRAMMAR_TOPICS = [
   { id: "possessives", label: "Possessivartikel (mein, dein)" },
   { id: "articles", label: "Articles (der / ein / kein)" },
@@ -193,6 +193,7 @@ const CSS = `
   --muted: #78716c;
   --faint: #a8a29e;
   --brand: #b45309;
+  --danger: #dc2626;
 
   --der: #0369a1; --der-bg: #e0f2fe;
   --die: #be123c; --die-bg: #ffe4e6;
@@ -217,6 +218,7 @@ const CSS = `
   --muted: #a8a29e;
   --faint: #78716c;
   --brand: #f59e0b;
+  --danger: #ef4444;
 
   --der: #38bdf8; --der-bg: rgba(56, 189, 248, 0.2);
   --die: #fb7185; --die-bg: rgba(251, 113, 133, 0.2);
@@ -240,38 +242,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
 .container { width: 100%; max-width: 1400px; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
-/* Header */
-.header { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 28px;
-  display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
-.header-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.logo { width: 50px; height: 50px; flex: none; border-radius: 12px; background: rgba(180, 83, 9, 0.15); display: flex; align-items: center; justify-content: center; font-size: 24px; }
-.title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.title { font-size: 21px; font-weight: 700; margin: 0; color: var(--ink); }
-.badge { font-size: 11px; background: rgba(180, 83, 9, 0.15); color: var(--brand); padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
-.subtitle { font-size: 13px; color: var(--muted); margin: 6px 0 0; overflow-wrap: anywhere; }
-.header-actions { display: flex; gap: 10px; align-items: center; }
-
 .btn { border-radius: 8px; padding: 10px 16px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; min-height: 40px; }
 .btn-primary { background: var(--brand); color: #fff; border: none; }
 .btn-secondary { background: var(--card); color: var(--ink); border: 1px solid var(--line-2); }
-.btn-theme { background: var(--card-inner); border: 1px solid var(--line-2); color: var(--ink); padding: 10px 14px; }
+.btn-danger { background: var(--danger); color: #fff; border: none; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .fab { display: none; }
 
-/* Main Category Tabs */
 .main-tabs-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 .main-tabs { display: flex; gap: 6px; background: var(--line-2); padding: 5px; border-radius: 12px; overflow-x: auto; scrollbar-width: none; }
 .main-tabs::-webkit-scrollbar { display: none; }
 .main-tab { border: none; padding: 10px 18px; border-radius: 9px; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: var(--muted); white-space: nowrap; }
 .main-tab.active { background: var(--card); color: var(--brand); box-shadow: 0 2px 5px rgba(0,0,0,.15); }
 
-/* Sub View Switcher */
 .sub-tabs-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-bottom: 4px; }
 .sub-tabs { display: inline-flex; background: var(--line-2); padding: 4px; border-radius: 10px; gap: 4px; }
 .sub-tab { border: none; padding: 7px 18px; border-radius: 8px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--muted); }
 .sub-tab.active { background: var(--brand); color: #fff; box-shadow: 0 1px 3px rgba(180, 83, 9, .35); }
 
-/* Stats Grid (Only on Nouns, Patterns, Verbs, Prepositions) */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-height: 105px;
   display: flex; flex-direction: column; justify-content: space-between; }
@@ -296,7 +284,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .bg-both { background: var(--both-bg); color: var(--both); }
 .bg-wechsel { background: var(--wechsel-bg); color: var(--wechsel); }
 
-/* Toolbar */
 .section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .search { position: relative; flex: 1 1 340px; max-width: 520px; }
@@ -323,8 +310,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chip.both.on { background: var(--both); color: #fff; border-color: var(--both); }
 .chip.wechsel.on { background: var(--wechsel); color: #fff; border-color: var(--wechsel); }
 
-/* List Tables */
-.list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 16px 16px; }
+.list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 16px 16px; overflow-x: auto; }
 .list-head { padding: 12px 8px; font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: .5px; border-bottom: 1px solid var(--line); }
 
 .nouns-head, .noun-row {
@@ -334,10 +320,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   align-items: center;
 }
 
+/* Updated Verbs layout with Past Forms */
 .verbs-head, .verb-row {
   display: grid;
-  grid-template-columns: 48px 100px 180px 200px 1fr 130px 120px !important;
-  gap: 16px;
+  grid-template-columns: 44px 90px 140px 170px 160px 1fr 130px 110px !important;
+  gap: 14px;
   align-items: center;
 }
 
@@ -355,6 +342,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .pill { padding: 4px 12px; border-radius: 6px; font-weight: 600; display: inline-block; }
 .gender { color: var(--faint); font-size: 12px; font-weight: 500; }
 .c-plural { color: var(--muted); font-size: 13px; font-style: italic; }
+.c-past { color: var(--brand); font-size: 12.5px; font-weight: 600; font-family: monospace; }
 .c-mean { color: var(--ink-2); font-weight: 600; }
 .c-eg { color: var(--muted); font-size: 12px; font-style: italic; }
 .status { border: 1px solid; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -362,9 +350,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .status.todo { background: var(--card-inner); border-color: var(--line-2); color: var(--muted); }
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
 .icon-btn { width: 36px; height: 36px; min-width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; background: var(--card-inner); border: 1px solid var(--line-2); border-radius: 8px; color: var(--ink); }
-.empty { text-align: center; padding: 36px; color: var(--faint); }
 
-/* Patterns Grid */
 .patterns-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .pattern-col { background: var(--card); border: 1px solid var(--line); border-top: 4px solid transparent; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .pattern-col.der { border-top-color: var(--der); }
@@ -372,15 +358,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .pattern-col.das { border-top-color: var(--das); }
 .pattern-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .pattern-header h3 { margin: 0; font-size: 18px; }
-.pattern-card { background: var(--card-inner); border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; position: relative; }
+.pattern-card { background: var(--card-inner); border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
 .pattern-card-top { display: flex; justify-content: space-between; align-items: center; }
 .pattern-badge { align-self: flex-start; font-weight: 700; font-size: 13px; font-family: monospace; padding: 3px 8px; border-radius: 6px; }
-.pattern-delete-btn { background: none; border: none; font-size: 13px; opacity: .5; padding: 2px; color: var(--ink); }
-.pattern-delete-btn:hover { opacity: 1; }
+.pattern-delete-btn { background: none; border: none; font-size: 13px; opacity: .5; padding: 2px; color: var(--ink); cursor: pointer; }
+.pattern-delete-btn:hover { opacity: 1; color: var(--danger); }
 .pattern-rule { font-size: 12.5px; color: var(--ink-2); font-weight: 500; margin: 0; }
 .pattern-eg { font-size: 12px; color: var(--muted); font-style: italic; margin: 0; }
 
-/* Grammar Hub Cards & Tables */
 .grammar-hub-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
 .grammar-topic-nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
 .grammar-topic-btn { border: 1px solid var(--line-2); background: var(--card-inner); padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
@@ -393,14 +378,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .grammar-highlight { font-weight: 700; color: var(--brand); }
 .grammar-rule-box { background: var(--card-inner); border-left: 4px solid var(--brand); padding: 14px 18px; border-radius: 0 8px 8px 0; font-size: 13.5px; color: var(--ink-2); }
 
-/* Panels */
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 48px 24px; text-align: center; }
 .flash-wrap { display: flex; flex-direction: column; align-items: center; gap: 24px; }
 .flash { width: min(480px, 100%); min-height: 250px; background: var(--card-inner); border: 2px dashed var(--line-2); border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; cursor: pointer; user-select: none; }
 .flash h2 { font-size: 42px; margin: 16px 0; overflow-wrap: anywhere; color: var(--ink); font-weight: 700; }
 .flash-controls { display: flex; gap: 12px; align-items: center; }
 
-/* Quiz */
 .quiz { max-width: 480px; margin: 0 auto; text-align: center; }
 .quiz-head { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .quiz-card { background: var(--card-inner); padding: 32px 24px; border-radius: 14px; border: 1px solid var(--line-2); }
@@ -409,11 +392,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .quiz-opt { color: #fff; border: none; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 700; min-height: 48px; background: var(--brand); }
 .quiz-opt.der { background: var(--der); } .quiz-opt.die { background: var(--die); } .quiz-opt.das { background: var(--das); }
 .quiz-opt.Dativ { background: var(--dativ); } .quiz-opt.Akkusativ { background: var(--akku); } .quiz-opt.Both { background: var(--both); } .quiz-opt.Wechsel { background: var(--wechsel); }
-.quiz-opt[disabled] { opacity: .6; }
 
-/* Modal */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
-.modal { background: var(--modal-bg); border: 1px solid var(--line-2); border-radius: 14px; padding: 28px; width: 100%; max-width: 440px; box-shadow: 0 10px 25px rgba(0,0,0,.3); max-height: 100%; overflow-y: auto; color: var(--ink); }
+.modal { background: var(--modal-bg); border: 1px solid var(--line-2); border-radius: 14px; padding: 28px; width: 100%; max-width: 460px; box-shadow: 0 10px 25px rgba(0,0,0,.3); max-height: 100%; overflow-y: auto; color: var(--ink); }
 .modal h3 { margin: 0 0 16px; font-size: 18px; color: var(--ink); }
 .modal form { display: flex; flex-direction: column; gap: 16px; }
 .modal-label { font-size: 12px; font-weight: 600; color: var(--muted); }
@@ -422,9 +403,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .radio { flex: 1 1 30%; text-align: center; padding: 10px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; background: var(--card-inner); color: var(--ink); border: 1px solid var(--line-2); }
 .radio.on { background: var(--brand); color: #fff; border-color: var(--brand); }
 .radio input { display: none; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 
-/* Tablet & Mobile */
+/* Confirmation Dialog */
+.confirm-box { text-align: center; display: flex; flex-direction: column; gap: 14px; }
+.confirm-icon { font-size: 38px; }
+.confirm-box p { margin: 0; font-size: 14.5px; color: var(--muted); line-height: 1.4; }
+.confirm-box strong { color: var(--ink); }
+
 @media (max-width: 1024px) {
   .page { padding: 20px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -433,106 +419,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 @media (max-width: 640px) {
   .page { padding: 12px 12px calc(96px + env(safe-area-inset-bottom)); }
-  .container { gap: 14px; }
-  .header { padding: 14px; border-radius: 12px; gap: 12px; }
-  .header-left { gap: 12px; width: 100%; }
-  .logo { width: 42px; height: 42px; font-size: 20px; border-radius: 10px; }
-  .title { font-size: 17px; line-height: 1.25; }
-  .subtitle { font-size: 12px; margin-top: 4px; }
-  .header-actions { width: 100%; display: flex; justify-content: space-between; }
-  .header-actions .btn-primary { display: none; }
-  .btn { padding: 10px 8px; font-size: 12.5px; }
-
-  .fab { display: inline-flex; position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 50;
-    padding: 0 20px; min-height: 52px; border-radius: 999px; box-shadow: 0 8px 20px rgba(180, 83, 9, .35); font-size: 14px; }
-
-  .main-tabs-row { flex-direction: column; align-items: stretch; gap: 10px; }
-  .main-tabs { width: 100%; }
-  .main-tab { flex: 1; padding: 8px 6px; font-size: 12px; }
-
-  .sub-tabs-bar { justify-content: center; }
-  .sub-tabs { width: 100%; }
-  .sub-tab { flex: 1; padding: 8px 4px; font-size: 12px; text-align: center; }
-
-  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .stat { padding: 12px 14px; min-height: 0; border-radius: 12px; }
-  .stat-foot { margin-top: 8px; }
-  .stat-value { font-size: 24px; }
-  .stat-note { display: none; }
-  .stat-label { font-size: 10px; }
-  .stat-pill { font-size: 10px; padding: 2px 8px; }
-
-  .toolbar { gap: 10px; }
-  .search { flex-basis: 100%; max-width: none; }
-  .filters { width: 100%; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; margin: 0 -12px; padding: 0 12px 2px; width: calc(100% + 24px); }
-  .filters::-webkit-scrollbar { display: none; }
-  .filters-label { display: none; }
-  .chip .hint { display: none; }
-
   .list { background: transparent; border: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .list-head { display: none; }
-  
-  .noun-row {
-    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
-    display: grid !important;
-    grid-template-columns: auto 1fr auto !important;
-    grid-template-areas: "art noun noun" "plural plural plural" "mean mean mean" "status status actions" !important;
+  .noun-row, .verb-row, .prep-row {
+    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px;
+    display: flex !important; flex-direction: column; align-items: flex-start; gap: 6px;
   }
-  .noun-row.der { border-left-color: var(--der); } .noun-row.die { border-left-color: var(--die); } .noun-row.das { border-left-color: var(--das); }
-
-  .verb-row {
-    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
-    display: grid !important;
-    grid-template-columns: auto 1fr auto !important;
-    grid-template-areas: "case verb verb" "mean mean mean" "eg eg eg" "status status actions" !important;
-  }
-  .verb-row.Dativ { border-left-color: var(--dativ); }
-  .verb-row.Akkusativ { border-left-color: var(--akku); }
-  .verb-row.Both { border-left-color: var(--both); }
-
-  .prep-row {
-    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
-    display: grid !important;
-    grid-template-columns: auto 1fr auto !important;
-    grid-template-areas: "case prep prep" "mean mean mean" "eg eg eg" "status status actions" !important;
-  }
-  .prep-row.Dativ { border-left-color: var(--dativ); }
-  .prep-row.Akkusativ { border-left-color: var(--akku); }
-  .prep-row.Wechsel { border-left-color: var(--wechsel); }
-
   .c-idx { display: none; }
-  .c-art { grid-area: art; }
-  .c-case { grid-area: case; }
-  .c-noun { grid-area: noun; }
-  .c-plural { grid-area: plural; font-size: 13px; font-weight: 600; color: var(--muted); }
-  .c-verb { grid-area: verb; font-size: 16px; font-weight: 700; }
-  .c-prep { grid-area: prep; font-size: 16px; font-weight: 700; }
-  .c-mean { grid-area: mean; font-size: 14px; }
-  .c-eg { grid-area: eg; font-size: 12px; }
-  .c-status { grid-area: status; }
-  .actions { grid-area: actions; }
-  .pill { font-size: 13px; }
-  .noun-wrap .pill { background: transparent !important; padding: 0; font-size: 18px; font-weight: 700; }
-  .status { padding: 8px 12px; min-height: 36px; }
-  .icon-btn { width: 40px; height: 40px; min-width: 40px; }
-
-  .panel { padding: 28px 14px; }
-  .flash { min-height: 220px; padding: 24px 16px; }
-  .flash h2 { font-size: 34px; }
-  .flash-controls { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .flash-controls .mid { grid-column: 1 / -1; order: 3; }
-  .quiz-card { padding: 20px; }
-  .quiz-card h1 { font-size: 26px; }
-  .quiz-opt { padding: 16px 8px; }
-
-  .overlay { align-items: flex-end; padding: 0; }
-  .modal { max-width: none; border-radius: 18px 18px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); max-height: 92vh; }
-  .modal-actions .btn { flex: 1; }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .btn, .chip, .main-tab, .sub-tab, .icon-btn, .status { transition: background-color .15s, color .15s, transform .1s; }
-  .btn:active, .icon-btn:active, .chip:active { transform: scale(.97); }
+  .actions { width: 100%; justify-content: flex-end; margin-top: 6px; }
+  .fab { display: inline-flex; position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 50;
+    padding: 0 20px; min-height: 52px; border-radius: 999px; box-shadow: 0 8px 20px rgba(180, 83, 9, .35); font-size: 14px; }
 }
 `;
 
@@ -547,22 +443,8 @@ export default function App() {
   const [patternsList, setPatternsList] = useState([]);
   const [prepsList, setPrepsList] = useState([]);
   const [isReady, setIsReady] = useState(false);
-  const [isPersisted, setIsPersisted] = useState(false);
 
-  // Theme State
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("vocab_vault_theme") ||
-      (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("vocab_vault_theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));
-
-  // Main Section Tabs: "Nouns" | "Patterns" | "Verbs" | "Prepositions" | "Grammar"
+  const [theme] = useState(() => localStorage.getItem("vocab_vault_theme") || "light");
   const [mainCategory, setMainCategory] = useState("Nouns");
 
   // Sub-views
@@ -572,7 +454,6 @@ export default function App() {
   const [prepSubView, setPrepSubView] = useState("list");
   const [grammarSubView, setGrammarSubView] = useState("list");
 
-  // Grammar Hub Active Sub-topic
   const [activeGrammarTopic, setActiveGrammarTopic] = useState("possessives");
   const [grammarCaseFilter, setGrammarCaseFilter] = useState("Nominativ");
 
@@ -589,7 +470,7 @@ export default function App() {
 
   const [verbModalOpen, setVerbModalOpen] = useState(false);
   const [editingVerbId, setEditingVerbId] = useState(null);
-  const [verbFormData, setVerbFormData] = useState({ verb: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" });
+  const [verbFormData, setVerbFormData] = useState({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" });
 
   const [patternModalOpen, setPatternModalOpen] = useState(false);
   const [patternFormData, setPatternFormData] = useState({ article: "der", ending: "", rule: "", examples: "" });
@@ -598,6 +479,26 @@ export default function App() {
   const [editingPrepId, setEditingPrepId] = useState(null);
   const [prepFormData, setPrepFormData] = useState({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" });
 
+  // Confirmation Pop-up State
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const requestConfirmation = (title, message, onConfirm) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
   // Practice States
   const [nounCardIndex, setNounCardIndex] = useState(0);
   const [nounCardFlipped, setNounCardFlipped] = useState(false);
@@ -605,17 +506,17 @@ export default function App() {
   const [nounQuizScore, setNounQuizScore] = useState(0);
   const [nounQuizFeedback, setNounQuizFeedback] = useState(null);
 
-  const [patternCardIndex, setPatternCardIndex] = useState(0);
-  const [patternCardFlipped, setPatternCardFlipped] = useState(false);
-  const [patternQuizIndex, setPatternQuizIndex] = useState(0);
-  const [patternQuizScore, setPatternQuizScore] = useState(0);
-  const [patternQuizFeedback, setPatternQuizFeedback] = useState(null);
-
   const [verbCardIndex, setVerbCardIndex] = useState(0);
   const [verbCardFlipped, setVerbCardFlipped] = useState(false);
   const [verbQuizIndex, setVerbQuizIndex] = useState(0);
   const [verbQuizScore, setVerbQuizScore] = useState(0);
   const [verbQuizFeedback, setVerbQuizFeedback] = useState(null);
+
+  const [patternCardIndex, setPatternCardIndex] = useState(0);
+  const [patternCardFlipped, setPatternCardFlipped] = useState(false);
+  const [patternQuizIndex, setPatternQuizIndex] = useState(0);
+  const [patternQuizScore, setPatternQuizScore] = useState(0);
+  const [patternQuizFeedback, setPatternQuizFeedback] = useState(null);
 
   const [prepCardIndex, setPrepCardIndex] = useState(0);
   const [prepCardFlipped, setPrepCardFlipped] = useState(false);
@@ -631,10 +532,6 @@ export default function App() {
 
   useEffect(() => {
     async function initVault() {
-      if (navigator.storage && navigator.storage.persist) {
-        const persisted = await navigator.storage.persist();
-        setIsPersisted(persisted);
-      }
       try {
         const storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
         setVocabList(storedVocab && storedVocab.length ? storedVocab : (await writeToVaultDB(STORE_NAME, BACKUP_KEY, SEED_DATA), SEED_DATA));
@@ -648,7 +545,6 @@ export default function App() {
         const storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
         setPrepsList(storedPreps && storedPreps.length ? storedPreps : (await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, SEED_PREPOSITIONS), SEED_PREPOSITIONS));
       } catch (err) {
-        console.error("IndexedDB error, using memory fallback:", err);
         setVocabList(SEED_DATA);
         setVerbsList(SEED_VERBS);
         setPatternsList(SEED_PATTERNS);
@@ -662,29 +558,21 @@ export default function App() {
 
   const commitNouns = async (newList) => {
     setVocabList(newList);
-    setNounCardIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
-    setNounQuizIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
     await writeToVaultDB(STORE_NAME, BACKUP_KEY, newList);
   };
 
   const commitVerbs = async (newList) => {
     setVerbsList(newList);
-    setVerbCardIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
-    setVerbQuizIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
     await writeToVaultDB(VERBS_STORE_NAME, VERBS_BACKUP_KEY, newList);
   };
 
   const commitPatterns = async (newList) => {
     setPatternsList(newList);
-    setPatternCardIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
-    setPatternQuizIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
     await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, newList);
   };
 
   const commitPreps = async (newList) => {
     setPrepsList(newList);
-    setPrepCardIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
-    setPrepQuizIndex((i) => Math.min(i, Math.max(newList.length - 1, 0)));
     await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, newList);
   };
 
@@ -740,7 +628,7 @@ export default function App() {
     const ending = POSSESSIVE_ENDINGS[caseKey][genderKey];
     if (base === "euer") {
       if (ending === "–") return "euer";
-      return `eur${ending}`; // euer drops 'e' before endings[cite: 4]
+      return `eur${ending}`;
     }
     if (ending === "–") return base;
     return `${base}${ending}`;
@@ -750,7 +638,6 @@ export default function App() {
     return <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>Loading German Vault...</div>;
   }
 
-  // Filtered lists
   const filteredNouns = vocabList.filter((item) => {
     const q = search.toLowerCase();
     return (
@@ -763,7 +650,11 @@ export default function App() {
     const q = search.toLowerCase();
     return (
       (verbFilter === "all" || item.caseType === verbFilter) &&
-      (item.verb.toLowerCase().includes(q) || item.meaning.toLowerCase().includes(q) || item.example.toLowerCase().includes(q))
+      (item.verb.toLowerCase().includes(q) ||
+        (item.preterite && item.preterite.toLowerCase().includes(q)) ||
+        (item.participle && item.participle.toLowerCase().includes(q)) ||
+        item.meaning.toLowerCase().includes(q) ||
+        item.example.toLowerCase().includes(q))
     );
   });
 
@@ -781,36 +672,31 @@ export default function App() {
     mainCategory === "Verbs" ? verbSubView :
     mainCategory === "Prepositions" ? prepSubView : grammarSubView;
 
-  // Stats
   const nounsMastered = vocabList.filter((i) => i.status === "Mastered").length;
   const countNoun = (art) => vocabList.filter((i) => i.article === art).length;
-  const countPattern = (art) => patternsList.filter((p) => p.article === art).length;
   const verbsMastered = verbsList.filter((i) => i.status === "Mastered").length;
   const countVerb = (c) => verbsList.filter((i) => i.caseType === c).length;
+  const countPattern = (art) => patternsList.filter((p) => p.article === art).length;
   const prepsMastered = prepsList.filter((i) => i.status === "Mastered").length;
   const countPrep = (c) => prepsList.filter((i) => i.caseType === c).length;
 
-  // Active items for practice
   const nounCard = vocabList[nounCardIndex];
   const nounQuizWord = vocabList[nounQuizIndex];
-  const patternCard = patternsList[patternCardIndex];
-  const patternQuizWord = patternsList[patternQuizIndex];
   const verbCard = verbsList[verbCardIndex];
   const verbQuizWord = verbsList[verbQuizIndex];
+  const patternCard = patternsList[patternCardIndex];
+  const patternQuizWord = patternsList[patternQuizIndex];
   const prepCard = prepsList[prepCardIndex];
   const prepQuizWord = prepsList[prepQuizIndex];
   const grammarCard = GRAMMAR_FLASHCARDS[grammarCardIndex];
   const grammarQuizWord = GRAMMAR_QUIZ[grammarQuizIndex];
 
   return (
-    <div className="page">
+    <div className="page" data-theme={theme}>
       <style>{CSS}</style>
 
       <div className="container">
-        {/* Header */}
-        
-
-        {/* PRIMARY TABS */}
+        {/* Navigation Tabs */}
         <div className="main-tabs-row">
           <div className="main-tabs" role="tablist">
             {[
@@ -834,7 +720,6 @@ export default function App() {
             ))}
           </div>
 
-          {/* SUB-VIEW SWITCHER */}
           <div className="sub-tabs-bar">
             <div className="sub-tabs">
               <button
@@ -877,9 +762,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* =========================================================================
-            CATEGORY 1: NOUNS
-           ========================================================================= */}
+        {/* ==================== 1. NOUNS ==================== */}
         {mainCategory === "Nouns" && (
           <>
             {nounSubView === "list" && (
@@ -894,7 +777,7 @@ export default function App() {
                 <div className="toolbar">
                   <div className="search">
                     <span>🔍</span>
-                    <input type="search" placeholder="Search noun, plural, or English..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                    <input type="search" placeholder="Search noun, plural, or meaning..." value={search} onChange={(e) => setSearch(e.target.value)} />
                   </div>
                   <div className="filters">
                     <span className="filters-label">Filter:</span>
@@ -902,6 +785,7 @@ export default function App() {
                     {["der", "die", "das"].map((a) => (
                       <button key={a} onClick={() => setArticleFilter(a)} className={`chip ${a} ${articleFilter === a ? "on" : ""}`}>{a}</button>
                     ))}
+                    <button onClick={() => { setEditingNounId(null); setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" }); setNounModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Noun</button>
                   </div>
                 </div>
 
@@ -930,7 +814,7 @@ export default function App() {
                       <div className="actions">
                         <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
                         <button onClick={() => { setEditingNounId(item.id); setNounFormData({ noun: item.noun, plural: item.plural || "", article: item.article, meaning: item.meaning, status: item.status }); setNounModalOpen(true); }} className="icon-btn">✏️</button>
-                        <button onClick={() => commitNouns(vocabList.filter((i) => i.id !== item.id))} className="icon-btn">🗑️</button>
+                        <button onClick={() => requestConfirmation("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () => commitNouns(vocabList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
                       </div>
                     </div>
                   ))}
@@ -1006,9 +890,7 @@ export default function App() {
           </>
         )}
 
-        {/* =========================================================================
-            CATEGORY 2: PATTERNS
-           ========================================================================= */}
+        {/* ==================== 2. PATTERNS ==================== */}
         {mainCategory === "Patterns" && (
           <>
             {patternSubView === "list" && (
@@ -1020,6 +902,10 @@ export default function App() {
                   <div className="stat"><div className="stat-head"><span className="stat-label">DAS PATTERNS</span><span className="stat-pill bg-das">das</span></div><div className="stat-foot"><span className="stat-value c-das">{countPattern("das")}</span><span className="stat-note c-das">-chen, -ment</span></div></div>
                 </div>
 
+                <div className="toolbar">
+                  <button onClick={() => { setPatternFormData({ article: "der", ending: "", rule: "", examples: "" }); setPatternModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Suffix Pattern</button>
+                </div>
+
                 <div className="patterns-grid">
                   {["der", "die", "das"].map((art) => (
                     <div key={art} className={`pattern-col ${art}`}>
@@ -1029,7 +915,10 @@ export default function App() {
                       </div>
                       {patternsList.filter((p) => p.article === art).map((rule) => (
                         <div key={rule.id} className="pattern-card">
-                          <div className="pattern-card-top"><span className={`pattern-badge ${ARTICLE_CLASS[art]}`}>{rule.ending}</span><button onClick={() => commitPatterns(patternsList.filter((p) => p.id !== rule.id))} className="pattern-delete-btn">✕</button></div>
+                          <div className="pattern-card-top">
+                            <span className={`pattern-badge ${ARTICLE_CLASS[art]}`}>{rule.ending}</span>
+                            <button onClick={() => requestConfirmation("Delete Suffix Pattern", `Delete rule for "${rule.ending}"?`, () => commitPatterns(patternsList.filter((p) => p.id !== rule.id)))} className="pattern-delete-btn">✕</button>
+                          </div>
                           <p className="pattern-rule">{rule.rule}</p>
                           <p className="pattern-eg">e.g. {rule.examples}</p>
                         </div>
@@ -1048,7 +937,7 @@ export default function App() {
                       {!patternCardFlipped ? (
                         <>
                           <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE BELONGS TO THIS PATTERN?</span>
-                          <h2 style={{ fontFamily: "monospace", letterSpacing: "1px" }}>{patternCard.ending}</h2>
+                          <h2 style={{ fontFamily: "monospace" }}>{patternCard.ending}</h2>
                           <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to reveal article &amp; rules)</span>
                         </>
                       ) : (
@@ -1106,38 +995,47 @@ export default function App() {
           </>
         )}
 
-        {/* =========================================================================
-            CATEGORY 3: VERBS
-           ========================================================================= */}
+        {/* ==================== 3. VERBS (WITH PAST TENSE) ==================== */}
         {mainCategory === "Verbs" && (
           <>
             {verbSubView === "list" && (
               <div className="section">
                 <div className="stats-grid">
-                  <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL VERBS</span><span className="stat-pill dark">{verbsMastered} mastered</span></div><div className="stat-foot"><span className="stat-value">{verbsList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>case governed</span></div></div>
+                  <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL VERBS</span><span className="stat-pill dark">{verbsMastered} mastered</span></div><div className="stat-foot"><span className="stat-value">{verbsList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>with past forms</span></div></div>
                   <div className="stat"><div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div><div className="stat-foot"><span className="stat-value c-dativ">{countVerb("Dativ")}</span><span className="stat-note c-dativ">+ Dativ</span></div></div>
                   <div className="stat"><div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akkusativ</span></div><div className="stat-foot"><span className="stat-value c-akku">{countVerb("Akkusativ")}</span><span className="stat-note c-akku">+ Akkusativ</span></div></div>
                   <div className="stat"><div className="stat-head"><span className="stat-label">BOTH / COMMON</span><span className="stat-pill bg-both">Both</span></div><div className="stat-foot"><span className="stat-value c-both">{countVerb("Both / Common")}</span><span className="stat-note c-both">Dat + Akk</span></div></div>
                 </div>
 
                 <div className="toolbar">
-                  <div className="search"><span>🔍</span><input type="search" placeholder="Search verb, meaning, or sentence..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+                  <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search verb, past forms, meaning, example..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
                   <div className="filters">
                     <span className="filters-label">Case:</span>
                     <button onClick={() => setVerbFilter("all")} className={`chip all ${verbFilter === "all" ? "on" : ""}`}>All ({verbsList.length})</button>
                     <button onClick={() => setVerbFilter("Dativ")} className={`chip dativ ${verbFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
                     <button onClick={() => setVerbFilter("Akkusativ")} className={`chip akku ${verbFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
                     <button onClick={() => setVerbFilter("Both / Common")} className={`chip both ${verbFilter === "Both / Common" ? "on" : ""}`}>Both</button>
+                    <button onClick={() => { setEditingVerbId(null); setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Verb</button>
                   </div>
                 </div>
 
                 <div className="list">
-                  <div className="list-head verbs-head"><span style={{ textAlign: "center" }}>#</span><span>CASE</span><span>GERMAN VERB</span><span>MEANING</span><span>EXAMPLE SENTENCE</span><span>STATUS</span><span style={{ textAlign: "right" }}>ACTIONS</span></div>
+                  <div className="list-head verbs-head">
+                    <span style={{ textAlign: "center" }}>#</span>
+                    <span>CASE</span>
+                    <span>INFINITIVE</span>
+                    <span>PAST (PRÄT / PART II)</span>
+                    <span>MEANING</span>
+                    <span>EXAMPLE SENTENCE</span>
+                    <span>STATUS</span>
+                    <span style={{ textAlign: "right" }}>ACTIONS</span>
+                  </div>
                   {filteredVerbs.map((item, index) => (
                     <div className={`row verb-row ${item.caseType === "Both / Common" ? "Both" : item.caseType}`} key={item.id}>
                       <div className="c-idx">{index + 1}</div>
                       <div className="c-case"><span className={`pill ${VERB_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
-                      <div className="c-verb">{item.verb}</div>
+                      <div className="c-verb" style={{ fontWeight: 700 }}>{item.verb}</div>
+                      <div className="c-past">{item.preterite || "—"} / {item.participle || "—"}</div>
                       <div className="c-mean">{item.meaning}</div>
                       <div className="c-eg">{item.example || "—"}</div>
                       <div className="c-status">
@@ -1146,9 +1044,9 @@ export default function App() {
                         </button>
                       </div>
                       <div className="actions">
-                        <button onClick={() => speakGerman(`${item.verb}. ${item.example || ""}`)} className="icon-btn">🔊</button>
-                        <button onClick={() => { setEditingVerbId(item.id); setVerbFormData({ verb: item.verb, caseType: item.caseType, meaning: item.meaning, example: item.example, status: item.status }); setVerbModalOpen(true); }} className="icon-btn">✏️</button>
-                        <button onClick={() => commitVerbs(verbsList.filter((i) => i.id !== item.id))} className="icon-btn">🗑️</button>
+                        <button onClick={() => speakGerman(`${item.verb}. ${item.preterite || ""}. ${item.participle || ""}. ${item.example || ""}`)} className="icon-btn">🔊</button>
+                        <button onClick={() => { setEditingVerbId(item.id); setVerbFormData({ verb: item.verb, preterite: item.preterite || "", participle: item.participle || "", caseType: item.caseType, meaning: item.meaning, example: item.example, status: item.status }); setVerbModalOpen(true); }} className="icon-btn">✏️</button>
+                        <button onClick={() => requestConfirmation("Delete Verb", `Are you sure you want to delete the verb "${item.verb}"?`, () => commitVerbs(verbsList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
                       </div>
                     </div>
                   ))}
@@ -1163,21 +1061,24 @@ export default function App() {
                     <div className="flash" onClick={() => setVerbCardFlipped(!verbCardFlipped)}>
                       {!verbCardFlipped ? (
                         <>
-                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH CASE DOES THIS VERB GOVERN?</span>
+                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>RECALL CASE &amp; PAST TENSE FORMS</span>
                           <h2>{verbCard.verb}</h2>
                           <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
                         </>
                       ) : (
                         <>
-                          <span className={`pill ${VERB_CASE_CLASS[verbCard.caseType] || "bg-both"}`} style={{ fontSize: 22, padding: "6px 20px" }}>{verbCard.caseType}</span>
-                          <h3 style={{ fontSize: 22, margin: "14px 0 6px", color: "var(--ink-2)" }}>{verbCard.meaning}</h3>
+                          <span className={`pill ${VERB_CASE_CLASS[verbCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>{verbCard.caseType}</span>
+                          <p style={{ margin: "14px 0 4px", fontSize: 18, fontWeight: 700, color: "var(--brand)" }}>
+                            Präteritum: {verbCard.preterite || "—"} | Partizip II: {verbCard.participle || "—"}
+                          </p>
+                          <h3 style={{ fontSize: 22, margin: "6px 0", color: "var(--ink-2)" }}>{verbCard.meaning}</h3>
                           {verbCard.example && <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{verbCard.example}"</p>}
                         </>
                       )}
                     </div>
                     <div className="flash-controls">
                       <button className="btn btn-secondary" disabled={verbCardIndex === 0} onClick={() => { setVerbCardIndex(verbCardIndex - 1); setVerbCardFlipped(false); }}>◀ Previous</button>
-                      <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.example || ""}`)}>🔊 Pronounce</button>
+                      <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.preterite || ""}. ${verbCard.participle || ""}.`)}>🔊 Pronounce</button>
                       <button className="btn btn-secondary" disabled={verbCardIndex >= verbsList.length - 1} onClick={() => { setVerbCardIndex(verbCardIndex + 1); setVerbCardFlipped(false); }}>Next ▶</button>
                     </div>
                     <span style={{ color: "var(--muted)", fontSize: 13 }}>Verb {verbCardIndex + 1} of {verbsList.length}</span>
@@ -1194,6 +1095,7 @@ export default function App() {
                     <div className="quiz-card">
                       <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this verb?</span>
                       <h1>{verbQuizWord.verb}</h1>
+                      <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>Past: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong></p>
                       <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong></p>
                     </div>
                     <div className="quiz-opts">
@@ -1222,9 +1124,7 @@ export default function App() {
           </>
         )}
 
-        {/* =========================================================================
-            CATEGORY 4: PREPOSITIONS
-           ========================================================================= */}
+        {/* ==================== 4. PREPOSITIONS ==================== */}
         {mainCategory === "Prepositions" && (
           <>
             {prepSubView === "list" && (
@@ -1237,13 +1137,14 @@ export default function App() {
                 </div>
 
                 <div className="toolbar">
-                  <div className="search"><span>🔍</span><input type="search" placeholder="Search preposition, meaning, or sentence..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+                  <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search preposition, meaning, or sentence..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
                   <div className="filters">
                     <span className="filters-label">Case:</span>
                     <button onClick={() => setPrepFilter("all")} className={`chip all ${prepFilter === "all" ? "on" : ""}`}>All ({prepsList.length})</button>
                     <button onClick={() => setPrepFilter("Akkusativ")} className={`chip akku ${prepFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
                     <button onClick={() => setPrepFilter("Dativ")} className={`chip dativ ${prepFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
                     <button onClick={() => setPrepFilter("Wechsel")} className={`chip wechsel ${prepFilter === "Wechsel" ? "on" : ""}`}>Wechsel</button>
+                    <button onClick={() => { setEditingPrepId(null); setPrepFormData({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" }); setPrepModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>+ Add Preposition</button>
                   </div>
                 </div>
 
@@ -1253,7 +1154,7 @@ export default function App() {
                     <div className={`row prep-row ${item.caseType}`} key={item.id}>
                       <div className="c-idx">{index + 1}</div>
                       <div className="c-case"><span className={`pill ${PREP_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
-                      <div className="c-prep">{item.prep}</div>
+                      <div className="c-prep" style={{ fontWeight: 700 }}>{item.prep}</div>
                       <div className="c-mean">{item.meaning}</div>
                       <div className="c-eg">{item.example || "—"}</div>
                       <div className="c-status">
@@ -1264,7 +1165,7 @@ export default function App() {
                       <div className="actions">
                         <button onClick={() => speakGerman(`${item.prep}. ${item.example || ""}`)} className="icon-btn">🔊</button>
                         <button onClick={() => { setEditingPrepId(item.id); setPrepFormData({ prep: item.prep, caseType: item.caseType, meaning: item.meaning, example: item.example, status: item.status }); setPrepModalOpen(true); }} className="icon-btn">✏️</button>
-                        <button onClick={() => commitPreps(prepsList.filter((i) => i.id !== item.id))} className="icon-btn">🗑️</button>
+                        <button onClick={() => requestConfirmation("Delete Preposition", `Are you sure you want to delete "${item.prep}"?`, () => commitPreps(prepsList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
                       </div>
                     </div>
                   ))}
@@ -1338,27 +1239,19 @@ export default function App() {
           </>
         )}
 
-        {/* =========================================================================
-            CATEGORY 5: GRAMMAR HUB (NO DASHBOARD, PURE REFERENCE & PRACTICE)
-           ========================================================================= */}
+        {/* ==================== 5. GRAMMAR HUB ==================== */}
         {mainCategory === "Grammar" && (
           <>
             {grammarSubView === "list" && (
               <div className="grammar-hub-card">
-                {/* Topic Selector */}
                 <div className="grammar-topic-nav">
                   {GRAMMAR_TOPICS.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setActiveGrammarTopic(t.id)}
-                      className={`grammar-topic-btn ${activeGrammarTopic === t.id ? "active" : ""}`}
-                    >
+                    <button key={t.id} onClick={() => setActiveGrammarTopic(t.id)} className={`grammar-topic-btn ${activeGrammarTopic === t.id ? "active" : ""}`}>
                       {t.label}
                     </button>
                   ))}
                 </div>
 
-                {/* 1. Possessivartikel (mein, dein...) */}
                 {activeGrammarTopic === "possessives" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
@@ -1376,12 +1269,12 @@ export default function App() {
                       <table className="grammar-table">
                         <thead>
                           <tr>
-                            <th>Owner (Besitzer)[cite: 4]</th>
-                            <th>Stem[cite: 4]</th>
-                            <th>Masculine ({grammarCaseFilter})[cite: 4]</th>
-                            <th>Feminine ({grammarCaseFilter})[cite: 4]</th>
-                            <th>Neuter ({grammarCaseFilter})[cite: 4]</th>
-                            <th>Plural ({grammarCaseFilter})[cite: 4]</th>
+                            <th>Owner (Besitzer)</th>
+                            <th>Stem</th>
+                            <th>Masculine ({grammarCaseFilter})</th>
+                            <th>Feminine ({grammarCaseFilter})</th>
+                            <th>Neuter ({grammarCaseFilter})</th>
+                            <th>Plural ({grammarCaseFilter})</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1401,14 +1294,13 @@ export default function App() {
 
                     <div className="grammar-rule-box">
                       <strong>Core Rules to Remember:</strong><br />
-                      • <strong>euer</strong> drops its middle 'e' when taking an ending: <em>euer $\rightarrow$ eure, eurem, euren, eurer</em>[cite: 4].<br />
-                      • <strong>Dativ Plural:</strong> adds <strong>-en</strong> to the possessive, and the noun adds <strong>-n</strong> (<em>mit meinen Freunden</em>)[cite: 4].<br />
-                      • <strong>Genitiv M/N:</strong> possessive takes <strong>-es</strong>, noun adds <strong>-(e)s</strong> (<em>das Auto meines Bruders</em>)[cite: 4].
+                      • <strong>euer</strong> drops its middle 'e' when taking an ending: <em>euer $\rightarrow$ eure, eurem, euren, eurer</em>.<br />
+                      • <strong>Dativ Plural:</strong> adds <strong>-en</strong> to the possessive, and the noun adds <strong>-n</strong> (<em>mit meinen Freunden</em>).<br />
+                      • <strong>Genitiv M/N:</strong> possessive takes <strong>-es</strong>, noun adds <strong>-(e)s</strong> (<em>das Auto meines Bruders</em>).
                     </div>
                   </div>
                 )}
 
-                {/* 2. Articles (der / ein / kein) */}
                 {activeGrammarTopic === "articles" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Definite (der) &amp; Indefinite (ein / kein) Declension:</span>
@@ -1434,13 +1326,9 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
-                    <div className="grammar-rule-box">
-                      <strong>Rule:</strong> <em>kein-</em> declines 100% identically to possessive articles (<em>mein-, dein-</em>) and <em>ein</em>, but has a plural form (<em>keine, keinen</em>).
-                    </div>
                   </div>
                 )}
 
-                {/* 3. Demonstratives (dieser / welcher) */}
                 {activeGrammarTopic === "demonstratives" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Demonstrative (dieser-) &amp; Interrogative (welcher-):</span>
@@ -1464,13 +1352,9 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
-                    <div className="grammar-rule-box">
-                      <strong>Rule:</strong> Both <em>dieser-</em> and <em>welcher-</em> copy the exact grammatical endings of the definite articles (<em>der / die / das / die</em>).
-                    </div>
                   </div>
                 )}
 
-                {/* 4. Personal Pronouns */}
                 {activeGrammarTopic === "personal" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Personal Pronouns (Personalpronomen):</span>
@@ -1479,9 +1363,9 @@ export default function App() {
                         <thead>
                           <tr>
                             <th>Person</th>
-                            <th>Nominativ (Subject)</th>
-                            <th>Akkusativ (Direct Object)</th>
-                            <th>Dativ (Indirect Object)</th>
+                            <th>Nominativ</th>
+                            <th>Akkusativ</th>
+                            <th>Dativ</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1499,7 +1383,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* 5. Adjective Endings */}
                 {activeGrammarTopic === "adjectives" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Adjective Declension (Adjektivdeklination):</span>
@@ -1525,15 +1408,11 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
-                    <div className="grammar-rule-box">
-                      <strong>Gold Standard Rule:</strong> If the article already clearly shows the gender (e.g., <em>der</em>, <em>dem</em>), the adjective takes a weak ending (<strong>-e</strong> or <strong>-en</strong>). In Dativ &amp; Genitiv, adjectives almost always end in <strong>-en</strong>.
-                    </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* GRAMMAR FLASHCARDS (Clean study view) */}
             {grammarSubView === "flashcards" && (
               <div className="panel">
                 <div className="flash-wrap">
@@ -1561,7 +1440,6 @@ export default function App() {
               </div>
             )}
 
-            {/* GRAMMAR QUIZ (Clean quiz view) */}
             {grammarSubView === "quiz" && (
               <div className="panel">
                 <div className="quiz">
@@ -1596,22 +1474,28 @@ export default function App() {
         )}
       </div>
 
-      {/* Floating Action Button (Mobile) */}
-      {!nounModalOpen && !verbModalOpen && !patternModalOpen && !prepModalOpen && currentSubView === "list" && mainCategory !== "Grammar" && (
-        <button
-          onClick={() => {
-            if (mainCategory === "Nouns") { setEditingNounId(null); setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" }); setNounModalOpen(true); }
-            else if (mainCategory === "Patterns") { setPatternFormData({ article: "der", ending: "", rule: "", examples: "" }); setPatternModalOpen(true); }
-            else if (mainCategory === "Verbs") { setEditingVerbId(null); setVerbFormData({ verb: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }
-            else { setEditingPrepId(null); setPrepFormData({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" }); setPrepModalOpen(true); }
-          }}
-          className="btn btn-primary fab"
-        >
-          + Add
-        </button>
+      {/* ==================== CONFIRMATION POP-UP MODAL ==================== */}
+      {confirmModal.isOpen && (
+        <div className="overlay" onClick={(e) => e.target === e.currentTarget && setConfirmModal((prev) => ({ ...prev, isOpen: false }))}>
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="confirm-box">
+              <span className="confirm-icon">⚠️</span>
+              <h3 style={{ margin: 0 }}>{confirmModal.title}</h3>
+              <p>{confirmModal.message}</p>
+              <div className="modal-actions" style={{ justifyContent: "center" }}>
+                <button type="button" onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="button" onClick={confirmModal.onConfirm} className="btn btn-danger">
+                  Confirm Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Modal: Add/Edit Noun */}
+      {/* ==================== NOUN MODAL ==================== */}
       {nounModalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setNounModalOpen(false)}>
           <div className="modal">
@@ -1638,7 +1522,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Add/Edit Verb */}
+      {/* ==================== VERB MODAL (WITH PAST FORMS) ==================== */}
       {verbModalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setVerbModalOpen(false)}>
           <div className="modal">
@@ -1656,6 +1540,10 @@ export default function App() {
                 </div>
               </div>
               <div><label className="modal-label">Infinitive Verb</label><input className="modal-input" type="text" required placeholder="e.g. helfen" value={verbFormData.verb} onChange={(e) => setVerbFormData({ ...verbFormData, verb: e.target.value })} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div><label className="modal-label">Präteritum (Simple Past)</label><input className="modal-input" type="text" placeholder="e.g. half" value={verbFormData.preterite} onChange={(e) => setVerbFormData({ ...verbFormData, preterite: e.target.value })} /></div>
+                <div><label className="modal-label">Partizip II (Past Participle)</label><input className="modal-input" type="text" placeholder="e.g. geholfen" value={verbFormData.participle} onChange={(e) => setVerbFormData({ ...verbFormData, participle: e.target.value })} /></div>
+              </div>
               <div><label className="modal-label">English Meaning</label><input className="modal-input" type="text" required placeholder="e.g. to help (+ Dat)" value={verbFormData.meaning} onChange={(e) => setVerbFormData({ ...verbFormData, meaning: e.target.value })} /></div>
               <div><label className="modal-label">Example Sentence</label><input className="modal-input" type="text" placeholder="e.g. Ich helfe dir." value={verbFormData.example} onChange={(e) => setVerbFormData({ ...verbFormData, example: e.target.value })} /></div>
               <div><label className="modal-label">Status</label><select className="modal-input" value={verbFormData.status} onChange={(e) => setVerbFormData({ ...verbFormData, status: e.target.value })}><option value="In Progress">In Progress</option><option value="Mastered">Mastered</option></select></div>
@@ -1665,7 +1553,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Add Pattern */}
+      {/* ==================== PATTERN MODAL ==================== */}
       {patternModalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setPatternModalOpen(false)}>
           <div className="modal">
@@ -1691,7 +1579,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Add/Edit Preposition */}
+      {/* ==================== PREPOSITION MODAL ==================== */}
       {prepModalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setPrepModalOpen(false)}>
           <div className="modal">

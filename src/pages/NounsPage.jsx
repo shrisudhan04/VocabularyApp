@@ -2,6 +2,7 @@ import { useState } from "react";
 import CustomDropdown from "../components/CustomDropdown";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
+import { GoogleGenAI, Type } from "@google/genai";
 import "../App.css";
 
 export default function NounsPage({
@@ -26,11 +27,99 @@ export default function NounsPage({
     status: "In Progress",
   });
 
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
+
+ const generateGermanNoun = async () => {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!apiKey) {
+    setAiError("VITE_GEMINI_API_KEY is not defined. Ensure .env is in the root directory and restart Vite.");
+    return;
+  }
+
+  if (!nounFormData.meaning.trim()) {
+    setAiError("Please provide an English word first.");
+    return;
+  }
+
+  try {
+    setAiLoading(true);
+    setAiError("");
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    const promptConfig = {
+      contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            article: {
+              type: Type.STRING,
+              enum: ["der", "die", "das"],
+            },
+            noun: {
+              type: Type.STRING,
+            },
+            plural: {
+              type: Type.STRING,
+            },
+          },
+          required: ["article", "noun", "plural"],
+        },
+      },
+    };
+
+    // Helper to attempt model generation with a fallback
+    const callWithFallback = async () => {
+      const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3-flash"];
+      
+      for (const modelName of candidateModels) {
+        try {
+          return await ai.models.generateContent({
+            model: modelName,
+            ...promptConfig,
+          });
+        } catch (err) {
+          // If 503 (high demand) or 404, try the next model in the list
+          const isOverloadedOrNotFound = err?.status === "UNAVAILABLE" || err?.message?.includes("503") || err?.message?.includes("404");
+          if (isOverloadedOrNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
+            // Brief pause before fallback attempt
+            await new Promise((res) => setTimeout(res, 800));
+            continue;
+          }
+          throw err;
+        }
+      }
+    };
+
+    const response = await callWithFallback();
+    const parsed = JSON.parse(response.text);
+
+    setNounFormData((prev) => ({
+      ...prev,
+      article: parsed.article,
+      noun: parsed.noun,
+      plural: parsed.plural,
+    }));
+  } catch (err) {
+    if (err?.message?.includes("503") || err?.status === "UNAVAILABLE") {
+      setAiError("Servers are currently experiencing high demand. Please tap 'Generate' again in a few moments.");
+    } else {
+      setAiError(err.message || "Failed to generate noun.");
+    }
+  } finally {
+    setAiLoading(false);
+  }
+};
 
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
@@ -61,10 +150,20 @@ export default function NounsPage({
   const handleSaveModal = (e) => {
     e.preventDefault();
     if (!nounFormData.noun.trim() || !nounFormData.meaning.trim()) return;
-    const gender = GENDER_MAP[nounFormData.article];
+    const gender = GENDER_MAP[nounFormData.article] || "";
     const updated = editingNounId
-      ? vocabList.map((item) => (item.id === editingNounId ? { ...item, ...nounFormData, gender } : item))
-      : [...vocabList, { id: Date.now(), ...nounFormData, gender, createdAt: new Date().toISOString() }];
+      ? vocabList.map((item) =>
+          item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
+        )
+      : [
+          ...vocabList,
+          {
+            id: Date.now(),
+            ...nounFormData,
+            gender,
+            createdAt: new Date().toISOString(),
+          },
+        ];
     onCommitNouns(updated);
     setModalOpen(false);
   };
@@ -144,6 +243,7 @@ export default function NounsPage({
               <button
                 onClick={() => {
                   setEditingNounId(null);
+                  setAiError("");
                   setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" });
                   setModalOpen(true);
                 }}
@@ -191,6 +291,7 @@ export default function NounsPage({
                   <button
                     onClick={() => {
                       setEditingNounId(item.id);
+                      setAiError("");
                       setNounFormData({ noun: item.noun, plural: item.plural || "", article: item.article, meaning: item.meaning, status: item.status });
                       setModalOpen(true);
                     }}
@@ -339,6 +440,29 @@ export default function NounsPage({
                   ))}
                 </div>
               </div>
+
+              <div>
+                <label className="modal-label">English Word</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="modal-input"
+                    style={{ flex: 1 }}
+                    type="text"
+                    required
+                    placeholder="e.g. Apple"
+                    value={nounFormData.meaning}
+                    onChange={(e) => {
+                      setAiError("");
+                      setNounFormData({ ...nounFormData, meaning: e.target.value });
+                    }}
+                  />
+                  <button type="button" className="btn btn-secondary" onClick={generateGermanNoun} disabled={aiLoading}>
+                    {aiLoading ? "Generating..." : "✨ Generate"}
+                  </button>
+                </div>
+                {aiError && <p style={{ color: "#dc2626", fontSize: 13, margin: "6px 0 0" }}>{aiError}</p>}
+              </div>
+
               <div>
                 <label className="modal-label">German Noun (Singular)</label>
                 <input
@@ -350,6 +474,7 @@ export default function NounsPage({
                   onChange={(e) => setNounFormData({ ...nounFormData, noun: e.target.value })}
                 />
               </div>
+
               <div>
                 <label className="modal-label">Plural Form (die ...)</label>
                 <input
@@ -360,17 +485,7 @@ export default function NounsPage({
                   onChange={(e) => setNounFormData({ ...nounFormData, plural: e.target.value })}
                 />
               </div>
-              <div>
-                <label className="modal-label">English Meaning</label>
-                <input
-                  className="modal-input"
-                  type="text"
-                  required
-                  placeholder="e.g. Apple"
-                  value={nounFormData.meaning}
-                  onChange={(e) => setNounFormData({ ...nounFormData, meaning: e.target.value })}
-                />
-              </div>
+
               <div>
                 <label className="modal-label">Status</label>
                 <CustomDropdown
@@ -380,9 +495,14 @@ export default function NounsPage({
                   onChange={(val) => setNounFormData({ ...nounFormData, status: val })}
                 />
               </div>
+
               <div className="modal-actions">
-                <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Noun</button>
+                <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save Noun
+                </button>
               </div>
             </form>
           </div>

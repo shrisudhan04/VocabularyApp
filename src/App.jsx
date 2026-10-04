@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import "./App.css";
 
 // Utilities & Database
@@ -32,6 +32,7 @@ import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import SubTabs from "./components/SubTabs";
 import ConfirmModal from "./components/ConfirmModal";
+import GoalModal from "./components/GoalModal";
 
 // Pages
 import NounsPage from "./pages/NounsPage";
@@ -51,6 +52,7 @@ export default function App() {
 
   const [theme] = useState(() => localStorage.getItem("vocab_vault_theme") || "light");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [mainCategory, setMainCategory] = useState("Nouns");
 
   const [subViews, setSubViews] = useState({
@@ -68,6 +70,38 @@ export default function App() {
     message: "",
     onConfirm: () => {},
   });
+
+  // Calculate live daily & weekly added counts across all categories
+  const categoryStats = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayOfWeek = now.getDay();
+    const distanceToMonday = (dayOfWeek + 6) % 7;
+    const startOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - distanceToMonday
+    ).getTime();
+
+    const getStats = (list) => {
+      let daily = 0;
+      let weekly = 0;
+      list.forEach((item) => {
+        const time = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+        if (time >= startOfToday) daily += 1;
+        if (time >= startOfWeek) weekly += 1;
+      });
+      return { dailyCurrent: daily, weeklyCurrent: weekly };
+    };
+
+    return {
+      Nouns: getStats(vocabList),
+      Verbs: getStats(verbsList),
+      Patterns: getStats(patternsList),
+      Prepositions: getStats(prepsList),
+      Time: getStats(timeList),
+    };
+  }, [vocabList, verbsList, patternsList, prepsList, timeList]);
 
   const requestConfirmation = (title, message, onConfirm) => {
     setConfirmModal({
@@ -233,10 +267,8 @@ export default function App() {
 
   return (
     <div className="page-shell" data-theme={theme}>
-      {/* 1. Global Header */}
       <Header onOpenSidebar={() => setSidebarOpen(true)} />
 
-      {/* 2. Drawer Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -246,9 +278,16 @@ export default function App() {
           setMainCategory(cat);
           setSidebarOpen(false);
         }}
+        onOpenGoals={() => setGoalModalOpen(true)}
       />
 
-      {/* 3. Main Content Area */}
+      <GoalModal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        defaultCategory={mainCategory}
+        categoryStats={categoryStats}
+      />
+
       <main className="page">
         <div className="container">
           <SubTabs

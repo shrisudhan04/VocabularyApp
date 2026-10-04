@@ -1445,3 +1445,28 @@ textarea:focus-visible {
     font-size: 14px;
   }
 }
+
+.sidebar-goal-btn {
+  margin-bottom: 8px;
+  background-color: #fcf9f5;
+  border: 1px solid #ebdccb;
+  font-weight: 700;
+}
+
+.sidebar-goal-btn:hover {
+  background-color: #f3ece0;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background-color: #ede6d8;
+  margin: 8px 0 12px;
+}
+
+.goal-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background-color: #edd8c4;
+  color: #9d4c12;
+}

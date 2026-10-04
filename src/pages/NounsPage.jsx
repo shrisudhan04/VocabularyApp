@@ -9,7 +9,6 @@ import successGif from "../assets/Success.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
 
-// Dropdown configuration options
 const GENDER_OPTIONS = [
   { label: "All Genders", value: "all" },
   { label: "der (Masculine)", value: "der" },
@@ -51,17 +50,21 @@ export default function NounsPage({
     status: "In Progress",
   });
 
-  // Alert, Success, & Reset Modal states
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateWordName, setDuplicateWordName] = useState("");
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [successWordInfo, setSuccessWordInfo] = useState({ article: "", noun: "" });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
-  // Import Summary Modal state (green: added, yellow: duplicates)
-  const [importSummary, setImportSummary] = useState(null);
+  const [goalCelebration, setGoalCelebration] = useState({
+    isOpen: false,
+    goalType: "daily",
+    target: 10,
+    current: 10,
+    addedWord: "",
+  });
 
-  // AI / Generation helper states
+  const [importSummary, setImportSummary] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
 
@@ -71,12 +74,77 @@ export default function NounsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
-  // Hidden file input reference for Excel import
   const fileInputRef = useRef(null);
 
-  // -------------------------------------------------------------
-  // Reset All Data Handler
-  // -------------------------------------------------------------
+  // Helper calculating live counts
+  const getGoalCounts = (list) => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayOfWeek = now.getDay();
+    const distanceToMonday = (dayOfWeek + 6) % 7;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
+
+    let daily = 0;
+    let weekly = 0;
+
+    list.forEach((item) => {
+      const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+      if (itemTime >= startOfToday) daily += 1;
+      if (itemTime >= startOfWeek) weekly += 1;
+    });
+
+    return { daily, weekly };
+  };
+
+  const getSavedTargets = () => {
+    try {
+      const savedCategoryTargets = localStorage.getItem("study_goals_targets");
+      if (savedCategoryTargets) {
+        const parsed = JSON.parse(savedCategoryTargets);
+        return {
+          daily: Number(parsed.Nouns?.daily) || 10,
+          weekly: Number(parsed.Nouns?.weekly) || 50,
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to read study_goals_targets:", e);
+    }
+    return {
+      daily: Number(localStorage.getItem("goal_daily_target")) || 10,
+      weekly: Number(localStorage.getItem("goal_weekly_target")) || 50,
+    };
+  };
+
+  const verifyGoalMilestone = (prevList, nextList, wordLabel = "") => {
+    const { daily: dailyTarget, weekly: weeklyTarget } = getSavedTargets();
+    const prevCounts = getGoalCounts(prevList);
+    const nextCounts = getGoalCounts(nextList);
+
+    if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      setGoalCelebration({
+        isOpen: true,
+        goalType: "daily",
+        target: dailyTarget,
+        current: nextCounts.daily,
+        addedWord: wordLabel,
+      });
+      return true;
+    }
+
+    if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      setGoalCelebration({
+        isOpen: true,
+        goalType: "weekly",
+        target: weeklyTarget,
+        current: nextCounts.weekly,
+        addedWord: wordLabel,
+      });
+      return true;
+    }
+
+    return false;
+  };
+
   const handleConfirmReset = () => {
     onCommitNouns([]);
     setCardIndex(0);
@@ -87,9 +155,6 @@ export default function NounsPage({
     setResetModalOpen(false);
   };
 
-  // -------------------------------------------------------------
-  // Excel Export Handler
-  // -------------------------------------------------------------
   const exportToExcel = () => {
     if (!vocabList || vocabList.length === 0) {
       alert("No nouns to export.");
@@ -114,9 +179,6 @@ export default function NounsPage({
     XLSX.writeFile(workbook, `German_Nouns_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // -------------------------------------------------------------
-  // Excel Import Handler
-  // -------------------------------------------------------------
   const handleImportButtonClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -186,7 +248,9 @@ export default function NounsPage({
         });
 
         if (newEntries.length > 0) {
-          onCommitNouns([...vocabList, ...newEntries]);
+          const updatedList = [...vocabList, ...newEntries];
+          verifyGoalMilestone(vocabList, updatedList, `${newEntries.length} new nouns`);
+          onCommitNouns(updatedList);
         }
 
         setImportSummary({
@@ -204,9 +268,6 @@ export default function NounsPage({
     reader.readAsArrayBuffer(file);
   };
 
-  // -------------------------------------------------------------
-  // Gemini AI Generation
-  // -------------------------------------------------------------
   const generateGermanNoun = async () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -249,7 +310,7 @@ export default function NounsPage({
         },
       };
 
-      const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3-flash"];
+      const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
       let response;
 
       for (const modelName of candidateModels) {
@@ -338,29 +399,38 @@ export default function NounsPage({
     }
 
     const gender = GENDER_MAP[nounFormData.article] || "";
-    const updated = editingNounId
-      ? vocabList.map((item) =>
-          item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
-        )
-      : [
-          ...vocabList,
-          {
-            id: Date.now(),
-            ...nounFormData,
-            gender,
-            createdAt: new Date().toISOString(),
-          },
-        ];
+    let updated;
+    const isEditing = Boolean(editingNounId);
+
+    if (isEditing) {
+      updated = vocabList.map((item) =>
+        item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
+      );
+    } else {
+      updated = [
+        ...vocabList,
+        {
+          id: Date.now(),
+          ...nounFormData,
+          gender,
+          createdAt: new Date().toISOString(), // Ensures immediate increment in goal counts
+        },
+      ];
+    }
+
+    const reachedGoal = !isEditing && verifyGoalMilestone(vocabList, updated, `${nounFormData.article} ${cleanNoun}`);
 
     onCommitNouns(updated);
     setModalOpen(false);
 
-    setSuccessWordInfo({
-      article: nounFormData.article,
-      noun: cleanNoun,
-      isEdit: Boolean(editingNounId),
-    });
-    setSuccessModalOpen(true);
+    if (!reachedGoal) {
+      setSuccessWordInfo({
+        article: nounFormData.article,
+        noun: cleanNoun,
+        isEdit: isEditing,
+      });
+      setSuccessModalOpen(true);
+    }
   };
 
   const nounCard = vocabList[cardIndex];
@@ -407,17 +477,15 @@ export default function NounsPage({
             </div>
 
             <div className="filters-cluster">
-              {/* Gender Dropdown */}
               <div className="filters">
                 <CustomDropdown
-                  icon="🏷️"
+                  icon="🏷"
                   value={articleFilter}
                   options={GENDER_OPTIONS}
                   onChange={(val) => setArticleFilter(val)}
                 />
               </div>
 
-              {/* Status Dropdown */}
               <div className="filters">
                 <CustomDropdown
                   icon="📌"
@@ -427,7 +495,6 @@ export default function NounsPage({
                 />
               </div>
 
-              {/* Created Date Dropdown */}
               <div className="filters">
                 <CustomDropdown
                   icon="📅"
@@ -445,7 +512,6 @@ export default function NounsPage({
                 )}
               </div>
 
-              {/* Hidden file input for Excel upload */}
               <input
                 type="file"
                 ref={fileInputRef}
@@ -454,7 +520,6 @@ export default function NounsPage({
                 onChange={importFromExcel}
               />
 
-              {/* Excel Import/Export Dropdown */}
               <div className="filters">
                 <CustomDropdown
                   icon="📊"
@@ -467,7 +532,6 @@ export default function NounsPage({
                 />
               </div>
 
-              {/* Reset Data Button */}
               <button
                 type="button"
                 onClick={() => setResetModalOpen(true)}
@@ -482,7 +546,6 @@ export default function NounsPage({
                 🔄 Reset
               </button>
 
-              {/* Add Noun Button */}
               <button
                 onClick={() => {
                   setEditingNounId(null);
@@ -759,7 +822,7 @@ export default function NounsPage({
         </div>
       )}
 
-      {/* Reset Confirmation Modal with WarningRed.gif */}
+      {/* Reset Confirmation Modal */}
       {resetModalOpen && (
         <div
           className="overlay"
@@ -822,7 +885,7 @@ export default function NounsPage({
         </div>
       )}
 
-      {/* Duplicate Word Alert Modal with GIF */}
+      {/* Duplicate Word Alert Modal */}
       {duplicateModalOpen && (
         <div
           className="overlay"
@@ -866,7 +929,112 @@ export default function NounsPage({
         </div>
       )}
 
-      {/* Success Modal with GIF */}
+      {/* Goal Reached Celebration Modal (Uses successGif from assets) */}
+      {goalCelebration.isOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1300 }}
+          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 380,
+              padding: "28px 22px 24px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              borderRadius: 20,
+              border: "1px solid #ebdccb",
+              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.18)",
+              animation: "fadeIn 0.22s ease-out",
+            }}
+          >
+            <img
+              src={successGif}
+              alt="Celebration Success"
+              style={{
+                width: 105,
+                height: 105,
+                objectFit: "contain",
+                marginBottom: 12,
+              }}
+            />
+
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                color: "#b85c19",
+                backgroundColor: "#fef3c7",
+                border: "1px solid #fde68a",
+                padding: "4px 12px",
+                borderRadius: 20,
+                marginBottom: 10,
+                textTransform: "uppercase",
+              }}
+            >
+              {goalCelebration.goalType === "daily" ? "🎯 Daily Goal Achieved!" : "🏆 Weekly Goal Achieved!"}
+            </span>
+
+            <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "var(--ink, #1e1e1e)" }}>
+              Herzlichen Glückwunsch!
+            </h3>
+
+            <p style={{ color: "var(--muted, #6b7280)", margin: "0 0 16px", fontSize: 14, lineHeight: 1.55 }}>
+              {goalCelebration.goalType === "daily" ? (
+                <>
+                  You reached your daily goal of{" "}
+                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} nouns</strong>!
+                </>
+              ) : (
+                <>
+                  Phenomenal work! You hit your weekly goal of{" "}
+                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} nouns</strong>!
+                </>
+              )}
+            </p>
+
+            {goalCelebration.addedWord && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "#166534",
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  padding: "6px 14px",
+                  borderRadius: 10,
+                  marginBottom: 18,
+                  fontWeight: 600,
+                }}
+              >
+                Added: <strong>"{goalCelebration.addedWord}"</strong>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{
+                width: "100%",
+                justifyContent: "center",
+                padding: "12px 18px",
+                fontSize: 14.5,
+                fontWeight: 700,
+                backgroundColor: "#b85c19",
+                borderColor: "#b85c19",
+              }}
+              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+            >
+              Awesome, Keep Going! 🚀
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Regular Success Modal */}
       {successModalOpen && (
         <div
           className="overlay"
@@ -913,7 +1081,7 @@ export default function NounsPage({
         </div>
       )}
 
-      {/* Import Summary Modal (Green for Added, Yellow for Duplicates) */}
+      {/* Import Summary Modal */}
       {importSummary && (
         <div
           className="overlay"
@@ -935,7 +1103,6 @@ export default function NounsPage({
               Import Summary
             </h3>
 
-            {/* Color-Coded Stats Badges */}
             <div
               style={{
                 display: "flex",
@@ -945,7 +1112,6 @@ export default function NounsPage({
                 marginBottom: 16,
               }}
             >
-              {/* Added Card - Green */}
               <div
                 style={{
                   flex: 1,
@@ -963,7 +1129,6 @@ export default function NounsPage({
                 </div>
               </div>
 
-              {/* Duplicate Card - Yellow */}
               <div
                 style={{
                   flex: 1,
@@ -982,7 +1147,6 @@ export default function NounsPage({
               </div>
             </div>
 
-            {/* Skipped duplicate items preview list */}
             {importSummary.duplicateWords.length > 0 && (
               <div
                 style={{

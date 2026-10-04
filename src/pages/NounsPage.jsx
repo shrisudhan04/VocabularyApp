@@ -200,24 +200,62 @@ export default function NounsPage({
     }
   };
 
-  const getGoalCounts = (list) => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const dayOfWeek = now.getDay();
-    const distanceToMonday = (dayOfWeek + 6) % 7;
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
+  const getGoalCounts = (list = []) => {
+  const now = new Date();
 
-    let daily = 0;
-    let weekly = 0;
+  // 1. Daily: Today 00:00:00.000 to 23:59:59.999
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    0, 0, 0, 0
+  ).getTime();
 
-    list.forEach((item) => {
-      const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
-      if (itemTime >= startOfToday) daily += 1;
-      if (itemTime >= startOfWeek) weekly += 1;
-    });
+  const endOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    23, 59, 59, 999
+  ).getTime();
 
-    return { daily, weekly };
-  };
+  // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
+  // In JavaScript: Sunday is day 0, Saturday is day 6
+  const currentDayOfWeek = now.getDay(); 
+
+  const startOfWeek = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - currentDayOfWeek,
+    0, 0, 0, 0
+  ).getTime();
+
+  const endOfWeek = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - currentDayOfWeek + 6,
+    23, 59, 59, 999
+  ).getTime();
+
+  let daily = 0;
+  let weekly = 0;
+
+  list.forEach((item) => {
+    if (!item?.createdAt) return;
+    const itemTime = new Date(item.createdAt).getTime();
+
+    // Check strict Daily window (00:00 to 23:59 today)
+    if (itemTime >= startOfToday && itemTime <= endOfToday) {
+      daily += 1;
+    }
+
+    // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
+    if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
+      weekly += 1;
+    }
+  });
+
+  return { daily, weekly };
+};
 
   const getSavedTargets = () => {
     try {

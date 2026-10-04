@@ -1,4 +1,4 @@
-import  { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import "./GoalModal.css";
 
 function CircularProgress({ current, target, size = 84, strokeWidth = 7, color = "#ff7a45" }) {
@@ -49,10 +49,66 @@ const CATEGORIES = [
   { id: "Time", icon: "⏰", label: "Time" },
 ];
 
+// Calculation helper for strict bounds:
+// Daily: 00:00:00.000 to 23:59:59.999
+// Weekly: Sunday 00:00:00.000 to Saturday 23:59:59.999
+export const calculateGoalCounts = (list = []) => {
+  const now = new Date();
+
+  // Today boundaries
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    0, 0, 0, 0
+  ).getTime();
+
+  const endOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    23, 59, 59, 999
+  ).getTime();
+
+  // Sunday to Saturday boundaries
+  const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
+  const startOfWeek = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - dayOfWeek,
+    0, 0, 0, 0
+  ).getTime();
+
+  const endOfWeek = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - dayOfWeek + 6,
+    23, 59, 59, 999
+  ).getTime();
+
+  let daily = 0;
+  let weekly = 0;
+
+  list.forEach((item) => {
+    if (!item?.createdAt) return;
+    const itemTime = new Date(item.createdAt).getTime();
+
+    if (itemTime >= startOfToday && itemTime <= endOfToday) {
+      daily += 1;
+    }
+    if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
+      weekly += 1;
+    }
+  });
+
+  return { daily, weekly };
+};
+
 export default function GoalModal({
   isOpen,
   onClose,
   categoryStats = {},
+  categoryLists = {}, // Optional: pass full lists { Nouns: [...], Verbs: [...] }
   defaultCategory = "Nouns",
   initialDailyTarget = 10,
   initialWeeklyTarget = 50,
@@ -68,8 +124,6 @@ export default function GoalModal({
     }
   });
 
-  
-
   useEffect(() => {
     if (isOpen && defaultCategory) {
       setActiveCategory(defaultCategory);
@@ -79,7 +133,15 @@ export default function GoalModal({
   const dailyTarget = targets[activeCategory]?.daily || initialDailyTarget;
   const weeklyTarget = targets[activeCategory]?.weekly || initialWeeklyTarget;
 
-  const currentStats = categoryStats[activeCategory] || { dailyCurrent: 0, weeklyCurrent: 0 };
+  // Derive counts from categoryLists if available, otherwise fall back to categoryStats prop
+  const currentStats = useMemo(() => {
+    if (categoryLists[activeCategory]) {
+      const { daily, weekly } = calculateGoalCounts(categoryLists[activeCategory]);
+      return { dailyCurrent: daily, weeklyCurrent: weekly };
+    }
+    return categoryStats[activeCategory] || { dailyCurrent: 0, weeklyCurrent: 0 };
+  }, [categoryLists, categoryStats, activeCategory]);
+
   const dailyCurrent = currentStats.dailyCurrent || 0;
   const weeklyCurrent = currentStats.weeklyCurrent || 0;
 
@@ -160,7 +222,7 @@ export default function GoalModal({
             <div className="goal-card-top-row">
               <div className="goal-title-group">
                 <span className="goal-type-label">DAILY GOAL</span>
-                <span className="goal-unit-tag">Today</span>
+                <span className="goal-unit-tag">Today (00:00 – 23:59)</span>
               </div>
               <div className="limit-stepper-control">
                 <span className="stepper-label">Target:</span>
@@ -222,7 +284,7 @@ export default function GoalModal({
             <div className="goal-card-top-row">
               <div className="goal-title-group">
                 <span className="goal-type-label">WEEKLY GOAL</span>
-                <span className="goal-unit-tag">This Week</span>
+                <span className="goal-unit-tag">Sun – Sat</span>
               </div>
               <div className="limit-stepper-control">
                 <span className="stepper-label">Target:</span>

@@ -68,6 +68,8 @@ export default function GoalModal({
     }
   });
 
+  
+
   useEffect(() => {
     if (isOpen && defaultCategory) {
       setActiveCategory(defaultCategory);

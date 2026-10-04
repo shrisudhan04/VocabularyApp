@@ -268,7 +268,7 @@ export default function NounsPage({
     reader.readAsArrayBuffer(file);
   };
 
-  const generateGermanNoun = async () => {
+ const generateGermanNoun = async () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
     if (!apiKey) {
@@ -310,7 +310,8 @@ export default function NounsPage({
         },
       };
 
-      const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
+      // Updated model identifiers
+      const candidateModels = ["gemini-2.5-flash", "gemini-3.8-flash"];
       let response;
 
       for (const modelName of candidateModels) {
@@ -323,6 +324,7 @@ export default function NounsPage({
         } catch (err) {
           const isOverloadedOrNotFound =
             err?.status === "UNAVAILABLE" ||
+            err?.status === "NOT_FOUND" ||
             err?.message?.includes("503") ||
             err?.message?.includes("404");
           if (isOverloadedOrNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
@@ -1185,3 +1187,4 @@ export default function NounsPage({
     </>
   );
 }
+

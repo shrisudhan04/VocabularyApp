@@ -1,8 +1,32 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
 import { VERB_CASE_CLASS, DATE_OPTIONS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
+import alertGif from "../assets/Alert.gif";
+import successGif from "../assets/Success.gif";
+import warningRedGif from "../assets/WarningRed.gif";
+import "../App.css";
+
+const CASE_OPTIONS = [
+  { label: "All Cases", value: "all" },
+  { label: "Dativ", value: "Dativ" },
+  { label: "Akkusativ", value: "Akkusativ" },
+  { label: "Both / Common", value: "Both / Common" },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { label: "All Status", value: "all" },
+  { label: "In Progress", value: "In Progress" },
+  { label: "Mastered", value: "Mastered" },
+];
+
+const EXCEL_ACTIONS = [
+  { label: "Excel Actions ▾", value: "" },
+  { label: "📥 Import", value: "import" },
+  { label: "📤 Export", value: "export" },
+];
 
 export default function VerbsPage({
   viewMode,
@@ -28,7 +52,21 @@ export default function VerbsPage({
     status: "In Progress",
   });
 
-  // AI Generation States
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [duplicateWordName, setDuplicateWordName] = useState("");
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [successWordInfo, setSuccessWordInfo] = useState({ verb: "", caseType: "", isEdit: false });
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+
+  const [goalCelebration, setGoalCelebration] = useState({
+    isOpen: false,
+    goalType: "daily",
+    target: 10,
+    current: 10,
+    addedWord: "",
+  });
+
+  const [importSummary, setImportSummary] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
 
@@ -38,11 +76,212 @@ export default function VerbsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
+  const fileInputRef = useRef(null);
+
+  // Helper calculating live counts
+  const getGoalCounts = (list) => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayOfWeek = now.getDay();
+    const distanceToMonday = (dayOfWeek + 6) % 7;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
+
+    let daily = 0;
+    let weekly = 0;
+
+    list.forEach((item) => {
+      const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+      if (itemTime >= startOfToday) daily += 1;
+      if (itemTime >= startOfWeek) weekly += 1;
+    });
+
+    return { daily, weekly };
+  };
+
+  const getSavedTargets = () => {
+    try {
+      const savedCategoryTargets = localStorage.getItem("study_goals_targets");
+      if (savedCategoryTargets) {
+        const parsed = JSON.parse(savedCategoryTargets);
+        return {
+          daily: Number(parsed.Verbs?.daily) || 10,
+          weekly: Number(parsed.Verbs?.weekly) || 50,
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to read study_goals_targets:", e);
+    }
+    return {
+      daily: Number(localStorage.getItem("goal_daily_target")) || 10,
+      weekly: Number(localStorage.getItem("goal_weekly_target")) || 50,
+    };
+  };
+
+  const verifyGoalMilestone = (prevList, nextList, wordLabel = "") => {
+    const { daily: dailyTarget, weekly: weeklyTarget } = getSavedTargets();
+    const prevCounts = getGoalCounts(prevList);
+    const nextCounts = getGoalCounts(nextList);
+
+    if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      setGoalCelebration({
+        isOpen: true,
+        goalType: "daily",
+        target: dailyTarget,
+        current: nextCounts.daily,
+        addedWord: wordLabel,
+      });
+      return true;
+    }
+
+    if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      setGoalCelebration({
+        isOpen: true,
+        goalType: "weekly",
+        target: weeklyTarget,
+        current: nextCounts.weekly,
+        addedWord: wordLabel,
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleConfirmReset = () => {
+    onCommitVerbs([]);
+    setCardIndex(0);
+    setCardFlipped(false);
+    setQuizIndex(0);
+    setQuizScore(0);
+    setQuizFeedback(null);
+    setResetModalOpen(false);
+  };
+
+  const exportToExcel = () => {
+    if (!verbsList || verbsList.length === 0) {
+      alert("No verbs to export.");
+      return;
+    }
+
+    const exportData = verbsList.map((item, index) => ({
+      "#": index + 1,
+      Verb: item.verb,
+      Case: item.caseType || "Dativ",
+      Präteritum: item.preterite || "",
+      "Partizip II": item.participle || "",
+      Meaning: item.meaning || "",
+      Example: item.example || "",
+      Status: item.status || "In Progress",
+      CreatedAt: item.createdAt || new Date().toISOString(),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Verbs");
+
+    XLSX.writeFile(workbook, `German_Verbs_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const handleImportButtonClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  };
+
+  const importFromExcel = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target?.result;
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rawJson = XLSX.utils.sheet_to_json(worksheet);
+
+        if (!rawJson || rawJson.length === 0) {
+          alert("The uploaded Excel sheet contains no rows.");
+          return;
+        }
+
+        const existingVerbSet = new Set(
+          verbsList.map((v) => v.verb?.trim().toLowerCase())
+        );
+
+        const newEntries = [];
+        const duplicateWords = [];
+
+        rawJson.forEach((row, i) => {
+          const rowLower = {};
+          Object.keys(row).forEach((k) => {
+            rowLower[k.trim().toLowerCase()] = row[k];
+          });
+
+          const verb = (rowLower.verb || rowLower["infinitive"] || rowLower["german verb"] || "").toString().trim();
+          let caseType = (rowLower.case || rowLower["casetype"] || rowLower["grammatical case"] || "Dativ").toString().trim();
+          const preterite = (rowLower.preterite || rowLower["präteritum"] || rowLower["past"] || "").toString().trim();
+          const participle = (rowLower.participle || rowLower["partizip ii"] || rowLower["partizip 2"] || "").toString().trim();
+          const meaning = (rowLower.meaning || rowLower["english meaning"] || "").toString().trim();
+          const example = (rowLower.example || rowLower["example sentence"] || "").toString().trim();
+          const status = (rowLower.status || "In Progress").toString().trim();
+
+          const validCases = ["Dativ", "Akkusativ", "Both / Common"];
+          if (!validCases.includes(caseType)) {
+            if (caseType.toLowerCase().includes("both")) caseType = "Both / Common";
+            else if (caseType.toLowerCase().includes("akku")) caseType = "Akkusativ";
+            else caseType = "Dativ";
+          }
+
+          if (verb) {
+            const lowerVerb = verb.toLowerCase();
+            if (existingVerbSet.has(lowerVerb)) {
+              duplicateWords.push(verb);
+            } else {
+              existingVerbSet.add(lowerVerb);
+              newEntries.push({
+                id: Date.now() + i,
+                verb,
+                caseType,
+                preterite,
+                participle,
+                meaning,
+                example,
+                status: status.toLowerCase() === "mastered" ? "Mastered" : "In Progress",
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+        });
+
+        if (newEntries.length > 0) {
+          const updatedList = [...verbsList, ...newEntries];
+          verifyGoalMilestone(verbsList, updatedList, `${newEntries.length} new verbs`);
+          onCommitVerbs(updatedList);
+        }
+
+        setImportSummary({
+          total: rawJson.length,
+          added: newEntries.length,
+          duplicates: duplicateWords.length,
+          duplicateWords,
+        });
+      } catch (err) {
+        console.error("Import error:", err);
+        alert("Failed to parse Excel file. Please ensure it has proper column headers (Verb, Case, Präteritum, Partizip II, Meaning, Example).");
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
   const generateGermanVerb = async () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
     if (!apiKey) {
-      setAiError("VITE_GEMINI_API_KEY is not defined. Ensure .env is in the root directory and restart Vite.");
+      setAiError("VITE_GEMINI_API_KEY is not defined in your .env file.");
       return;
     }
 
@@ -91,7 +330,7 @@ export default function VerbsPage({
         },
       };
 
-      const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3-flash"];
+      const candidateModels = ["gemini-3.8-flash", "gemini-2.0-flash"];
       let response;
 
       for (const modelName of candidateModels) {
@@ -165,12 +404,55 @@ export default function VerbsPage({
 
   const handleSaveModal = (e) => {
     e.preventDefault();
-    if (!verbFormData.verb.trim() || !verbFormData.meaning.trim()) return;
-    const updated = editingVerbId
-      ? verbsList.map((item) => (item.id === editingVerbId ? { ...item, ...verbFormData } : item))
-      : [...verbsList, { id: Date.now(), ...verbFormData, createdAt: new Date().toISOString() }];
+
+    const cleanVerb = verbFormData.verb.trim();
+    if (!cleanVerb || !verbFormData.meaning.trim()) {
+      return;
+    }
+
+    const isDuplicate = verbsList.some(
+      (item) =>
+        item.verb.trim().toLowerCase() === cleanVerb.toLowerCase() &&
+        item.id !== editingVerbId
+    );
+
+    if (isDuplicate) {
+      setDuplicateWordName(cleanVerb);
+      setDuplicateModalOpen(true);
+      return;
+    }
+
+    let updated;
+    const isEditing = Boolean(editingVerbId);
+
+    if (isEditing) {
+      updated = verbsList.map((item) =>
+        item.id === editingVerbId ? { ...item, ...verbFormData } : item
+      );
+    } else {
+      updated = [
+        ...verbsList,
+        {
+          id: Date.now(),
+          ...verbFormData,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    }
+
+    const reachedGoal = !isEditing && verifyGoalMilestone(verbsList, updated, cleanVerb);
+
     onCommitVerbs(updated);
     setModalOpen(false);
+
+    if (!reachedGoal) {
+      setSuccessWordInfo({
+        verb: cleanVerb,
+        caseType: verbFormData.caseType,
+        isEdit: isEditing,
+      });
+      setSuccessModalOpen(true);
+    }
   };
 
   const verbCard = verbsList[cardIndex];
@@ -182,8 +464,14 @@ export default function VerbsPage({
         <div className="section">
           <div className="stats-grid">
             <div className="stat dark">
-              <div className="stat-head"><span className="stat-label">TOTAL VERBS</span><span className="stat-pill dark">{verbsMastered} mastered</span></div>
-              <div className="stat-foot"><span className="stat-value">{verbsList.length}</span></div>
+              <div className="stat-head">
+                <span className="stat-label">TOTAL VERBS</span>
+                <span className="stat-pill dark">{verbsMastered} mastered</span>
+              </div>
+              <div className="stat-foot">
+                <span className="stat-value">{verbsList.length}</span>
+                <span className="stat-note" style={{ color: "#a8a29e" }}>all cases</span>
+              </div>
             </div>
             <div className="stat">
               <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div>
@@ -212,22 +500,24 @@ export default function VerbsPage({
 
             <div className="filters-cluster">
               <div className="filters">
-                <span className="filters-label">Case:</span>
-                <button onClick={() => setVerbFilter("all")} className={`chip all ${verbFilter === "all" ? "on" : ""}`}>All</button>
-                <button onClick={() => setVerbFilter("Dativ")} className={`chip dativ ${verbFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
-                <button onClick={() => setVerbFilter("Akkusativ")} className={`chip akku ${verbFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
-                <button onClick={() => setVerbFilter("Both / Common")} className={`chip both ${verbFilter === "Both / Common" ? "on" : ""}`}>Both</button>
+                <CustomDropdown
+                  icon="🏷"
+                  value={verbFilter}
+                  options={CASE_OPTIONS}
+                  onChange={(val) => setVerbFilter(val)}
+                />
               </div>
 
               <div className="filters">
-                <span className="filters-label">Status:</span>
-                <button onClick={() => setVerbStatusFilter("all")} className={`chip all ${verbStatusFilter === "all" ? "on" : ""}`}>All</button>
-                <button onClick={() => setVerbStatusFilter("In Progress")} className={`chip all ${verbStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
-                <button onClick={() => setVerbStatusFilter("Mastered")} className={`chip das ${verbStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                <CustomDropdown
+                  icon="📌"
+                  value={verbStatusFilter}
+                  options={STATUS_FILTER_OPTIONS}
+                  onChange={(val) => setVerbStatusFilter(val)}
+                />
               </div>
 
               <div className="filters">
-                <span className="filters-label">Created:</span>
                 <CustomDropdown
                   icon="📅"
                   value={dateFilter}
@@ -235,15 +525,62 @@ export default function VerbsPage({
                   onChange={(val) => setDateFilter(val)}
                 />
                 {dateFilter === "custom" && (
-                  <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                  <input
+                    type="date"
+                    className="date-select"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                  />
                 )}
               </div>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                accept=".xlsx, .xls, .csv"
+                onChange={importFromExcel}
+              />
+
+              <div className="filters">
+                <CustomDropdown
+                  icon="📊"
+                  value=""
+                  options={EXCEL_ACTIONS}
+                  onChange={(val) => {
+                    if (val === "import") handleImportButtonClick();
+                    if (val === "export") exportToExcel();
+                  }}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(true)}
+                className="btn btn-secondary"
+                style={{
+                  color: "#dc2626",
+                  borderColor: "#fca5a5",
+                  backgroundColor: "#fef2f2",
+                }}
+                title="Reset all verbs"
+              >
+                🔄 Reset
+              </button>
 
               <button
                 onClick={() => {
                   setEditingVerbId(null);
                   setAiError("");
-                  setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" });
+                  setVerbFormData({
+                    verb: "",
+                    preterite: "",
+                    participle: "",
+                    caseType: "Dativ",
+                    meaning: "",
+                    example: "",
+                    status: "In Progress",
+                  });
                   setModalOpen(true);
                 }}
                 className="btn btn-primary"
@@ -267,7 +604,11 @@ export default function VerbsPage({
             {filteredVerbs.map((item, index) => (
               <div className={`row verb-row ${item.caseType === "Both / Common" ? "Both" : item.caseType}`} key={item.id}>
                 <div className="c-idx">{index + 1}</div>
-                <div className="c-case"><span className={`pill ${VERB_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
+                <div className="c-case">
+                  <span className={`pill ${VERB_CASE_CLASS[item.caseType] || "bg-both"}`}>
+                    {item.caseType}
+                  </span>
+                </div>
                 <div className="c-verb" style={{ fontWeight: 700 }}>{item.verb}</div>
                 <div className="c-past">{item.preterite || "—"} / {item.participle || "—"}</div>
                 <div className="c-mean">{item.meaning}</div>
@@ -275,7 +616,7 @@ export default function VerbsPage({
                 <div className="c-status">
                   <button
                     onClick={() =>
-                      onCommitVerbs(verbsList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))
+                      onCommitVerbs(verbsList.map((i) => (i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i)))
                     }
                     className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
                   >
@@ -294,7 +635,7 @@ export default function VerbsPage({
                         participle: item.participle || "",
                         caseType: item.caseType,
                         meaning: item.meaning,
-                        example: item.example,
+                        example: item.example || "",
                         status: item.status,
                       });
                       setModalOpen(true);
@@ -418,6 +759,7 @@ export default function VerbsPage({
         </div>
       )}
 
+      {/* Add / Edit Verb Modal */}
       {modalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
           <div className="modal">
@@ -520,10 +862,375 @@ export default function VerbsPage({
               </div>
 
               <div className="modal-actions">
-                <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Verb</button>
+                <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save Verb
+                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {resetModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setResetModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              animation: "fadeIn 0.2s ease-in-out",
+            }}
+          >
+            <img
+              src={warningRedGif}
+              alt="Warning"
+              style={{
+                width: 90,
+                height: 90,
+                objectFit: "contain",
+                marginBottom: 16,
+              }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>
+              Reset All Verbs?
+            </h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              Are you sure you want to delete all verbs? This action will permanently remove your entire verb list and cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, width: "100%" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => setResetModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  backgroundColor: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "#ffffff",
+                }}
+                onClick={handleConfirmReset}
+              >
+                Yes, Reset All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Word Alert Modal */}
+      {duplicateModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setDuplicateModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <img
+              src={alertGif}
+              alt="Alert"
+              style={{
+                width: 100,
+                height: 100,
+                objectFit: "contain",
+                marginBottom: 16,
+              }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--ink)" }}>Verb Already Exists!</h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              <strong>"{duplicateWordName}"</strong> is already in your verb list.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setDuplicateModalOpen(false)}
+            >
+              Understood
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Goal Reached Celebration Modal */}
+      {goalCelebration.isOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1300 }}
+          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 380,
+              padding: "28px 22px 24px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              borderRadius: 20,
+              border: "1px solid #ebdccb",
+              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.18)",
+              animation: "fadeIn 0.22s ease-out",
+            }}
+          >
+            <img
+              src={successGif}
+              alt="Celebration Success"
+              style={{
+                width: 105,
+                height: 105,
+                objectFit: "contain",
+                marginBottom: 12,
+              }}
+            />
+
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                color: "#b85c19",
+                backgroundColor: "#fef3c7",
+                border: "1px solid #fde68a",
+                padding: "4px 12px",
+                borderRadius: 20,
+                marginBottom: 10,
+                textTransform: "uppercase",
+              }}
+            >
+              {goalCelebration.goalType === "daily" ? "🎯 Daily Goal Achieved!" : "🏆 Weekly Goal Achieved!"}
+            </span>
+
+            <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "var(--ink, #1e1e1e)" }}>
+              Herzlichen Glückwunsch!
+            </h3>
+
+            <p style={{ color: "var(--muted, #6b7280)", margin: "0 0 16px", fontSize: 14, lineHeight: 1.55 }}>
+              {goalCelebration.goalType === "daily" ? (
+                <>
+                  You reached your daily goal of{" "}
+                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} verbs</strong>!
+                </>
+              ) : (
+                <>
+                  Phenomenal work! You hit your weekly goal of{" "}
+                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} verbs</strong>!
+                </>
+              )}
+            </p>
+
+            {goalCelebration.addedWord && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "#166534",
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  padding: "6px 14px",
+                  borderRadius: 10,
+                  marginBottom: 18,
+                  fontWeight: 600,
+                }}
+              >
+                Added: <strong>"{goalCelebration.addedWord}"</strong>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{
+                width: "100%",
+                justifyContent: "center",
+                padding: "12px 18px",
+                fontSize: 14.5,
+                fontWeight: 700,
+                backgroundColor: "#b85c19",
+                borderColor: "#b85c19",
+              }}
+              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+            >
+              Awesome, Keep Going! 🚀
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Regular Success Modal */}
+      {successModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setSuccessModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              animation: "fadeIn 0.2s ease-in-out",
+            }}
+          >
+            <img
+              src={successGif}
+              alt="Success"
+              style={{
+                width: 100,
+                height: 100,
+                objectFit: "contain",
+                marginBottom: 16,
+              }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--brand, #16a34a)" }}>
+              {successWordInfo.isEdit ? "Verb Updated!" : "Verb Added Successfully!"}
+            </h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              <strong>"{successWordInfo.verb}" ({successWordInfo.caseType})</strong> has been saved to your vocabulary.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setSuccessModalOpen(false)}
+            >
+              Great! 🎉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Import Summary Modal */}
+      {importSummary && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setImportSummary(null)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 380,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <h3 style={{ margin: "0 0 16px", fontSize: 20, color: "var(--ink)" }}>
+              Import Summary
+            </h3>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                width: "100%",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  padding: "14px 8px",
+                  borderRadius: 10,
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  color: "#166534",
+                  fontWeight: 700,
+                }}
+              >
+                <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.added}</div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>
+                  Added
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  padding: "14px 8px",
+                  borderRadius: 10,
+                  backgroundColor: "#fef9c3",
+                  border: "1px solid #fde047",
+                  color: "#854d0e",
+                  fontWeight: 700,
+                }}
+              >
+                <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.duplicates}</div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>
+                  Duplicates
+                </div>
+              </div>
+            </div>
+
+            {importSummary.duplicateWords.length > 0 && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#854d0e",
+                  backgroundColor: "#fefce8",
+                  border: "1px dashed #facc15",
+                  borderRadius: 6,
+                  padding: "8px 12px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  maxHeight: 90,
+                  overflowY: "auto",
+                  marginBottom: 16,
+                  textAlign: "left",
+                }}
+              >
+                <strong>Skipped words:</strong>{" "}
+                {importSummary.duplicateWords.slice(0, 8).join(", ")}
+                {importSummary.duplicateWords.length > 8 &&
+                  ` and ${importSummary.duplicateWords.length - 8} more...`}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setImportSummary(null)}
+            >
+              Done
+            </button>
           </div>
         </div>
       )}

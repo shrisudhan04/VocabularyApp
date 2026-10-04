@@ -1,7 +1,42 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
-import { ARTICLE_CLASS, DATE_OPTIONS, GENDER_MAP } from "../constants/seedData";
+import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
+import { GoogleGenAI, Type } from "@google/genai";
+import alertGif from "../assets/Alert.gif";
+import successGif from "../assets/Success.gif";
+import warningRedGif from "../assets/WarningRed.gif";
+import "../App.css";
+
+const GEMINI_MODEL = "gemini-3.8-flash"; // same model name as NounsPage
+
+const GENDER_OPTIONS = [
+  { label: "All Articles", value: "all" },
+  { label: "der (Masculine)", value: "der" },
+  { label: "die (Feminine)", value: "die" },
+  { label: "das (Neuter)", value: "das" },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { label: "All Status", value: "all" },
+  { label: "In Progress", value: "In Progress" },
+  { label: "Mastered", value: "Mastered" },
+];
+
+const EXCEL_ACTIONS = [
+  { label: "Excel Actions ▾", value: "" },
+  { label: "📥 Import", value: "import" },
+  { label: "📤 Export", value: "export" },
+];
+
+const EMPTY_FORM = {
+  article: "der",
+  ending: "",
+  rule: "",
+  examples: "",
+  status: "In Progress",
+};
 
 export default function PatternsPage({
   viewMode,
@@ -9,16 +44,33 @@ export default function PatternsPage({
   onCommitPatterns,
   onRequestConfirm,
 }) {
+  const [search, setSearch] = useState("");
+  const [articleFilter, setArticleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [patternFormData, setPatternFormData] = useState({
-    article: "der",
-    ending: "",
-    rule: "",
-    examples: "",
+  const [editingPatternId, setEditingPatternId] = useState(null);
+  const [patternFormData, setPatternFormData] = useState(EMPTY_FORM);
+
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [duplicateName, setDuplicateName] = useState("");
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [successInfo, setSuccessInfo] = useState({ article: "", ending: "", isEdit: false });
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+
+  const [goalCelebration, setGoalCelebration] = useState({
+    isOpen: false,
+    goalType: "daily",
+    target: 10,
+    current: 10,
+    addedWord: "",
   });
+
+  const [importSummary, setImportSummary] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
@@ -26,6 +78,254 @@ export default function PatternsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
+  const fileInputRef = useRef(null);
+
+  // ---------- Goal helpers ----------
+  const getGoalCounts = (list) => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayOfWeek = now.getDay();
+    const distanceToMonday = (dayOfWeek + 6) % 7;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
+
+    let daily = 0;
+    let weekly = 0;
+
+    list.forEach((item) => {
+      const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+      if (itemTime >= startOfToday) daily += 1;
+      if (itemTime >= startOfWeek) weekly += 1;
+    });
+
+    return { daily, weekly };
+  };
+
+  const getSavedTargets = () => {
+    try {
+      const saved = localStorage.getItem("study_goals_targets");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          daily: Number(parsed.Patterns?.daily) || 10,
+          weekly: Number(parsed.Patterns?.weekly) || 50,
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to read study_goals_targets:", e);
+    }
+    return {
+      daily: Number(localStorage.getItem("goal_daily_target")) || 10,
+      weekly: Number(localStorage.getItem("goal_weekly_target")) || 50,
+    };
+  };
+
+  const verifyGoalMilestone = (prevList, nextList, wordLabel = "") => {
+    const { daily: dailyTarget, weekly: weeklyTarget } = getSavedTargets();
+    const prevCounts = getGoalCounts(prevList);
+    const nextCounts = getGoalCounts(nextList);
+
+    if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      setGoalCelebration({
+        isOpen: true,
+        goalType: "daily",
+        target: dailyTarget,
+        current: nextCounts.daily,
+        addedWord: wordLabel,
+      });
+      return true;
+    }
+
+    if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      setGoalCelebration({
+        isOpen: true,
+        goalType: "weekly",
+        target: weeklyTarget,
+        current: nextCounts.weekly,
+        addedWord: wordLabel,
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  // ---------- Reset ----------
+  const handleConfirmReset = () => {
+    onCommitPatterns([]);
+    setCardIndex(0);
+    setCardFlipped(false);
+    setQuizIndex(0);
+    setQuizScore(0);
+    setQuizFeedback(null);
+    setResetModalOpen(false);
+  };
+
+  // ---------- Excel export / import ----------
+  const exportToExcel = () => {
+    if (!patternsList || patternsList.length === 0) {
+      alert("No patterns to export.");
+      return;
+    }
+
+    const exportData = patternsList.map((item, index) => ({
+      "#": index + 1,
+      Article: item.article,
+      Ending: item.ending,
+      Rule: item.rule || "",
+      Examples: item.examples || "",
+      Gender: GENDER_MAP[item.article] || "",
+      Status: item.status || "In Progress",
+      CreatedAt: item.createdAt || new Date().toISOString(),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Patterns");
+
+    XLSX.writeFile(workbook, `German_Patterns_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const handleImportButtonClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  };
+
+  const importFromExcel = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target?.result;
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawJson = XLSX.utils.sheet_to_json(worksheet);
+
+        if (!rawJson || rawJson.length === 0) {
+          alert("The uploaded Excel sheet contains no rows.");
+          return;
+        }
+
+        // Duplicate key = article + ending
+        const existingKeys = new Set(
+          patternsList.map((p) => `${p.article}|${p.ending?.trim().toLowerCase()}`)
+        );
+
+        const newEntries = [];
+        const duplicateWords = [];
+
+        rawJson.forEach((row, i) => {
+          const rowLower = {};
+          Object.keys(row).forEach((k) => {
+            rowLower[k.trim().toLowerCase()] = row[k];
+          });
+
+          const ending = (rowLower.ending || rowLower.suffix || rowLower.pattern || "").toString().trim();
+          let article = (rowLower.article || "").toString().trim().toLowerCase();
+          const rule = (rowLower.rule || rowLower.explanation || "").toString().trim();
+          const examples = (rowLower.examples || rowLower.example || "").toString().trim();
+          const status = (rowLower.status || "In Progress").toString().trim();
+
+          if (!["der", "die", "das"].includes(article)) {
+            article = "der";
+          }
+
+          if (ending) {
+            const key = `${article}|${ending.toLowerCase()}`;
+            if (existingKeys.has(key)) {
+              duplicateWords.push(ending);
+            } else {
+              existingKeys.add(key);
+              newEntries.push({
+                id: `p-${Date.now()}-${i}`,
+                article,
+                ending,
+                rule,
+                examples,
+                status: status.toLowerCase() === "mastered" ? "Mastered" : "In Progress",
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+        });
+
+        if (newEntries.length > 0) {
+          const updatedList = [...patternsList, ...newEntries];
+          verifyGoalMilestone(patternsList, updatedList, `${newEntries.length} new patterns`);
+          onCommitPatterns(updatedList);
+        }
+
+        setImportSummary({
+          total: rawJson.length,
+          added: newEntries.length,
+          duplicates: duplicateWords.length,
+          duplicateWords,
+        });
+      } catch (err) {
+        console.error("Import error:", err);
+        alert("Failed to parse Excel file. Please ensure it has proper column headers (Article, Ending, Rule, Examples).");
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  // ---------- AI generate ----------
+  const generateGermanPattern = async () => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+    if (!apiKey) {
+      setAiError("VITE_GEMINI_API_KEY is not defined in your .env file.");
+      return;
+    }
+
+    if (!patternFormData.ending.trim()) {
+      setAiError("Please enter a suffix / ending first (e.g. -ung).");
+      return;
+    }
+
+    try {
+      setAiLoading(true);
+      setAiError("");
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: `For the German noun ending/suffix "${patternFormData.ending.trim()}", give the grammatical article it most reliably indicates (der, die, or das), a short one-sentence rule explaining the pattern (mention notable exceptions only if important), and 3 to 4 example nouns written with their article, separated by commas (e.g. "die Station, die Nation").`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              article: { type: Type.STRING, enum: ["der", "die", "das"] },
+              rule: { type: Type.STRING },
+              examples: { type: Type.STRING },
+            },
+            required: ["article", "rule", "examples"],
+          },
+        },
+      });
+
+      const parsed = JSON.parse(response.text);
+
+      setPatternFormData((prev) => ({
+        ...prev,
+        article: parsed.article,
+        rule: parsed.rule,
+        examples: parsed.examples,
+      }));
+    } catch (err) {
+      setAiError(err.message || "Failed to generate pattern.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // ---------- Filtering ----------
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
     const itemDate = new Date(isoDate);
@@ -38,17 +338,105 @@ export default function PatternsPage({
     return true;
   };
 
+  const filteredPatterns = patternsList.filter((item) => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      (item.ending || "").toLowerCase().includes(q) ||
+      (item.rule || "").toLowerCase().includes(q) ||
+      (item.examples || "").toLowerCase().includes(q);
+    const matchesArt = articleFilter === "all" || item.article === articleFilter;
+    const itemStatus = item.status || "In Progress";
+    const matchesStatus = statusFilter === "all" || itemStatus === statusFilter;
+    return matchesSearch && matchesArt && matchesStatus && matchesDateFilter(item.createdAt);
+  });
+
+  const patternsMastered = patternsList.filter((p) => p.status === "Mastered").length;
   const countPattern = (art) => patternsList.filter((p) => p.article === art).length;
+
+  // ---------- Add / Edit ----------
+  const openAddModal = () => {
+    setEditingPatternId(null);
+    setAiError("");
+    setPatternFormData(EMPTY_FORM);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (rule) => {
+    setEditingPatternId(rule.id);
+    setAiError("");
+    setPatternFormData({
+      article: rule.article,
+      ending: rule.ending,
+      rule: rule.rule,
+      examples: rule.examples || "",
+      status: rule.status || "In Progress",
+    });
+    setModalOpen(true);
+  };
 
   const handleSaveModal = (e) => {
     e.preventDefault();
-    if (!patternFormData.ending.trim() || !patternFormData.rule.trim()) return;
-    onCommitPatterns([
-      ...patternsList,
-      { id: `p-${Date.now()}`, ...patternFormData, createdAt: new Date().toISOString() },
-    ]);
+
+    const cleanEnding = patternFormData.ending.trim();
+    if (!cleanEnding || !patternFormData.rule.trim()) return;
+
+    const isDuplicate = patternsList.some(
+      (item) =>
+        item.ending.trim().toLowerCase() === cleanEnding.toLowerCase() &&
+        item.article === patternFormData.article &&
+        item.id !== editingPatternId
+    );
+
+    if (isDuplicate) {
+      setDuplicateName(cleanEnding);
+      setDuplicateModalOpen(true);
+      return;
+    }
+
+    const isEditing = Boolean(editingPatternId);
+    let updated;
+
+    if (isEditing) {
+      updated = patternsList.map((item) =>
+        item.id === editingPatternId ? { ...item, ...patternFormData, ending: cleanEnding } : item
+      );
+    } else {
+      updated = [
+        ...patternsList,
+        {
+          id: `p-${Date.now()}`,
+          ...patternFormData,
+          ending: cleanEnding,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    }
+
+    const reachedGoal =
+      !isEditing &&
+      verifyGoalMilestone(patternsList, updated, `${patternFormData.article} ${cleanEnding}`);
+
+    onCommitPatterns(updated);
     setModalOpen(false);
+
+    if (!reachedGoal) {
+      setSuccessInfo({
+        article: patternFormData.article,
+        ending: cleanEnding,
+        isEdit: isEditing,
+      });
+      setSuccessModalOpen(true);
+    }
   };
+
+  const toggleStatus = (id) =>
+    onCommitPatterns(
+      patternsList.map((p) =>
+        p.id === id
+          ? { ...p, status: p.status === "Mastered" ? "In Progress" : "Mastered" }
+          : p
+      )
+    );
 
   const patternCard = patternsList[cardIndex];
   const patternQuizWord = patternsList[quizIndex];
@@ -59,8 +447,14 @@ export default function PatternsPage({
         <div className="section">
           <div className="stats-grid">
             <div className="stat dark">
-              <div className="stat-head"><span className="stat-label">TOTAL PATTERNS</span><span className="stat-pill dark">Active Rules</span></div>
-              <div className="stat-foot"><span className="stat-value">{patternsList.length}</span></div>
+              <div className="stat-head">
+                <span className="stat-label">TOTAL PATTERNS</span>
+                <span className="stat-pill dark">{patternsMastered} mastered</span>
+              </div>
+              <div className="stat-foot">
+                <span className="stat-value">{patternsList.length}</span>
+                <span className="stat-note" style={{ color: "#a8a29e" }}>active rules</span>
+              </div>
             </div>
             <div className="stat">
               <div className="stat-head"><span className="stat-label">DER PATTERNS</span><span className="stat-pill bg-der">der</span></div>
@@ -77,70 +471,157 @@ export default function PatternsPage({
           </div>
 
           <div className="toolbar">
-            <div className="filters">
-              <span className="filters-label">Created:</span>
-              <CustomDropdown
-                icon="📅"
-                value={dateFilter}
-                options={DATE_OPTIONS}
-                onChange={(val) => setDateFilter(val)}
+            <div className="search">
+              <span>🔍</span>
+              <input
+                type="search"
+                placeholder="Search suffix, rule, or examples..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
               />
-              {dateFilter === "custom" && (
-                <input
-                  type="date"
-                  className="date-select"
-                  value={customDate}
-                  onChange={(e) => setCustomDate(e.target.value)}
-                />
-              )}
             </div>
-            <button
-              onClick={() => {
-                setPatternFormData({ article: "der", ending: "", rule: "", examples: "" });
-                setModalOpen(true);
-              }}
-              className="btn btn-primary"
-              style={{ marginLeft: "auto" }}
-            >
-              + Add Suffix Pattern
-            </button>
+
+            <div className="filters-cluster">
+              <div className="filters">
+                <CustomDropdown
+                  icon="🏷"
+                  value={articleFilter}
+                  options={GENDER_OPTIONS}
+                  onChange={(val) => setArticleFilter(val)}
+                />
+              </div>
+
+              <div className="filters">
+                <CustomDropdown
+                  icon="📌"
+                  value={statusFilter}
+                  options={STATUS_FILTER_OPTIONS}
+                  onChange={(val) => setStatusFilter(val)}
+                />
+              </div>
+
+              <div className="filters">
+                <CustomDropdown
+                  icon="📅"
+                  value={dateFilter}
+                  options={DATE_OPTIONS}
+                  onChange={(val) => setDateFilter(val)}
+                />
+                {dateFilter === "custom" && (
+                  <input
+                    type="date"
+                    className="date-select"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                  />
+                )}
+              </div>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                accept=".xlsx, .xls, .csv"
+                onChange={importFromExcel}
+              />
+
+              <div className="filters">
+                <CustomDropdown
+                  icon="📊"
+                  value=""
+                  options={EXCEL_ACTIONS}
+                  onChange={(val) => {
+                    if (val === "import") handleImportButtonClick();
+                    if (val === "export") exportToExcel();
+                  }}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(true)}
+                className="btn btn-secondary"
+                style={{
+                  color: "#dc2626",
+                  borderColor: "#fca5a5",
+                  backgroundColor: "#fef2f2",
+                }}
+                title="Reset all patterns"
+              >
+                🔄 Reset
+              </button>
+
+              <button onClick={openAddModal} className="btn btn-primary">
+                + Add Suffix Pattern
+              </button>
+            </div>
           </div>
 
           <div className="patterns-grid">
-            {["der", "die", "das"].map((art) => (
-              <div key={art} className={`pattern-col ${art}`}>
-                <div className="pattern-header">
-                  <div>
-                    <h3 className={`c-${art}`}>{GENDER_MAP[art]} Rules</h3>
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                      {patternsList.filter((p) => p.article === art && matchesDateFilter(p.createdAt)).length} patterns
-                    </span>
-                  </div>
-                  <span className={`stat-pill ${ARTICLE_CLASS[art]}`}>{art}</span>
-                </div>
-                {patternsList
-                  .filter((p) => p.article === art && matchesDateFilter(p.createdAt))
-                  .map((rule) => (
-                    <div key={rule.id} className="pattern-card">
-                      <div className="pattern-card-top">
-                        <span className={`pattern-badge ${ARTICLE_CLASS[art]}`}>{rule.ending}</span>
+            {["der", "die", "das"]
+              .filter((art) => articleFilter === "all" || articleFilter === art)
+              .map((art) => {
+                const colItems = filteredPatterns.filter((p) => p.article === art);
+                return (
+                  <div key={art} className={`pattern-col ${art}`}>
+                    <div className="pattern-header">
+                      <div>
+                        <h3 className={`c-${art}`}>{GENDER_MAP[art]} Rules</h3>
+                        <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                          {colItems.length} patterns
+                        </span>
+                      </div>
+                      <span className={`stat-pill ${ARTICLE_CLASS[art]}`}>{art}</span>
+                    </div>
+
+                    {colItems.map((rule) => (
+                      <div key={rule.id} className="pattern-card">
+                        <div className="pattern-card-top">
+                          <span className={`pattern-badge ${ARTICLE_CLASS[art]}`}>{rule.ending}</span>
+                          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                            <button
+                              onClick={() => speakGerman(rule.examples || rule.ending)}
+                              className="icon-btn"
+                              title="Hear examples"
+                            >
+                              🔊
+                            </button>
+                            <button
+                              onClick={() => openEditModal(rule)}
+                              className="icon-btn"
+                              title="Edit"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() =>
+                                onRequestConfirm(
+                                  "Delete Suffix Pattern",
+                                  `Delete rule for "${rule.ending}"?`,
+                                  () => onCommitPatterns(patternsList.filter((p) => p.id !== rule.id))
+                                )
+                              }
+                              className="pattern-delete-btn"
+                              title="Delete"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                        <p className="pattern-rule">{rule.rule}</p>
+                        <p className="pattern-eg">e.g. {rule.examples}</p>
                         <button
-                          onClick={() =>
-                            onRequestConfirm("Delete Suffix Pattern", `Delete rule for "${rule.ending}"?`, () =>
-                              onCommitPatterns(patternsList.filter((p) => p.id !== rule.id))
-                            )
-                          }
-                          className="pattern-delete-btn"
+                          onClick={() => toggleStatus(rule.id)}
+                          className={`status ${rule.status === "Mastered" ? "done" : "todo"}`}
+                          style={{ marginTop: 8 }}
                         >
-                          ✕
+                          {rule.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
                         </button>
                       </div>
-                      <p className="pattern-rule">{rule.rule}</p>
-                      <p className="pattern-eg">e.g. {rule.examples}</p>
-                    </div>
-                  ))}
-              </div>
-            ))}
+                    ))}
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}
@@ -235,10 +716,11 @@ export default function PatternsPage({
         </div>
       )}
 
+      {/* Add / Edit Pattern Modal */}
       {modalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
           <div className="modal">
-            <h3>Add Suffix / Pattern Rule</h3>
+            <h3>{editingPatternId ? "Edit Suffix / Pattern Rule" : "Add Suffix / Pattern Rule"}</h3>
             <form onSubmit={handleSaveModal}>
               <div>
                 <label className="modal-label">Target Article (Gender)</label>
@@ -257,17 +739,29 @@ export default function PatternsPage({
                   ))}
                 </div>
               </div>
+
               <div>
                 <label className="modal-label">Ending / Pattern Suffix</label>
-                <input
-                  className="modal-input"
-                  type="text"
-                  required
-                  placeholder="e.g. -tion"
-                  value={patternFormData.ending}
-                  onChange={(e) => setPatternFormData({ ...patternFormData, ending: e.target.value })}
-                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="modal-input"
+                    style={{ flex: 1 }}
+                    type="text"
+                    required
+                    placeholder="e.g. -tion"
+                    value={patternFormData.ending}
+                    onChange={(e) => {
+                      setAiError("");
+                      setPatternFormData({ ...patternFormData, ending: e.target.value });
+                    }}
+                  />
+                  <button type="button" className="btn btn-secondary" onClick={generateGermanPattern} disabled={aiLoading}>
+                    {aiLoading ? "Generating..." : "✨ Generate"}
+                  </button>
+                </div>
+                {aiError && <p style={{ color: "#dc2626", fontSize: 13, margin: "6px 0 0" }}>{aiError}</p>}
               </div>
+
               <div>
                 <label className="modal-label">Rule / Explanation</label>
                 <input
@@ -279,6 +773,7 @@ export default function PatternsPage({
                   onChange={(e) => setPatternFormData({ ...patternFormData, rule: e.target.value })}
                 />
               </div>
+
               <div>
                 <label className="modal-label">Examples</label>
                 <input
@@ -289,11 +784,355 @@ export default function PatternsPage({
                   onChange={(e) => setPatternFormData({ ...patternFormData, examples: e.target.value })}
                 />
               </div>
+
+              <div>
+                <label className="modal-label">Status</label>
+                <CustomDropdown
+                  fullWidth
+                  value={patternFormData.status}
+                  options={STATUS_OPTIONS}
+                  onChange={(val) => setPatternFormData({ ...patternFormData, status: val })}
+                />
+              </div>
+
               <div className="modal-actions">
                 <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Pattern</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {resetModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setResetModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              animation: "fadeIn 0.2s ease-in-out",
+            }}
+          >
+            <img
+              src={warningRedGif}
+              alt="Warning"
+              style={{ width: 90, height: 90, objectFit: "contain", marginBottom: 16 }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>Reset All Patterns?</h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              Are you sure you want to delete all patterns? This action will permanently remove your entire pattern list and cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, width: "100%" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => setResetModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  backgroundColor: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "#ffffff",
+                }}
+                onClick={handleConfirmReset}
+              >
+                Yes, Reset All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Alert Modal */}
+      {duplicateModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setDuplicateModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <img
+              src={alertGif}
+              alt="Alert"
+              style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--ink)" }}>Pattern Already Exists!</h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              <strong>"{duplicateName}"</strong> is already in your patterns list for this article.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setDuplicateModalOpen(false)}
+            >
+              Understood
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Goal Reached Celebration Modal */}
+      {goalCelebration.isOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1300 }}
+          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 380,
+              padding: "28px 22px 24px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              borderRadius: 20,
+              border: "1px solid #ebdccb",
+              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.18)",
+              animation: "fadeIn 0.22s ease-out",
+            }}
+          >
+            <img
+              src={successGif}
+              alt="Celebration Success"
+              style={{ width: 105, height: 105, objectFit: "contain", marginBottom: 12 }}
+            />
+
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                color: "#b85c19",
+                backgroundColor: "#fef3c7",
+                border: "1px solid #fde68a",
+                padding: "4px 12px",
+                borderRadius: 20,
+                marginBottom: 10,
+                textTransform: "uppercase",
+              }}
+            >
+              {goalCelebration.goalType === "daily" ? "🎯 Daily Goal Achieved!" : "🏆 Weekly Goal Achieved!"}
+            </span>
+
+            <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "var(--ink, #1e1e1e)" }}>
+              Herzlichen Glückwunsch!
+            </h3>
+
+            <p style={{ color: "var(--muted, #6b7280)", margin: "0 0 16px", fontSize: 14, lineHeight: 1.55 }}>
+              {goalCelebration.goalType === "daily" ? (
+                <>
+                  You reached your daily goal of{" "}
+                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} patterns</strong>!
+                </>
+              ) : (
+                <>
+                  Phenomenal work! You hit your weekly goal of{" "}
+                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} patterns</strong>!
+                </>
+              )}
+            </p>
+
+            {goalCelebration.addedWord && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "#166534",
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  padding: "6px 14px",
+                  borderRadius: 10,
+                  marginBottom: 18,
+                  fontWeight: 600,
+                }}
+              >
+                Added: <strong>"{goalCelebration.addedWord}"</strong>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{
+                width: "100%",
+                justifyContent: "center",
+                padding: "12px 18px",
+                fontSize: 14.5,
+                fontWeight: 700,
+                backgroundColor: "#b85c19",
+                borderColor: "#b85c19",
+              }}
+              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+            >
+              Awesome, Keep Going! 🚀
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Regular Success Modal */}
+      {successModalOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setSuccessModalOpen(false)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              animation: "fadeIn 0.2s ease-in-out",
+            }}
+          >
+            <img
+              src={successGif}
+              alt="Success"
+              style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }}
+            />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--brand, #16a34a)" }}>
+              {successInfo.isEdit ? "Pattern Updated!" : "Pattern Added Successfully!"}
+            </h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              <strong>"{successInfo.ending}" → {successInfo.article}</strong> has been saved to your patterns.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setSuccessModalOpen(false)}
+            >
+              Great! 🎉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Import Summary Modal */}
+      {importSummary && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => e.target === e.currentTarget && setImportSummary(null)}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 380,
+              padding: "24px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <h3 style={{ margin: "0 0 16px", fontSize: 20, color: "var(--ink)" }}>Import Summary</h3>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                width: "100%",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  padding: "14px 8px",
+                  borderRadius: 10,
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  color: "#166534",
+                  fontWeight: 700,
+                }}
+              >
+                <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.added}</div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>Added</div>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  padding: "14px 8px",
+                  borderRadius: 10,
+                  backgroundColor: "#fef9c3",
+                  border: "1px solid #fde047",
+                  color: "#854d0e",
+                  fontWeight: 700,
+                }}
+              >
+                <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.duplicates}</div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>Duplicates</div>
+              </div>
+            </div>
+
+            {importSummary.duplicateWords.length > 0 && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#854d0e",
+                  backgroundColor: "#fefce8",
+                  border: "1px dashed #facc15",
+                  borderRadius: 6,
+                  padding: "8px 12px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  maxHeight: 90,
+                  overflowY: "auto",
+                  marginBottom: 16,
+                  textAlign: "left",
+                }}
+              >
+                <strong>Skipped patterns:</strong>{" "}
+                {importSummary.duplicateWords.slice(0, 8).join(", ")}
+                {importSummary.duplicateWords.length > 8 &&
+                  ` and ${importSummary.duplicateWords.length - 8} more...`}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setImportSummary(null)}
+            >
+              Done
+            </button>
           </div>
         </div>
       )}

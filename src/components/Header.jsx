@@ -1,3 +1,5 @@
+import "../App.css";
+
 export default function Header({ onOpenSidebar }) {
   return (
     <header className="app-header">
@@ -13,7 +15,7 @@ export default function Header({ onOpenSidebar }) {
           <span></span>
         </span>
       </button>
-      <h2 className="app-title">deutschly</h2>
+      <h2 className="app-title">DEutschly</h2>
       <div className="header-spacer" />
     </header>
   );

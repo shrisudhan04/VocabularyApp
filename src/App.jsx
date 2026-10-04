@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 const DB_NAME = "GermanVocabVault";
@@ -80,7 +80,6 @@ const SEED_PREPOSITIONS = [
   { id: 209, prep: "an", caseType: "Wechsel", meaning: "at / on (vertical edge)", example: "Das Bild hängt an der Wand (Dat).", status: "In Progress", createdAt: "2026-10-04T10:00:00.000Z" },
 ];
 
-// ---------- GRAMMAR & TIME DATA ----------
 const GRAMMAR_TOPICS = [
   { id: "possessives", label: "Possessivartikel (mein, dein)" },
   { id: "articles", label: "Articles (der / ein / kein)" },
@@ -200,6 +199,19 @@ const GRAMMAR_QUIZ = [
   { q: "Das ist ein ___ Tag. (schön, Nom Masc)", answer: "schöner", options: ["schöne", "schöner", "schönen"], expl: "ein + Adjektiv (Maskulin Nominativ: -er)" },
 ];
 
+const DATE_OPTIONS = [
+  { value: "all", label: "All Dates" },
+  { value: "today", label: "Today" },
+  { value: "week", label: "Past 7 Days" },
+  { value: "month", label: "Past 30 Days" },
+  { value: "custom", label: "Specific Date..." },
+];
+
+const STATUS_OPTIONS = [
+  { value: "In Progress", label: "In Progress" },
+  { value: "Mastered", label: "Mastered" },
+];
+
 // ---------- INDEXEDDB HELPERS ----------
 function openVaultDB() {
   return new Promise((resolve, reject) => {
@@ -292,7 +304,156 @@ button, input, select, textarea { font-family: inherit; }
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
-.page { background: var(--bg); min-height: 100vh; width: 100%; padding: 24px 32px; display: flex; justify-content: center;
+/* Top Header Bar */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  width: 100%;
+  background: var(--bg); /* or var(--card) */
+  border-bottom: none;   /* removes the mild horizontal line */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+}.kebab-btn {
+  background: transparent;
+  border: none;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.hamburger-icon {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 22px;
+  height: 18px;
+}
+
+.hamburger-icon span {
+  display: block;
+  height: 4px;
+  width: 100%;
+  background: #b85202;
+  border-radius: 999px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.kebab-btn:hover {
+  background: var(--card-inner);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.app-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--brand);
+  text-align: center;
+}
+.header-spacer {
+  width: 40px;
+}
+
+/* Sidebar Drawer */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  z-index: 1000;
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+.sidebar-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+.sidebar {
+  width: 320px;
+  max-width: 85vw;
+  height: 100%;
+  background: var(--card);
+  border-right: 1px solid var(--line-2);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transform: translateX(-100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 10px 0 25px rgba(0,0,0,0.15);
+}
+.sidebar-overlay.open .sidebar {
+  transform: translateX(0);
+}
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.sidebar-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.sidebar-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.sidebar-close-btn:hover {
+  color: var(--danger);
+  background: var(--card-inner);
+}
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.sidebar-tab-btn {
+  border: 1px solid transparent;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card-inner);
+  color: var(--ink-2);
+  transition: all 0.18s ease;
+  width: 100%;
+  text-align: left;
+}
+.sidebar-tab-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: var(--card);
+}
+.sidebar-tab-btn.active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+  box-shadow: 0 4px 10px rgba(180, 83, 9, 0.3);
+}
+
+.page { background: var(--bg); min-height: calc(100vh - 65px); width: 100%; padding: 20px 32px 36px; display: flex; justify-content: center;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
 .container { width: 100%; max-width: 1400px; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
@@ -303,54 +464,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .fab { display: none; }
 
-.main-tabs-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-.main-tabs { display: flex; gap: 6px; background: var(--line-2); padding: 5px; border-radius: 12px; overflow-x: auto; scrollbar-width: none; }
-.main-tabs::-webkit-scrollbar { display: none; }
-.main-tab { border: none; padding: 10px 18px; border-radius: 9px; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: var(--muted); white-space: nowrap; }
-.main-tab.active { background: var(--card); color: var(--brand); box-shadow: 0 2px 5px rgba(0,0,0,.15); }
-
-/* Sub View Switcher - Full Width */
-.sub-tabs-bar { 
-  display: flex; 
-  width: 100%; 
-  padding-bottom: 4px; 
-}
-
-.sub-tabs { 
-  display: flex; 
-  width: 100%; 
-  background: var(--line-2); 
-  padding: 5px; 
-  border-radius: 12px; 
-  gap: 6px; 
-}
-
-.sub-tab { 
-  flex: 1; /* Stretches each button equally across the full container width */
-  border: none; 
-  padding: 10px 16px; 
-  border-radius: 9px; 
-  font-size: 13.5px; 
-  font-weight: 700; 
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: transparent; 
-  color: var(--muted); 
-  text-align: center;
-  white-space: nowrap;
-}
-
-.sub-tab.active { 
-  background: var(--brand); 
-  color: #fff; 
-  box-shadow: 0 2px 6px rgba(180, 83, 9, .35); 
-}
+.sub-tabs-bar { display: flex; width: 100%; padding-bottom: 4px; }
+.sub-tabs { display: flex; width: 100%; background: var(--line-2); padding: 5px; border-radius: 12px; gap: 6px; }
+.sub-tab { flex: 1; border: none; padding: 10px 16px; border-radius: 9px; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: var(--muted); text-align: center; white-space: nowrap; }
+.sub-tab.active { background: var(--brand); color: #fff; box-shadow: 0 2px 6px rgba(180, 83, 9, .35); }
 
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-height: 105px;
-  display: flex; flex-direction: column; justify-content: space-between; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-height: 105px; display: flex; flex-direction: column; justify-content: space-between; }
 .stat.dark { background: #1c1917; border-color: #3c3836; color: #fff; }
 .stat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .stat-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .6px; }
@@ -401,6 +521,97 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chip.wechsel.on { background: var(--wechsel); color: #fff; border-color: var(--wechsel); }
 
 .date-select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); font-size: 12.5px; font-weight: 600; min-height: 36px; }
+
+/* Custom Animated Dropdown */
+.dropdown-container {
+  position: relative;
+  display: inline-block;
+  user-select: none;
+}
+.dropdown-container.full-width {
+  display: block;
+  width: 100%;
+}
+.dropdown-trigger {
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.dropdown-trigger:hover {
+  border-color: var(--brand);
+}
+.dropdown-arrow {
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.dropdown-container.open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: 5px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  z-index: 100;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.97);
+  transform-origin: top center;
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              visibility 0.22s;
+  pointer-events: none;
+}
+.dropdown-container.open .dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.dropdown-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.dropdown-item:hover {
+  background: var(--card-inner);
+  color: var(--brand);
+}
+.dropdown-item.active {
+  background: var(--card-inner);
+  color: var(--brand);
+  font-weight: 700;
+}
 
 .list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 16px 16px; overflow-x: auto; }
 .list-head { padding: 12px 8px; font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: .5px; border-bottom: 1px solid var(--line); }
@@ -496,12 +707,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .radio input { display: none; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 
-/* Confirmation Dialog */
 .confirm-box { text-align: center; display: flex; flex-direction: column; gap: 14px; }
 .confirm-icon { font-size: 38px; }
 .confirm-box p { margin: 0; font-size: 14.5px; color: var(--muted); line-height: 1.4; }
 
-/* Mobile Card Formatting */
 @media (max-width: 1024px) {
   .page { padding: 20px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -627,6 +836,68 @@ const VERB_CASE_CLASS = { Dativ: "bg-dativ", Akkusativ: "bg-akku", "Both / Commo
 const PREP_CASE_CLASS = { Dativ: "bg-dativ", Akkusativ: "bg-akku", Wechsel: "bg-wechsel" };
 const GENDER_MAP = { der: "Masculine", die: "Feminine", das: "Neuter" };
 
+// ---------- CUSTOM DROPDOWN COMPONENT ----------
+function CustomDropdown({ value, options, onChange, icon = null, fullWidth = false }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isOpen]);
+
+  const selectedOption = options.find((opt) => opt.value === value) || options[0];
+
+  return (
+    <div
+      className={`dropdown-container ${isOpen ? "open" : ""} ${fullWidth ? "full-width" : ""}`}
+      ref={containerRef}
+      style={{ marginTop: fullWidth ? 6 : 0 }}
+    >
+      <button
+        type="button"
+        className="dropdown-trigger"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {icon && <span>{icon}</span>}
+          <span>{selectedOption?.label}</span>
+        </span>
+        <span className="dropdown-arrow">▼</span>
+      </button>
+
+      <div className="dropdown-menu" role="listbox">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            role="option"
+            aria-selected={opt.value === value}
+            className={`dropdown-item ${opt.value === value ? "active" : ""}`}
+            onClick={() => {
+              onChange(opt.value);
+              setIsOpen(false);
+            }}
+          >
+            <span>{opt.label}</span>
+            {opt.value === value && <span style={{ fontSize: 11 }}>✔</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------- MAIN APP COMPONENT ----------
 export default function App() {
   const [vocabList, setVocabList] = useState([]);
   const [verbsList, setVerbsList] = useState([]);
@@ -635,6 +906,9 @@ export default function App() {
   const [isReady, setIsReady] = useState(false);
 
   const [theme] = useState(() => localStorage.getItem("vocab_vault_theme") || "light");
+
+  // SIDEBAR STATE
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // PRIMARY TABS
   const [mainCategory, setMainCategory] = useState("Nouns");
@@ -658,7 +932,7 @@ export default function App() {
   const [verbFilter, setVerbFilter] = useState("all");
   const [prepFilter, setPrepFilter] = useState("all");
 
-  // NEW: Status Filters ("all" | "In Progress" | "Mastered")
+  // Status Filters
   const [nounStatusFilter, setNounStatusFilter] = useState("all");
   const [verbStatusFilter, setVerbStatusFilter] = useState("all");
   const [prepStatusFilter, setPrepStatusFilter] = useState("all");
@@ -916,10 +1190,9 @@ export default function App() {
   };
 
   if (!isReady) {
-    return <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>Loading German Vault...</div>;
+    return <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>Loading Deutschly...</div>;
   }
 
-  // Filtered lists with Category, Search, Date, and NEW Status filters
   const filteredNouns = vocabList.filter((item) => {
     const q = search.toLowerCase();
     const matchesSearch = item.noun.toLowerCase().includes(q) || (item.plural && item.plural.toLowerCase().includes(q)) || item.meaning.toLowerCase().includes(q);
@@ -977,36 +1250,80 @@ export default function App() {
   const timeCard = TIME_FLASHCARDS[timeCardIndex];
   const timeQuizWord = TIME_QUIZ[timeQuizIndex];
 
+  const CATEGORY_ITEMS = [
+    { id: "Nouns", icon: "📑", count: vocabList.length },
+    { id: "Patterns", icon: "📐", count: patternsList.length },
+    { id: "Verbs", icon: "⚡", count: verbsList.length },
+    { id: "Prepositions", icon: "🎯", count: prepsList.length },
+    { id: "Time", icon: "⏰", count: TIME_COMPARISON_DATA.length },
+    { id: "Grammar", icon: "📚", count: GRAMMAR_TOPICS.length },
+  ];
+
   return (
-    <div className="page" data-theme={theme}>
+    <div className="page-shell" data-theme={theme}>
       <style>{CSS}</style>
 
-      <div className="container">
-        {/* PRIMARY TABS */}
-        <div className="main-tabs-row">
-          <div className="main-tabs" role="tablist">
-            {[
-              { id: "Nouns", icon: "📑", count: vocabList.length },
-              { id: "Patterns", icon: "📐", count: patternsList.length },
-              { id: "Verbs", icon: "⚡", count: verbsList.length },
-              { id: "Prepositions", icon: "🎯", count: prepsList.length },
-              { id: "Time", icon: "⏰", count: TIME_COMPARISON_DATA.length },
-              { id: "Grammar", icon: "📚", count: GRAMMAR_TOPICS.length },
-            ].map((tab) => (
+      {/* TOP HEADER */}
+      <header className="app-header">
+        <button
+  type="button"
+  className="kebab-btn"
+  aria-label="Open Navigation Menu"
+  onClick={() => setSidebarOpen(true)}
+>
+  <span className="hamburger-icon">
+    <span></span>
+    <span></span>
+    <span></span>
+  </span>
+</button>
+        <h2 className="app-title">deutschly</h2>
+        <div className="header-spacer" />
+      </header>
+
+      {/* SIDEBAR DRAWER */}
+      <div
+        className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
+        onClick={(e) => e.target === e.currentTarget && setSidebarOpen(false)}
+      >
+        <aside className="sidebar" role="dialog" aria-modal="true" aria-label="Main Navigation">
+          <div className="sidebar-header">
+            <span className="sidebar-title">Categories</span>
+            <button
+              type="button"
+              className="sidebar-close-btn"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close Sidebar"
+            >
+              ✕
+            </button>
+          </div>
+          <nav className="sidebar-nav">
+            {CATEGORY_ITEMS.map((tab) => (
               <button
                 key={tab.id}
-                role="tab"
-                aria-selected={mainCategory === tab.id}
-                onClick={() => { setMainCategory(tab.id); setSearch(""); }}
-                className={`main-tab ${mainCategory === tab.id ? "active" : ""}`}
+                type="button"
+                className={`sidebar-tab-btn ${mainCategory === tab.id ? "active" : ""}`}
+                onClick={() => {
+                  setMainCategory(tab.id);
+                  setSearch("");
+                  setSidebarOpen(false);
+                }}
               >
-                <span>{tab.icon}</span>
-                <span>{tab.id}</span>
-                <span style={{ fontSize: 12, opacity: 0.7 }}>({tab.count})</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>{tab.icon}</span>
+                  <span>{tab.id}</span>
+                </span>
+                <span style={{ fontSize: 12, opacity: 0.75 }}>({tab.count})</span>
               </button>
             ))}
-          </div>
+          </nav>
+        </aside>
+      </div>
 
+      <div className="page">
+        <div className="container">
+          {/* SUB-VIEW SWITCHER */}
           <div className="sub-tabs-bar">
             <div className="sub-tabs">
               <button
@@ -1050,353 +1367,347 @@ export default function App() {
               </button>
             </div>
           </div>
-        </div>
 
-        {/* ==================== 1. NOUNS ==================== */}
-        {mainCategory === "Nouns" && (
-          <>
-            {nounSubView === "list" && (
-              <div className="section">
-                <div className="stats-grid">
-                  <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL NOUNS</span><span className="stat-pill dark">{nounsMastered} mastered</span></div><div className="stat-foot"><span className="stat-value">{vocabList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>all genders</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">MASCULINE</span><span className="stat-pill bg-der">der</span></div><div className="stat-foot"><span className="stat-value c-der">{countNoun("der")}</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">FEMININE</span><span className="stat-pill bg-die">die</span></div><div className="stat-foot"><span className="stat-value c-die">{countNoun("die")}</span></div></div>
-                  <div className="stat"><div className="stat-head"><span className="stat-label">NEUTER</span><span className="stat-pill bg-das">das</span></div><div className="stat-foot"><span className="stat-value c-das">{countNoun("das")}</span></div></div>
-                </div>
-
-                <div className="toolbar">
-                  <div className="search">
-                    <span>🔍</span>
-                    <input type="search" placeholder="Search noun, plural, or meaning..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          {/* ==================== 1. NOUNS ==================== */}
+          {mainCategory === "Nouns" && (
+            <>
+              {nounSubView === "list" && (
+                <div className="section">
+                  <div className="stats-grid">
+                    <div className="stat dark"><div className="stat-head"><span className="stat-label">TOTAL NOUNS</span><span className="stat-pill dark">{nounsMastered} mastered</span></div><div className="stat-foot"><span className="stat-value">{vocabList.length}</span><span className="stat-note" style={{ color: "#a8a29e" }}>all genders</span></div></div>
+                    <div className="stat"><div className="stat-head"><span className="stat-label">MASCULINE</span><span className="stat-pill bg-der">der</span></div><div className="stat-foot"><span className="stat-value c-der">{countNoun("der")}</span></div></div>
+                    <div className="stat"><div className="stat-head"><span className="stat-label">FEMININE</span><span className="stat-pill bg-die">die</span></div><div className="stat-foot"><span className="stat-value c-die">{countNoun("die")}</span></div></div>
+                    <div className="stat"><div className="stat-head"><span className="stat-label">NEUTER</span><span className="stat-pill bg-das">das</span></div><div className="stat-foot"><span className="stat-value c-das">{countNoun("das")}</span></div></div>
                   </div>
 
-                  <div className="filters-cluster">
-                    <div className="filters">
-                      <span className="filters-label">Gender:</span>
-                      <button onClick={() => setArticleFilter("all")} className={`chip all ${articleFilter === "all" ? "on" : ""}`}>All</button>
-                      {["der", "die", "das"].map((a) => (
-                        <button key={a} onClick={() => setArticleFilter(a)} className={`chip ${a} ${articleFilter === a ? "on" : ""}`}>{a}</button>
-                      ))}
+                  <div className="toolbar">
+                    <div className="search">
+                      <span>🔍</span>
+                      <input type="search" placeholder="Search noun, plural, or meaning..." value={search} onChange={(e) => setSearch(e.target.value)} />
                     </div>
 
-                    {/* STATUS FILTER: NOUNS */}
-                    <div className="filters">
-                      <span className="filters-label">Status:</span>
-                      <button onClick={() => setNounStatusFilter("all")} className={`chip all ${nounStatusFilter === "all" ? "on" : ""}`}>All</button>
-                      <button onClick={() => setNounStatusFilter("In Progress")} className={`chip all ${nounStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
-                      <button onClick={() => setNounStatusFilter("Mastered")} className={`chip das ${nounStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
-                    </div>
+                    <div className="filters-cluster">
+                      <div className="filters">
+                        <span className="filters-label">Gender:</span>
+                        <button onClick={() => setArticleFilter("all")} className={`chip all ${articleFilter === "all" ? "on" : ""}`}>All</button>
+                        {["der", "die", "das"].map((a) => (
+                          <button key={a} onClick={() => setArticleFilter(a)} className={`chip ${a} ${articleFilter === a ? "on" : ""}`}>{a}</button>
+                        ))}
+                      </div>
 
+                      <div className="filters">
+                        <span className="filters-label">Status:</span>
+                        <button onClick={() => setNounStatusFilter("all")} className={`chip all ${nounStatusFilter === "all" ? "on" : ""}`}>All</button>
+                        <button onClick={() => setNounStatusFilter("In Progress")} className={`chip all ${nounStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
+                        <button onClick={() => setNounStatusFilter("Mastered")} className={`chip das ${nounStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                      </div>
+
+                      <div className="filters">
+                        <span className="filters-label">Created:</span>
+                        <CustomDropdown
+                          icon="📅"
+                          value={dateFilter}
+                          options={DATE_OPTIONS}
+                          onChange={(val) => setDateFilter(val)}
+                        />
+                        {dateFilter === "custom" && (
+                          <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                        )}
+                      </div>
+
+                      <button onClick={() => { setEditingNounId(null); setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" }); setNounModalOpen(true); }} className="btn btn-primary">
+                        + Add Noun
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="list">
+                    <div className="list-head nouns-head">
+                      <span style={{ textAlign: "center" }}>#</span>
+                      <span>ARTICLE</span>
+                      <span>GERMAN NOUN</span>
+                      <span>PLURAL (DIE)</span>
+                      <span>ENGLISH MEANING</span>
+                      <span>STATUS</span>
+                      <span style={{ textAlign: "right" }}>ACTIONS</span>
+                    </div>
+                    {filteredNouns.map((item, index) => (
+                      <div className={`row noun-row ${item.article}`} key={item.id}>
+                        <div className="c-idx">{index + 1}</div>
+                        <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span></div>
+                        <div className="c-noun"><div className="noun-wrap"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span><span className="gender">({item.gender})</span></div></div>
+                        <div className="c-plural">{item.plural || "—"}</div>
+                        <div className="c-mean">{item.meaning}</div>
+                        <div className="c-status">
+                          <button onClick={() => commitNouns(vocabList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))} className={`status ${item.status === "Mastered" ? "done" : "todo"}`}>
+                            {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
+                          </button>
+                        </div>
+                        <div className="actions">
+                          <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
+                          <button onClick={() => { setEditingNounId(item.id); setNounFormData({ noun: item.noun, plural: item.plural || "", article: item.article, meaning: item.meaning, status: item.status }); setNounModalOpen(true); }} className="icon-btn">✏️</button>
+                          <button onClick={() => requestConfirmation("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () => commitNouns(vocabList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {nounSubView === "flashcards" && (
+                <div className="panel">
+                  {!nounCard ? <p>No nouns available.</p> : (
+                    <div className="flash-wrap">
+                      <div className="flash" onClick={() => setNounCardFlipped(!nounCardFlipped)}>
+                        {!nounCardFlipped ? (
+                          <>
+                            <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GUESS ARTICLE, PLURAL &amp; MEANING</span>
+                            <h2>{nounCard.noun}</h2>
+                            <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className={`pill ${ARTICLE_CLASS[nounCard.article]}`} style={{ fontSize: 22, padding: "6px 20px" }}>{nounCard.article} {nounCard.noun}</span>
+                            {nounCard.plural && <p style={{ fontSize: 16, fontWeight: 700, color: "var(--muted)", margin: "10px 0 0" }}>Plural: {nounCard.plural}</p>}
+                            <h3 style={{ fontSize: 24, margin: "10px 0 6px", color: "var(--ink-2)" }}>{nounCard.meaning}</h3>
+                            <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>{nounCard.gender}</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="flash-controls">
+                        <button className="btn btn-secondary" disabled={nounCardIndex === 0} onClick={() => { setNounCardIndex(nounCardIndex - 1); setNounCardFlipped(false); }}>◀ Previous</button>
+                        <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>🔊 Pronounce</button>
+                        <button className="btn btn-secondary" disabled={nounCardIndex >= vocabList.length - 1} onClick={() => { setNounCardIndex(nounCardIndex + 1); setNounCardFlipped(false); }}>Next ▶</button>
+                      </div>
+                      <span style={{ color: "var(--muted)", fontSize: 13 }}>Card {nounCardIndex + 1} of {vocabList.length}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {nounSubView === "quiz" && (
+                <div className="panel">
+                  {!nounQuizWord ? <p>Add nouns to start quiz.</p> : (
+                    <div className="quiz">
+                      <div className="quiz-head"><span>Question {nounQuizIndex + 1} of {vocabList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {nounQuizScore}</span></div>
+                      <div className="quiz-card">
+                        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct article:</span>
+                        <h1>{nounQuizWord.noun}</h1>
+                        <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>Plural: <strong>{nounQuizWord.plural || "—"}</strong></p>
+                        <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{nounQuizWord.meaning}</strong></p>
+                      </div>
+                      <div className="quiz-opts">
+                        {["der", "die", "das"].map((opt) => (
+                          <button key={opt} disabled={nounQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
+                            const ok = opt === nounQuizWord.article;
+                            if (ok) setNounQuizScore((s) => s + 1);
+                            setNounQuizFeedback(ok ? "Correct! 🎉" : `Wrong! Correct article is "${nounQuizWord.article}".`);
+                          }}>{opt}</button>
+                        ))}
+                      </div>
+                      {nounQuizFeedback && (
+                        <div style={{ marginTop: 24 }}>
+                          <p style={{ fontSize: 15, fontWeight: 600 }}>{nounQuizFeedback}</p>
+                          <button className="btn btn-primary" onClick={() => {
+                            setNounQuizFeedback(null);
+                            if (nounQuizIndex < vocabList.length - 1) setNounQuizIndex((i) => i + 1);
+                            else { alert(`Quiz finished! Score: ${nounQuizScore}/${vocabList.length}`); setNounQuizIndex(0); setNounQuizScore(0); }
+                          }}>{nounQuizIndex < vocabList.length - 1 ? "Next Word" : "Restart"}</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ==================== 2. PATTERNS ==================== */}
+          {mainCategory === "Patterns" && (
+            <>
+              {patternSubView === "list" && (
+                <div className="section">
+                  <div className="stats-grid">
+                    <div className="stat dark">
+                      <div className="stat-head"><span className="stat-label">TOTAL PATTERNS</span><span className="stat-pill dark">Active Rules</span></div>
+                      <div className="stat-foot"><span className="stat-value">{patternsList.length}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">DER PATTERNS</span><span className="stat-pill bg-der">der</span></div>
+                      <div className="stat-foot"><span className="stat-value c-der">{countPattern("der")}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">DIE PATTERNS</span><span className="stat-pill bg-die">die</span></div>
+                      <div className="stat-foot"><span className="stat-value c-die">{countPattern("die")}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">DAS PATTERNS</span><span className="stat-pill bg-das">das</span></div>
+                      <div className="stat-foot"><span className="stat-value c-das">{countPattern("das")}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="toolbar">
                     <div className="filters">
-                      <span className="filters-label">📅 Created:</span>
-                      <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
-                        <option value="all">All Dates</option>
-                        <option value="today">Today</option>
-                        <option value="week">Past 7 Days</option>
-                        <option value="month">Past 30 Days</option>
-                        <option value="custom">Specific Date...</option>
-                      </select>
+                      <span className="filters-label">Created:</span>
+                      <CustomDropdown
+                        icon="📅"
+                        value={dateFilter}
+                        options={DATE_OPTIONS}
+                        onChange={(val) => setDateFilter(val)}
+                      />
                       {dateFilter === "custom" && (
                         <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
                       )}
                     </div>
-
-                    <button onClick={() => { setEditingNounId(null); setNounFormData({ noun: "", plural: "", article: "der", meaning: "", status: "In Progress" }); setNounModalOpen(true); }} className="btn btn-primary">
-                      + Add Noun
+                    <button onClick={() => { setPatternFormData({ article: "der", ending: "", rule: "", examples: "" }); setPatternModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>
+                      + Add Suffix Pattern
                     </button>
                   </div>
-                </div>
 
-                <div className="list">
-                  <div className="list-head nouns-head">
-                    <span style={{ textAlign: "center" }}>#</span>
-                    <span>ARTICLE</span>
-                    <span>GERMAN NOUN</span>
-                    <span>PLURAL (DIE)</span>
-                    <span>ENGLISH MEANING</span>
-                    <span>STATUS</span>
-                    <span style={{ textAlign: "right" }}>ACTIONS</span>
-                  </div>
-                  {filteredNouns.map((item, index) => (
-                    <div className={`row noun-row ${item.article}`} key={item.id}>
-                      <div className="c-idx">{index + 1}</div>
-                      <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span></div>
-                      <div className="c-noun"><div className="noun-wrap"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span><span className="gender">({item.gender})</span></div></div>
-                      <div className="c-plural">{item.plural || "—"}</div>
-                      <div className="c-mean">{item.meaning}</div>
-                      <div className="c-status">
-                        <button onClick={() => commitNouns(vocabList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))} className={`status ${item.status === "Mastered" ? "done" : "todo"}`}>
-                          {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
-                        </button>
-                      </div>
-                      <div className="actions">
-                        <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                        <button onClick={() => { setEditingNounId(item.id); setNounFormData({ noun: item.noun, plural: item.plural || "", article: item.article, meaning: item.meaning, status: item.status }); setNounModalOpen(true); }} className="icon-btn">✏️</button>
-                        <button onClick={() => requestConfirmation("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () => commitNouns(vocabList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {nounSubView === "flashcards" && (
-              <div className="panel">
-                {!nounCard ? <p>No nouns available.</p> : (
-                  <div className="flash-wrap">
-                    <div className="flash" onClick={() => setNounCardFlipped(!nounCardFlipped)}>
-                      {!nounCardFlipped ? (
-                        <>
-                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GUESS ARTICLE, PLURAL &amp; MEANING</span>
-                          <h2>{nounCard.noun}</h2>
-                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className={`pill ${ARTICLE_CLASS[nounCard.article]}`} style={{ fontSize: 22, padding: "6px 20px" }}>{nounCard.article} {nounCard.noun}</span>
-                          {nounCard.plural && <p style={{ fontSize: 16, fontWeight: 700, color: "var(--muted)", margin: "10px 0 0" }}>Plural: {nounCard.plural}</p>}
-                          <h3 style={{ fontSize: 24, margin: "10px 0 6px", color: "var(--ink-2)" }}>{nounCard.meaning}</h3>
-                          <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>{nounCard.gender}</p>
-                        </>
-                      )}
-                    </div>
-                    <div className="flash-controls">
-                      <button className="btn btn-secondary" disabled={nounCardIndex === 0} onClick={() => { setNounCardIndex(nounCardIndex - 1); setNounCardFlipped(false); }}>◀ Previous</button>
-                      <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>🔊 Pronounce</button>
-                      <button className="btn btn-secondary" disabled={nounCardIndex >= vocabList.length - 1} onClick={() => { setNounCardIndex(nounCardIndex + 1); setNounCardFlipped(false); }}>Next ▶</button>
-                    </div>
-                    <span style={{ color: "var(--muted)", fontSize: 13 }}>Card {nounCardIndex + 1} of {vocabList.length}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {nounSubView === "quiz" && (
-              <div className="panel">
-                {!nounQuizWord ? <p>Add nouns to start quiz.</p> : (
-                  <div className="quiz">
-                    <div className="quiz-head"><span>Question {nounQuizIndex + 1} of {vocabList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {nounQuizScore}</span></div>
-                    <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct article:</span>
-                      <h1>{nounQuizWord.noun}</h1>
-                      <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>Plural: <strong>{nounQuizWord.plural || "—"}</strong></p>
-                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{nounQuizWord.meaning}</strong></p>
-                    </div>
-                    <div className="quiz-opts">
-                      {["der", "die", "das"].map((opt) => (
-                        <button key={opt} disabled={nounQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
-                          const ok = opt === nounQuizWord.article;
-                          if (ok) setNounQuizScore((s) => s + 1);
-                          setNounQuizFeedback(ok ? "Correct! 🎉" : `Wrong! Correct article is "${nounQuizWord.article}".`);
-                        }}>{opt}</button>
-                      ))}
-                    </div>
-                    {nounQuizFeedback && (
-                      <div style={{ marginTop: 24 }}>
-                        <p style={{ fontSize: 15, fontWeight: 600 }}>{nounQuizFeedback}</p>
-                        <button className="btn btn-primary" onClick={() => {
-                          setNounQuizFeedback(null);
-                          if (nounQuizIndex < vocabList.length - 1) setNounQuizIndex((i) => i + 1);
-                          else { alert(`Quiz finished! Score: ${nounQuizScore}/${vocabList.length}`); setNounQuizIndex(0); setNounQuizScore(0); }
-                        }}>{nounQuizIndex < vocabList.length - 1 ? "Next Word" : "Restart"}</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ==================== 2. PATTERNS (SUBTITLES REMOVED) ==================== */}
-        {mainCategory === "Patterns" && (
-          <>
-            {patternSubView === "list" && (
-              <div className="section">
-                <div className="stats-grid">
-                  <div className="stat dark">
-                    <div className="stat-head"><span className="stat-label">TOTAL PATTERNS</span><span className="stat-pill dark">Active Rules</span></div>
-                    <div className="stat-foot"><span className="stat-value">{patternsList.length}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">DER PATTERNS</span><span className="stat-pill bg-der">der</span></div>
-                    <div className="stat-foot"><span className="stat-value c-der">{countPattern("der")}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">DIE PATTERNS</span><span className="stat-pill bg-die">die</span></div>
-                    <div className="stat-foot"><span className="stat-value c-die">{countPattern("die")}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">DAS PATTERNS</span><span className="stat-pill bg-das">das</span></div>
-                    <div className="stat-foot"><span className="stat-value c-das">{countPattern("das")}</span></div>
-                  </div>
-                </div>
-
-                <div className="toolbar">
-                  <div className="filters">
-                    <span className="filters-label">📅 Created:</span>
-                    <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
-                      <option value="all">All Dates</option>
-                      <option value="today">Today</option>
-                      <option value="week">Past 7 Days</option>
-                      <option value="month">Past 30 Days</option>
-                      <option value="custom">Specific Date...</option>
-                    </select>
-                    {dateFilter === "custom" && (
-                      <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
-                    )}
-                  </div>
-                  <button onClick={() => { setPatternFormData({ article: "der", ending: "", rule: "", examples: "" }); setPatternModalOpen(true); }} className="btn btn-primary" style={{ marginLeft: "auto" }}>
-                    + Add Suffix Pattern
-                  </button>
-                </div>
-
-                <div className="patterns-grid">
-                  {["der", "die", "das"].map((art) => (
-                    <div key={art} className={`pattern-col ${art}`}>
-                      <div className="pattern-header">
-                        <div><h3 className={`c-${art}`}>{GENDER_MAP[art]} Rules</h3><span style={{ fontSize: 12, color: "var(--muted)" }}>{patternsList.filter((p) => p.article === art && matchesDateFilter(p.createdAt)).length} patterns</span></div>
-                        <span className={`stat-pill ${ARTICLE_CLASS[art]}`}>{art}</span>
-                      </div>
-                      {patternsList.filter((p) => p.article === art && matchesDateFilter(p.createdAt)).map((rule) => (
-                        <div key={rule.id} className="pattern-card">
-                          <div className="pattern-card-top">
-                            <span className={`pattern-badge ${ARTICLE_CLASS[art]}`}>{rule.ending}</span>
-                            <button onClick={() => requestConfirmation("Delete Suffix Pattern", `Delete rule for "${rule.ending}"?`, () => commitPatterns(patternsList.filter((p) => p.id !== rule.id)))} className="pattern-delete-btn">✕</button>
-                          </div>
-                          <p className="pattern-rule">{rule.rule}</p>
-                          <p className="pattern-eg">e.g. {rule.examples}</p>
+                  <div className="patterns-grid">
+                    {["der", "die", "das"].map((art) => (
+                      <div key={art} className={`pattern-col ${art}`}>
+                        <div className="pattern-header">
+                          <div><h3 className={`c-${art}`}>{GENDER_MAP[art]} Rules</h3><span style={{ fontSize: 12, color: "var(--muted)" }}>{patternsList.filter((p) => p.article === art && matchesDateFilter(p.createdAt)).length} patterns</span></div>
+                          <span className={`stat-pill ${ARTICLE_CLASS[art]}`}>{art}</span>
                         </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {patternSubView === "flashcards" && (
-              <div className="panel">
-                {!patternCard ? <p>No patterns available.</p> : (
-                  <div className="flash-wrap">
-                    <div className="flash" onClick={() => setPatternCardFlipped(!patternCardFlipped)}>
-                      {!patternCardFlipped ? (
-                        <>
-                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE BELONGS TO THIS PATTERN?</span>
-                          <h2 style={{ fontFamily: "monospace" }}>{patternCard.ending}</h2>
-                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to reveal article &amp; rules)</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className={`pill ${ARTICLE_CLASS[patternCard.article]}`} style={{ fontSize: 22, padding: "6px 22px" }}>{patternCard.article} ({GENDER_MAP[patternCard.article]})</span>
-                          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-2)", margin: "14px 0 6px" }}>{patternCard.rule}</p>
-                          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, fontStyle: "italic" }}>e.g. {patternCard.examples}</p>
-                        </>
-                      )}
-                    </div>
-                    <div className="flash-controls">
-                      <button className="btn btn-secondary" disabled={patternCardIndex === 0} onClick={() => { setPatternCardIndex(patternCardIndex - 1); setPatternCardFlipped(false); }}>◀ Previous</button>
-                      <button className="btn btn-secondary mid" onClick={() => speakGerman(patternCard.examples)}>🔊 Hear Examples</button>
-                      <button className="btn btn-secondary" disabled={patternCardIndex >= patternsList.length - 1} onClick={() => { setPatternCardIndex(patternCardIndex + 1); setPatternCardFlipped(false); }}>Next ▶</button>
-                    </div>
-                    <span style={{ color: "var(--muted)", fontSize: 13 }}>Pattern {patternCardIndex + 1} of {patternsList.length}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {patternSubView === "quiz" && (
-              <div className="panel">
-                {!patternQuizWord ? <p>Add patterns to start quiz.</p> : (
-                  <div className="quiz">
-                    <div className="quiz-head"><span>Question {patternQuizIndex + 1} of {patternsList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {patternQuizScore}</span></div>
-                    <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which article goes with this suffix?</span>
-                      <h1 style={{ fontFamily: "monospace" }}>{patternQuizWord.ending}</h1>
-                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>Rule: <strong style={{ color: "var(--ink-2)" }}>{patternQuizWord.rule}</strong></p>
-                    </div>
-                    <div className="quiz-opts">
-                      {["der", "die", "das"].map((opt) => (
-                        <button key={opt} disabled={patternQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
-                          const ok = opt === patternQuizWord.article;
-                          if (ok) setPatternQuizScore((s) => s + 1);
-                          setPatternQuizFeedback(ok ? "Correct! 🎉" : `Wrong! Suffix "${patternQuizWord.ending}" takes "${patternQuizWord.article}".`);
-                        }}>{opt}</button>
-                      ))}
-                    </div>
-                    {patternQuizFeedback && (
-                      <div style={{ marginTop: 24 }}>
-                        <p style={{ fontSize: 15, fontWeight: 600 }}>{patternQuizFeedback}</p>
-                        <button className="btn btn-primary" onClick={() => {
-                          setPatternQuizFeedback(null);
-                          if (patternQuizIndex < patternsList.length - 1) setPatternQuizIndex((i) => i + 1);
-                          else { alert(`Pattern Quiz finished! Score: ${patternQuizScore}/${patternsList.length}`); setPatternQuizIndex(0); setPatternQuizScore(0); }
-                        }}>{patternQuizIndex < patternsList.length - 1 ? "Next Pattern" : "Restart"}</button>
+                        {patternsList.filter((p) => p.article === art && matchesDateFilter(p.createdAt)).map((rule) => (
+                          <div key={rule.id} className="pattern-card">
+                            <div className="pattern-card-top">
+                              <span className={`pattern-badge ${ARTICLE_CLASS[art]}`}>{rule.ending}</span>
+                              <button onClick={() => requestConfirmation("Delete Suffix Pattern", `Delete rule for "${rule.ending}"?`, () => commitPatterns(patternsList.filter((p) => p.id !== rule.id)))} className="pattern-delete-btn">✕</button>
+                            </div>
+                            <p className="pattern-rule">{rule.rule}</p>
+                            <p className="pattern-eg">e.g. {rule.examples}</p>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ==================== 3. VERBS (SUBTITLES REMOVED) ==================== */}
-        {mainCategory === "Verbs" && (
-          <>
-            {verbSubView === "list" && (
-              <div className="section">
-                <div className="stats-grid">
-                  <div className="stat dark">
-                    <div className="stat-head"><span className="stat-label">TOTAL VERBS</span><span className="stat-pill dark">{verbsMastered} mastered</span></div>
-                    <div className="stat-foot"><span className="stat-value">{verbsList.length}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div>
-                    <div className="stat-foot"><span className="stat-value c-dativ">{countVerb("Dativ")}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akkusativ</span></div>
-                    <div className="stat-foot"><span className="stat-value c-akku">{countVerb("Akkusativ")}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">BOTH / COMMON</span><span className="stat-pill bg-both">Both</span></div>
-                    <div className="stat-foot"><span className="stat-value c-both">{countVerb("Both / Common")}</span></div>
+                    ))}
                   </div>
                 </div>
+              )}
 
-                <div className="toolbar">
-                  <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search verb, past forms, meaning..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-
-                  <div className="filters-cluster">
-                    <div className="filters">
-                      <span className="filters-label">Case:</span>
-                      <button onClick={() => setVerbFilter("all")} className={`chip all ${verbFilter === "all" ? "on" : ""}`}>All</button>
-                      <button onClick={() => setVerbFilter("Dativ")} className={`chip dativ ${verbFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
-                      <button onClick={() => setVerbFilter("Akkusativ")} className={`chip akku ${verbFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
-                      <button onClick={() => setVerbFilter("Both / Common")} className={`chip both ${verbFilter === "Both / Common" ? "on" : ""}`}>Both</button>
+              {patternSubView === "flashcards" && (
+                <div className="panel">
+                  {!patternCard ? <p>No patterns available.</p> : (
+                    <div className="flash-wrap">
+                      <div className="flash" onClick={() => setPatternCardFlipped(!patternCardFlipped)}>
+                        {!patternCardFlipped ? (
+                          <>
+                            <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE BELONGS TO THIS PATTERN?</span>
+                            <h2 style={{ fontFamily: "monospace" }}>{patternCard.ending}</h2>
+                            <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to reveal article &amp; rules)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className={`pill ${ARTICLE_CLASS[patternCard.article]}`} style={{ fontSize: 22, padding: "6px 22px" }}>{patternCard.article} ({GENDER_MAP[patternCard.article]})</span>
+                            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-2)", margin: "14px 0 6px" }}>{patternCard.rule}</p>
+                            <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, fontStyle: "italic" }}>e.g. {patternCard.examples}</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="flash-controls">
+                        <button className="btn btn-secondary" disabled={patternCardIndex === 0} onClick={() => { setPatternCardIndex(patternCardIndex - 1); setPatternCardFlipped(false); }}>◀ Previous</button>
+                        <button className="btn btn-secondary mid" onClick={() => speakGerman(patternCard.examples)}>🔊 Hear Examples</button>
+                        <button className="btn btn-secondary" disabled={patternCardIndex >= patternsList.length - 1} onClick={() => { setPatternCardIndex(patternCardIndex + 1); setPatternCardFlipped(false); }}>Next ▶</button>
+                      </div>
+                      <span style={{ color: "var(--muted)", fontSize: 13 }}>Pattern {patternCardIndex + 1} of {patternsList.length}</span>
                     </div>
+                  )}
+                </div>
+              )}
 
-                    {/* STATUS FILTER: VERBS */}
-                    <div className="filters">
-                      <span className="filters-label">Status:</span>
-                      <button onClick={() => setVerbStatusFilter("all")} className={`chip all ${verbStatusFilter === "all" ? "on" : ""}`}>All</button>
-                      <button onClick={() => setVerbStatusFilter("In Progress")} className={`chip all ${verbStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
-                      <button onClick={() => setVerbStatusFilter("Mastered")} className={`chip das ${verbStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
-                    </div>
-
-                    <div className="filters">
-                      <span className="filters-label">📅 Created:</span>
-                      <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
-                        <option value="all">All Dates</option>
-                        <option value="today">Today</option>
-                        <option value="week">Past 7 Days</option>
-                        <option value="month">Past 30 Days</option>
-                        <option value="custom">Specific Date...</option>
-                      </select>
-                      {dateFilter === "custom" && (
-                        <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+              {patternSubView === "quiz" && (
+                <div className="panel">
+                  {!patternQuizWord ? <p>Add patterns to start quiz.</p> : (
+                    <div className="quiz">
+                      <div className="quiz-head"><span>Question {patternQuizIndex + 1} of {patternsList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {patternQuizScore}</span></div>
+                      <div className="quiz-card">
+                        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which article goes with this suffix?</span>
+                        <h1 style={{ fontFamily: "monospace" }}>{patternQuizWord.ending}</h1>
+                        <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>Rule: <strong style={{ color: "var(--ink-2)" }}>{patternQuizWord.rule}</strong></p>
+                      </div>
+                      <div className="quiz-opts">
+                        {["der", "die", "das"].map((opt) => (
+                          <button key={opt} disabled={patternQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
+                            const ok = opt === patternQuizWord.article;
+                            if (ok) setPatternQuizScore((s) => s + 1);
+                            setPatternQuizFeedback(ok ? "Correct! 🎉" : `Wrong! Suffix "${patternQuizWord.ending}" takes "${patternQuizWord.article}".`);
+                          }}>{opt}</button>
+                        ))}
+                      </div>
+                      {patternQuizFeedback && (
+                        <div style={{ marginTop: 24 }}>
+                          <p style={{ fontSize: 15, fontWeight: 600 }}>{patternQuizFeedback}</p>
+                          <button className="btn btn-primary" onClick={() => {
+                            setPatternQuizFeedback(null);
+                            if (patternQuizIndex < patternsList.length - 1) setPatternQuizIndex((i) => i + 1);
+                            else { alert(`Pattern Quiz finished! Score: ${patternQuizScore}/${patternsList.length}`); setPatternQuizIndex(0); setPatternQuizScore(0); }
+                          }}>{patternQuizIndex < patternsList.length - 1 ? "Next Pattern" : "Restart"}</button>
+                        </div>
                       )}
                     </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ==================== 3. VERBS ==================== */}
+          {mainCategory === "Verbs" && (
+            <>
+              {verbSubView === "list" && (
+                <div className="section">
+                  <div className="stats-grid">
+                    <div className="stat dark">
+                      <div className="stat-head"><span className="stat-label">TOTAL VERBS</span><span className="stat-pill dark">{verbsMastered} mastered</span></div>
+                      <div className="stat-foot"><span className="stat-value">{verbsList.length}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div>
+                      <div className="stat-foot"><span className="stat-value c-dativ">{countVerb("Dativ")}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akkusativ</span></div>
+                      <div className="stat-foot"><span className="stat-value c-akku">{countVerb("Akkusativ")}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">BOTH / COMMON</span><span className="stat-pill bg-both">Both</span></div>
+                      <div className="stat-foot"><span className="stat-value c-both">{countVerb("Both / Common")}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="toolbar">
+                    <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search verb, past forms, meaning..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+
+                    <div className="filters-cluster">
+                      <div className="filters">
+                        <span className="filters-label">Case:</span>
+                        <button onClick={() => setVerbFilter("all")} className={`chip all ${verbFilter === "all" ? "on" : ""}`}>All</button>
+                        <button onClick={() => setVerbFilter("Dativ")} className={`chip dativ ${verbFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
+                        <button onClick={() => setVerbFilter("Akkusativ")} className={`chip akku ${verbFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
+                        <button onClick={() => setVerbFilter("Both / Common")} className={`chip both ${verbFilter === "Both / Common" ? "on" : ""}`}>Both</button>
+                      </div>
+
+                      <div className="filters">
+                        <span className="filters-label">Status:</span>
+                        <button onClick={() => setVerbStatusFilter("all")} className={`chip all ${verbStatusFilter === "all" ? "on" : ""}`}>All</button>
+                        <button onClick={() => setVerbStatusFilter("In Progress")} className={`chip all ${verbStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
+                        <button onClick={() => setVerbStatusFilter("Mastered")} className={`chip das ${verbStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                      </div>
+
+                      <div className="filters">
+                        <span className="filters-label">Created:</span>
+                        <CustomDropdown
+                          icon="📅"
+                          value={dateFilter}
+                          options={DATE_OPTIONS}
+                          onChange={(val) => setDateFilter(val)}
+                        />
+                        {dateFilter === "custom" && (
+                          <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                        )}
+                      </div>
 
                     <button onClick={() => { setEditingVerbId(null); setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }} className="btn btn-primary">
                       + Add Verb
@@ -1485,8 +1796,8 @@ export default function App() {
                     </div>
                     <div className="quiz-opts">
                       {[{ l: "Dativ", v: "Dativ" }, { l: "Akkusativ", v: "Akkusativ" }, { l: "Both", v: "Both / Common" }].map((opt) => (
-                        <button key={opt.v} disabled={verbQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
-                          const ok = opt === verbQuizWord.caseType;
+                        <button key={opt.v} disabled={verbQuizFeedback !== null} className={`quiz-opt ${opt.l}`} onClick={() => {
+                          const ok = opt.v === verbQuizWord.caseType;
                           if (ok) setVerbQuizScore((s) => s + 1);
                           setVerbQuizFeedback(ok ? "Correct! 🎉" : `Wrong! "${verbQuizWord.verb}" governs "${verbQuizWord.caseType}".`);
                         }}>{opt.l}</button>
@@ -1509,7 +1820,7 @@ export default function App() {
           </>
         )}
 
-        {/* ==================== 4. PREPOSITIONS (SUBTITLES REMOVED) ==================== */}
+        {/* ==================== 4. PREPOSITIONS ==================== */}
         {mainCategory === "Prepositions" && (
           <>
             {prepSubView === "list" && (
@@ -1545,7 +1856,6 @@ export default function App() {
                       <button onClick={() => setPrepFilter("Wechsel")} className={`chip wechsel ${prepFilter === "Wechsel" ? "on" : ""}`}>Wechsel</button>
                     </div>
 
-                    {/* STATUS FILTER: PREPOSITIONS */}
                     <div className="filters">
                       <span className="filters-label">Status:</span>
                       <button onClick={() => setPrepStatusFilter("all")} className={`chip all ${prepStatusFilter === "all" ? "on" : ""}`}>All</button>
@@ -1554,14 +1864,13 @@ export default function App() {
                     </div>
 
                     <div className="filters">
-                      <span className="filters-label">📅 Created:</span>
-                      <select className="date-select" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
-                        <option value="all">All Dates</option>
-                        <option value="today">Today</option>
-                        <option value="week">Past 7 Days</option>
-                        <option value="month">Past 30 Days</option>
-                        <option value="custom">Specific Date...</option>
-                      </select>
+                      <span className="filters-label">Created:</span>
+                      <CustomDropdown
+                        icon="📅"
+                        value={dateFilter}
+                        options={DATE_OPTIONS}
+                        onChange={(val) => setDateFilter(val)}
+                      />
                       {dateFilter === "custom" && (
                         <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
                       )}
@@ -2029,6 +2338,7 @@ export default function App() {
           </>
         )}
       </div>
+      </div>
 
       {/* ==================== CONFIRMATION POP-UP MODAL ==================== */}
       {confirmModal.isOpen && (
@@ -2071,7 +2381,15 @@ export default function App() {
               <div><label className="modal-label">German Noun (Singular)</label><input className="modal-input" type="text" required placeholder="e.g. Apfel" value={nounFormData.noun} onChange={(e) => setNounFormData({ ...nounFormData, noun: e.target.value })} /></div>
               <div><label className="modal-label">Plural Form (die ...)</label><input className="modal-input" type="text" placeholder="e.g. die Äpfel" value={nounFormData.plural} onChange={(e) => setNounFormData({ ...nounFormData, plural: e.target.value })} /></div>
               <div><label className="modal-label">English Meaning</label><input className="modal-input" type="text" required placeholder="e.g. Apple" value={nounFormData.meaning} onChange={(e) => setNounFormData({ ...nounFormData, meaning: e.target.value })} /></div>
-              <div><label className="modal-label">Status</label><select className="modal-input" value={nounFormData.status} onChange={(e) => setNounFormData({ ...nounFormData, status: e.target.value })}><option value="In Progress">In Progress</option><option value="Mastered">Mastered</option></select></div>
+              <div>
+                <label className="modal-label">Status</label>
+                <CustomDropdown
+                  fullWidth
+                  value={nounFormData.status}
+                  options={STATUS_OPTIONS}
+                  onChange={(val) => setNounFormData({ ...nounFormData, status: val })}
+                />
+              </div>
               <div className="modal-actions"><button type="button" onClick={() => setNounModalOpen(false)} className="btn btn-secondary">Cancel</button><button type="submit" className="btn btn-primary">Save Noun</button></div>
             </form>
           </div>
@@ -2102,7 +2420,15 @@ export default function App() {
               </div>
               <div><label className="modal-label">English Meaning</label><input className="modal-input" type="text" required placeholder="e.g. to help (+ Dat)" value={verbFormData.meaning} onChange={(e) => setVerbFormData({ ...verbFormData, meaning: e.target.value })} /></div>
               <div><label className="modal-label">Example Sentence</label><input className="modal-input" type="text" placeholder="e.g. Ich helfe dir." value={verbFormData.example} onChange={(e) => setVerbFormData({ ...verbFormData, example: e.target.value })} /></div>
-              <div><label className="modal-label">Status</label><select className="modal-input" value={verbFormData.status} onChange={(e) => setVerbFormData({ ...verbFormData, status: e.target.value })}><option value="In Progress">In Progress</option><option value="Mastered">Mastered</option></select></div>
+              <div>
+                <label className="modal-label">Status</label>
+                <CustomDropdown
+                  fullWidth
+                  value={verbFormData.status}
+                  options={STATUS_OPTIONS}
+                  onChange={(val) => setVerbFormData({ ...verbFormData, status: val })}
+                />
+              </div>
               <div className="modal-actions"><button type="button" onClick={() => setVerbModalOpen(false)} className="btn btn-secondary">Cancel</button><button type="submit" className="btn btn-primary">Save Verb</button></div>
             </form>
           </div>
@@ -2155,7 +2481,15 @@ export default function App() {
               <div><label className="modal-label">Preposition</label><input className="modal-input" type="text" required placeholder="e.g. ohne, mit" value={prepFormData.prep} onChange={(e) => setPrepFormData({ ...prepFormData, prep: e.target.value })} /></div>
               <div><label className="modal-label">English Meaning</label><input className="modal-input" type="text" required placeholder="e.g. without, with" value={prepFormData.meaning} onChange={(e) => setPrepFormData({ ...prepFormData, meaning: e.target.value })} /></div>
               <div><label className="modal-label">Example Sentence</label><input className="modal-input" type="text" placeholder="e.g. Er geht ohne mich." value={prepFormData.example} onChange={(e) => setPrepFormData({ ...prepFormData, example: e.target.value })} /></div>
-              <div><label className="modal-label">Status</label><select className="modal-input" value={prepFormData.status} onChange={(e) => setPrepFormData({ ...prepFormData, status: e.target.value })}><option value="In Progress">In Progress</option><option value="Mastered">Mastered</option></select></div>
+              <div>
+                <label className="modal-label">Status</label>
+                <CustomDropdown
+                  fullWidth
+                  value={prepFormData.status}
+                  options={STATUS_OPTIONS}
+                  onChange={(val) => setPrepFormData({ ...prepFormData, status: val })}
+                />
+              </div>
               <div className="modal-actions"><button type="button" onClick={() => setPrepModalOpen(false)} className="btn btn-secondary">Cancel</button><button type="submit" className="btn btn-primary">Save Preposition</button></div>
             </form>
           </div>

@@ -10,82 +10,90 @@ import successGif from "../assets/Success.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
 
-// 🔊 In-memory Web Audio Synthesizer (No external sound files required)
-const getAudioContext = () => {
+// 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
+const getActiveAudioContext = async () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  return AudioCtx ? new AudioCtx() : null;
+  if (!AudioCtx) return null;
+  const ctx = new AudioCtx();
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+  return ctx;
 };
 
-// 1. Upbeat, bright chime for adding a new noun or importing entries
-const playSuccessSound = () => {
+// 1. Success chime for adding new nouns
+const playSuccessSound = async () => {
   try {
-    const ctx = getAudioContext();
+    const ctx = await getActiveAudioContext();
     if (!ctx) return;
 
-    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 major triad
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
     notes.forEach((freq, index) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
       osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + index * 0.07);
+      const startAt = ctx.currentTime + index * 0.08;
+      osc.frequency.setValueAtTime(freq, startAt);
 
-      gain.gain.setValueAtTime(0.12, ctx.currentTime + index * 0.07);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + index * 0.07 + 0.3);
+      gain.gain.setValueAtTime(0.15, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.3);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
 
-      osc.start(ctx.currentTime + index * 0.07);
-      osc.stop(ctx.currentTime + index * 0.07 + 0.3);
+      osc.start(startAt);
+      osc.stop(startAt + 0.3);
     });
   } catch (err) {
-    console.warn("Audio playback not permitted:", err);
+    console.warn("Audio playback failed:", err);
   }
 };
 
-// 2. Double hollow alert when a duplicate word is encountered
-const playDuplicateSound = () => {
+// 2. Duplicate warning buzzer (Two distinct descending warning pulses)
+const playDuplicateSound = async () => {
   try {
-    const ctx = getAudioContext();
+    const ctx = await getActiveAudioContext();
     if (!ctx) return;
 
-    [0, 0.12].forEach((delay) => {
+    // Two rapid warning beeps
+    [0, 0.16].forEach((delay) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(320, ctx.currentTime + delay);
-      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + delay + 0.15);
+      osc.type = "sawtooth";
+      const startAt = ctx.currentTime + delay;
+      osc.frequency.setValueAtTime(260, startAt);
+      osc.frequency.linearRampToValueAtTime(160, startAt + 0.14);
 
-      gain.gain.setValueAtTime(0.18, ctx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.18);
+      gain.gain.setValueAtTime(0.2, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.14);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
 
-      osc.start(ctx.currentTime + delay);
-      osc.stop(ctx.currentTime + delay + 0.18);
+      osc.start(startAt);
+      osc.stop(startAt + 0.14);
     });
   } catch (err) {
-    console.warn("Audio playback not permitted:", err);
+    console.warn("Audio playback failed:", err);
   }
 };
 
-// 3. Low buzzing warning sound for danger/destructive reset actions
-const playDangerSound = () => {
+// 3. Danger warning for reset
+const playDangerSound = async () => {
   try {
-    const ctx = getAudioContext();
+    const ctx = await getActiveAudioContext();
     if (!ctx) return;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
     osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(150, ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(80, ctx.currentTime + 0.35);
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.35);
 
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
 
     osc.connect(gain);
@@ -94,7 +102,7 @@ const playDangerSound = () => {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.35);
   } catch (err) {
-    console.warn("Audio playback not permitted:", err);
+    console.warn("Audio playback failed:", err);
   }
 };
 
@@ -165,7 +173,6 @@ export default function NounsPage({
 
   const fileInputRef = useRef(null);
 
-  // Helper calculating live counts
   const getGoalCounts = (list) => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -338,7 +345,7 @@ export default function NounsPage({
         });
 
         if (newEntries.length > 0) {
-          playSuccessSound(); // 🔊 Sound on successful bulk import
+          playSuccessSound();
           const updatedList = [...vocabList, ...newEntries];
           verifyGoalMilestone(vocabList, updatedList, `${newEntries.length} new nouns`);
           onCommitNouns(updatedList);
@@ -464,7 +471,8 @@ export default function NounsPage({
     );
 
     if (isDuplicate) {
-      playDuplicateSound(); // ⚠️ Sound on duplicate word collision
+      // ⚠️ Immediately plays buzzer on duplicate submit
+      playDuplicateSound();
       setDuplicateWordName(cleanNoun);
       setDuplicateModalOpen(true);
       return;
@@ -479,7 +487,8 @@ export default function NounsPage({
         item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
       );
     } else {
-      playSuccessSound(); // 🔊 Sound on adding a new word
+      // 🔊 Play success chime on brand new addition
+      playSuccessSound();
 
       updated = [
         ...vocabList,
@@ -609,7 +618,7 @@ export default function NounsPage({
               <button
                 type="button"
                 onClick={() => {
-                  playDangerSound(); // 🚨 Sound when opening reset confirmation
+                  playDangerSound();
                   setResetModalOpen(true);
                 }}
                 className="btn btn-secondary"

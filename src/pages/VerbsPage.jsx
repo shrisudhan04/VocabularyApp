@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import GoalModal from "../components/GoalModal"; // Adjust path if located in ./GoalModal
 import { VERB_CASE_CLASS, DATE_OPTIONS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -8,6 +9,101 @@ import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
+
+// 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
+const getActiveAudioContext = async () => {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  const ctx = new AudioCtx();
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+  return ctx;
+};
+
+// 1. Success chime for adding new verbs & goal milestones
+const playSuccessSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      const startAt = ctx.currentTime + index * 0.08;
+      osc.frequency.setValueAtTime(freq, startAt);
+
+      gain.gain.setValueAtTime(0.15, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.3);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 2. Duplicate warning buzzer
+const playDuplicateSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    [0, 0.16].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sawtooth";
+      const startAt = ctx.currentTime + delay;
+      osc.frequency.setValueAtTime(260, startAt);
+      osc.frequency.linearRampToValueAtTime(160, startAt + 0.14);
+
+      gain.gain.setValueAtTime(0.2, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.14);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.14);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 3. Danger warning for reset
+const playDangerSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.35);
+
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
 
 const CASE_OPTIONS = [
   { label: "All Cases", value: "all" },
@@ -58,6 +154,8 @@ export default function VerbsPage({
   const [successWordInfo, setSuccessWordInfo] = useState({ verb: "", caseType: "", isEdit: false });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
+  // 🎯 Study Goals Modal & Milestone State
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalCelebration, setGoalCelebration] = useState({
     isOpen: false,
     goalType: "daily",
@@ -89,7 +187,7 @@ export default function VerbsPage({
     let daily = 0;
     let weekly = 0;
 
-    list.forEach((item) => {
+    (list || []).forEach((item) => {
       const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
       if (itemTime >= startOfToday) daily += 1;
       if (itemTime >= startOfWeek) weekly += 1;
@@ -123,6 +221,7 @@ export default function VerbsPage({
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      playSuccessSound();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -134,6 +233,7 @@ export default function VerbsPage({
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      playSuccessSound();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -148,6 +248,7 @@ export default function VerbsPage({
   };
 
   const handleConfirmReset = () => {
+    playDangerSound();
     onCommitVerbs([]);
     setCardIndex(0);
     setCardFlipped(false);
@@ -257,9 +358,12 @@ export default function VerbsPage({
         });
 
         if (newEntries.length > 0) {
+          playSuccessSound();
           const updatedList = [...verbsList, ...newEntries];
           verifyGoalMilestone(verbsList, updatedList, `${newEntries.length} new verbs`);
           onCommitVerbs(updatedList);
+        } else if (duplicateWords.length > 0) {
+          playDuplicateSound();
         }
 
         setImportSummary({
@@ -330,7 +434,7 @@ export default function VerbsPage({
         },
       };
 
-      const candidateModels = ["gemini-3.8-flash", "gemini-2.0-flash"];
+      const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
       let response;
 
       for (const modelName of candidateModels) {
@@ -402,6 +506,10 @@ export default function VerbsPage({
   const verbsMastered = verbsList.filter((i) => i.status === "Mastered").length;
   const countVerb = (c) => verbsList.filter((i) => i.caseType === c).length;
 
+  // Live Goal Progress calculations
+  const { daily: verbDailyCount, weekly: verbWeeklyCount } = getGoalCounts(verbsList);
+  const { daily: verbDailyTarget, weekly: verbWeeklyTarget } = getSavedTargets();
+
   const handleSaveModal = (e) => {
     e.preventDefault();
 
@@ -417,6 +525,7 @@ export default function VerbsPage({
     );
 
     if (isDuplicate) {
+      playDuplicateSound();
       setDuplicateWordName(cleanVerb);
       setDuplicateModalOpen(true);
       return;
@@ -430,6 +539,7 @@ export default function VerbsPage({
         item.id === editingVerbId ? { ...item, ...verbFormData } : item
       );
     } else {
+      playSuccessSound();
       updated = [
         ...verbsList,
         {
@@ -473,6 +583,30 @@ export default function VerbsPage({
                 <span className="stat-note" style={{ color: "#a8a29e" }}>all cases</span>
               </div>
             </div>
+
+            {/* 🎯 Verb Daily Goals Stat Card */}
+            <div 
+              className="stat" 
+              style={{ cursor: "pointer", border: "1px solid #fed7aa" }} 
+              onClick={() => setGoalModalOpen(true)}
+              title="Click to manage verb study targets"
+            >
+              <div className="stat-head">
+                <span className="stat-label">TODAY'S GOAL</span>
+                <span className="stat-pill" style={{ backgroundColor: "#ffedd5", color: "#c2410c", fontWeight: 700 }}>
+                  🎯 {verbDailyCount >= verbDailyTarget ? "Achieved!" : "In Progress"}
+                </span>
+              </div>
+              <div className="stat-foot">
+                <span className="stat-value" style={{ color: "#c2410c" }}>
+                  {verbDailyCount} <span style={{ fontSize: 16, color: "var(--muted)" }}>/ {verbDailyTarget}</span>
+                </span>
+                <span className="stat-note" style={{ color: "#9a3412" }}>
+                  Week: {verbWeeklyCount}/{verbWeeklyTarget}
+                </span>
+              </div>
+            </div>
+
             <div className="stat">
               <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div>
               <div className="stat-foot"><span className="stat-value c-dativ">{countVerb("Dativ")}</span></div>
@@ -499,6 +633,25 @@ export default function VerbsPage({
             </div>
 
             <div className="filters-cluster">
+              {/* 🎯 Goals Launcher Button */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setGoalModalOpen(true)}
+                title="Set and track verb study goals"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  borderColor: "#fed7aa",
+                  backgroundColor: "#fff7ed",
+                  color: "#9a3412",
+                  fontWeight: 600,
+                }}
+              >
+                <span>🎯</span> Goals ({verbDailyCount}/{verbDailyTarget})
+              </button>
+
               <div className="filters">
                 <CustomDropdown
                   icon="🏷"
@@ -556,7 +709,10 @@ export default function VerbsPage({
 
               <button
                 type="button"
-                onClick={() => setResetModalOpen(true)}
+                onClick={() => {
+                  playDangerSound();
+                  setResetModalOpen(true);
+                }}
                 className="btn btn-secondary"
                 style={{
                   color: "#dc2626",
@@ -758,6 +914,21 @@ export default function VerbsPage({
           )}
         </div>
       )}
+
+      {/* 🎯 Study Goals Modal */}
+      <GoalModal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        defaultCategory="Verbs"
+        categoryStats={{
+          Verbs: {
+            dailyCurrent: verbDailyCount,
+            weeklyCurrent: verbWeeklyCount,
+          },
+        }}
+        initialDailyTarget={verbDailyTarget}
+        initialWeeklyTarget={verbWeeklyTarget}
+      />
 
       {/* Add / Edit Verb Modal */}
       {modalOpen && (

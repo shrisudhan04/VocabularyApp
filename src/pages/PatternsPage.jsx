@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import GoalModal from "../components/GoalModal"; // Adjust path if located elsewhere
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -9,7 +10,102 @@ import successGif from "../assets/Success.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
 
-const GEMINI_MODEL = "gemini-3.8-flash"; // same model name as NounsPage
+const GEMINI_MODEL = "gemini-2.5-flash";
+
+// 🔊 Web Audio Synthesizer
+const getActiveAudioContext = async () => {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  const ctx = new AudioCtx();
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+  return ctx;
+};
+
+// 1. Success chime for adding new patterns & milestones
+const playSuccessSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      const startAt = ctx.currentTime + index * 0.08;
+      osc.frequency.setValueAtTime(freq, startAt);
+
+      gain.gain.setValueAtTime(0.15, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.3);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 2. Duplicate warning buzzer
+const playDuplicateSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    [0, 0.16].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sawtooth";
+      const startAt = ctx.currentTime + delay;
+      osc.frequency.setValueAtTime(260, startAt);
+      osc.frequency.linearRampToValueAtTime(160, startAt + 0.14);
+
+      gain.gain.setValueAtTime(0.2, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.14);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.14);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 3. Danger warning for reset
+const playDangerSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.35);
+
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
 
 const GENDER_OPTIONS = [
   { label: "All Articles", value: "all" },
@@ -60,6 +156,8 @@ export default function PatternsPage({
   const [successInfo, setSuccessInfo] = useState({ article: "", ending: "", isEdit: false });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
+  // 🎯 Study Goals Modal & Milestone State
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalCelebration, setGoalCelebration] = useState({
     isOpen: false,
     goalType: "daily",
@@ -91,7 +189,7 @@ export default function PatternsPage({
     let daily = 0;
     let weekly = 0;
 
-    list.forEach((item) => {
+    (list || []).forEach((item) => {
       const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
       if (itemTime >= startOfToday) daily += 1;
       if (itemTime >= startOfWeek) weekly += 1;
@@ -125,6 +223,7 @@ export default function PatternsPage({
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      playSuccessSound();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -136,6 +235,7 @@ export default function PatternsPage({
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      playSuccessSound();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -149,8 +249,13 @@ export default function PatternsPage({
     return false;
   };
 
+  // Live Goal Progress calculations
+  const { daily: patternDailyCount, weekly: patternWeeklyCount } = getGoalCounts(patternsList);
+  const { daily: patternDailyTarget, weekly: patternWeeklyTarget } = getSavedTargets();
+
   // ---------- Reset ----------
   const handleConfirmReset = () => {
+    playDangerSound();
     onCommitPatterns([]);
     setCardIndex(0);
     setCardFlipped(false);
@@ -253,9 +358,12 @@ export default function PatternsPage({
         });
 
         if (newEntries.length > 0) {
+          playSuccessSound();
           const updatedList = [...patternsList, ...newEntries];
           verifyGoalMilestone(patternsList, updatedList, `${newEntries.length} new patterns`);
           onCommitPatterns(updatedList);
+        } else if (duplicateWords.length > 0) {
+          playDuplicateSound();
         }
 
         setImportSummary({
@@ -388,6 +496,7 @@ export default function PatternsPage({
     );
 
     if (isDuplicate) {
+      playDuplicateSound();
       setDuplicateName(cleanEnding);
       setDuplicateModalOpen(true);
       return;
@@ -401,6 +510,7 @@ export default function PatternsPage({
         item.id === editingPatternId ? { ...item, ...patternFormData, ending: cleanEnding } : item
       );
     } else {
+      playSuccessSound();
       updated = [
         ...patternsList,
         {
@@ -456,6 +566,30 @@ export default function PatternsPage({
                 <span className="stat-note" style={{ color: "#a8a29e" }}>active rules</span>
               </div>
             </div>
+
+            {/* 🎯 Patterns Goal Stats Card */}
+            <div 
+              className="stat" 
+              style={{ cursor: "pointer", border: "1px solid #fed7aa" }} 
+              onClick={() => setGoalModalOpen(true)}
+              title="Click to manage pattern study targets"
+            >
+              <div className="stat-head">
+                <span className="stat-label">TODAY'S GOAL</span>
+                <span className="stat-pill" style={{ backgroundColor: "#ffedd5", color: "#c2410c", fontWeight: 700 }}>
+                  🎯 {patternDailyCount >= patternDailyTarget ? "Achieved!" : "In Progress"}
+                </span>
+              </div>
+              <div className="stat-foot">
+                <span className="stat-value" style={{ color: "#c2410c" }}>
+                  {patternDailyCount} <span style={{ fontSize: 16, color: "var(--muted)" }}>/ {patternDailyTarget}</span>
+                </span>
+                <span className="stat-note" style={{ color: "#9a3412" }}>
+                  Week: {patternWeeklyCount}/{patternWeeklyTarget}
+                </span>
+              </div>
+            </div>
+
             <div className="stat">
               <div className="stat-head"><span className="stat-label">DER PATTERNS</span><span className="stat-pill bg-der">der</span></div>
               <div className="stat-foot"><span className="stat-value c-der">{countPattern("der")}</span></div>
@@ -482,6 +616,25 @@ export default function PatternsPage({
             </div>
 
             <div className="filters-cluster">
+              {/* 🎯 Goals Launcher Button */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setGoalModalOpen(true)}
+                title="Set and track pattern study goals"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  borderColor: "#fed7aa",
+                  backgroundColor: "#fff7ed",
+                  color: "#9a3412",
+                  fontWeight: 600,
+                }}
+              >
+                <span>🎯</span> Goals ({patternDailyCount}/{patternDailyTarget})
+              </button>
+
               <div className="filters">
                 <CustomDropdown
                   icon="🏷"
@@ -539,7 +692,10 @@ export default function PatternsPage({
 
               <button
                 type="button"
-                onClick={() => setResetModalOpen(true)}
+                onClick={() => {
+                  playDangerSound();
+                  setResetModalOpen(true);
+                }}
                 className="btn btn-secondary"
                 style={{
                   color: "#dc2626",
@@ -715,6 +871,21 @@ export default function PatternsPage({
           )}
         </div>
       )}
+
+      {/* 🎯 Study Goals Modal */}
+      <GoalModal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        defaultCategory="Patterns"
+        categoryStats={{
+          Patterns: {
+            dailyCurrent: patternDailyCount,
+            weeklyCurrent: patternWeeklyCount,
+          },
+        }}
+        initialDailyTarget={patternDailyTarget}
+        initialWeeklyTarget={patternWeeklyTarget}
+      />
 
       {/* Add / Edit Pattern Modal */}
       {modalOpen && (

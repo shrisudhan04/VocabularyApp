@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import GoalModal from "../components/GoalModal"; // Adjust path if located elsewhere
 import { PREP_CASE_CLASS, DATE_OPTIONS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -9,9 +10,104 @@ import successGif from "../assets/Success.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
 
-const GEMINI_MODEL = "gemini-3.8-flash"; // same model name as NounsPage
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 const CASES = ["Akkusativ", "Dativ", "Wechsel"];
+
+// 🔊 Web Audio Synthesizer
+const getActiveAudioContext = async () => {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  const ctx = new AudioCtx();
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+  return ctx;
+};
+
+// 1. Success chime for adding new prepositions & milestones
+const playSuccessSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      const startAt = ctx.currentTime + index * 0.08;
+      osc.frequency.setValueAtTime(freq, startAt);
+
+      gain.gain.setValueAtTime(0.15, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.3);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 2. Duplicate warning buzzer
+const playDuplicateSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    [0, 0.16].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sawtooth";
+      const startAt = ctx.currentTime + delay;
+      osc.frequency.setValueAtTime(260, startAt);
+      osc.frequency.linearRampToValueAtTime(160, startAt + 0.14);
+
+      gain.gain.setValueAtTime(0.2, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.14);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.14);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 3. Danger warning for reset
+const playDangerSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.35);
+
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
 
 const EXCEL_ACTIONS = [
   { label: "Excel Actions ▾", value: "" },
@@ -57,6 +153,8 @@ export default function PrepositionsPage({
   const [successInfo, setSuccessInfo] = useState({ prep: "", isEdit: false });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
+  // 🎯 Study Goals Modal & Milestone Celebration
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalCelebration, setGoalCelebration] = useState({
     isOpen: false,
     goalType: "daily",
@@ -88,7 +186,7 @@ export default function PrepositionsPage({
     let daily = 0;
     let weekly = 0;
 
-    list.forEach((item) => {
+    (list || []).forEach((item) => {
       const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
       if (itemTime >= startOfToday) daily += 1;
       if (itemTime >= startOfWeek) weekly += 1;
@@ -122,6 +220,7 @@ export default function PrepositionsPage({
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      playSuccessSound();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -133,6 +232,7 @@ export default function PrepositionsPage({
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      playSuccessSound();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -146,8 +246,13 @@ export default function PrepositionsPage({
     return false;
   };
 
+  // Live Goal Progress calculations
+  const { daily: prepDailyCount, weekly: prepWeeklyCount } = getGoalCounts(prepsList);
+  const { daily: prepDailyTarget, weekly: prepWeeklyTarget } = getSavedTargets();
+
   // ---------- Reset ----------
   const handleConfirmReset = () => {
+    playDangerSound();
     onCommitPreps([]);
     setCardIndex(0);
     setCardFlipped(false);
@@ -242,9 +347,12 @@ export default function PrepositionsPage({
         });
 
         if (newEntries.length > 0) {
+          playSuccessSound();
           const updatedList = [...prepsList, ...newEntries];
           verifyGoalMilestone(prepsList, updatedList, `${newEntries.length} new prepositions`);
           onCommitPreps(updatedList);
+        } else if (duplicateWords.length > 0) {
+          playDuplicateSound();
         }
 
         setImportSummary({
@@ -355,6 +463,7 @@ export default function PrepositionsPage({
     );
 
     if (isDuplicate) {
+      playDuplicateSound();
       setDuplicateName(cleanPrep);
       setDuplicateModalOpen(true);
       return;
@@ -368,6 +477,7 @@ export default function PrepositionsPage({
         item.id === editingPrepId ? { ...item, ...prepFormData, prep: cleanPrep } : item
       );
     } else {
+      playSuccessSound();
       updated = [
         ...prepsList,
         {
@@ -402,6 +512,30 @@ export default function PrepositionsPage({
               <div className="stat-head"><span className="stat-label">TOTAL PREPOSITIONS</span><span className="stat-pill dark">{prepsMastered} mastered</span></div>
               <div className="stat-foot"><span className="stat-value">{prepsList.length}</span></div>
             </div>
+
+            {/* 🎯 Preposition Daily Goal Card */}
+            <div 
+              className="stat" 
+              style={{ cursor: "pointer", border: "1px solid #fed7aa" }} 
+              onClick={() => setGoalModalOpen(true)}
+              title="Click to manage preposition study targets"
+            >
+              <div className="stat-head">
+                <span className="stat-label">TODAY'S GOAL</span>
+                <span className="stat-pill" style={{ backgroundColor: "#ffedd5", color: "#c2410c", fontWeight: 700 }}>
+                  🎯 {prepDailyCount >= prepDailyTarget ? "Achieved!" : "In Progress"}
+                </span>
+              </div>
+              <div className="stat-foot">
+                <span className="stat-value" style={{ color: "#c2410c" }}>
+                  {prepDailyCount} <span style={{ fontSize: 16, color: "var(--muted)" }}>/ {prepDailyTarget}</span>
+                </span>
+                <span className="stat-note" style={{ color: "#9a3412" }}>
+                  Week: {prepWeeklyCount}/{prepWeeklyTarget}
+                </span>
+              </div>
+            </div>
+
             <div className="stat">
               <div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akk</span></div>
               <div className="stat-foot"><span className="stat-value c-akku">{countPrep("Akkusativ")}</span></div>
@@ -428,6 +562,25 @@ export default function PrepositionsPage({
             </div>
 
             <div className="filters-cluster">
+              {/* 🎯 Goals Launcher Button */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setGoalModalOpen(true)}
+                title="Set and track preposition study goals"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  borderColor: "#fed7aa",
+                  backgroundColor: "#fff7ed",
+                  color: "#9a3412",
+                  fontWeight: 600,
+                }}
+              >
+                <span>🎯</span> Goals ({prepDailyCount}/{prepDailyTarget})
+              </button>
+
               <div className="filters">
                 <span className="filters-label">Case:</span>
                 <button onClick={() => setPrepFilter("all")} className={`chip all ${prepFilter === "all" ? "on" : ""}`}>All</button>
@@ -478,7 +631,10 @@ export default function PrepositionsPage({
 
               <button
                 type="button"
-                onClick={() => setResetModalOpen(true)}
+                onClick={() => {
+                  playDangerSound();
+                  setResetModalOpen(true);
+                }}
                 className="btn btn-secondary"
                 style={{
                   color: "#dc2626",
@@ -656,6 +812,21 @@ export default function PrepositionsPage({
           )}
         </div>
       )}
+
+      {/* 🎯 Study Goals Modal */}
+      <GoalModal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        defaultCategory="Prepositions"
+        categoryStats={{
+          Prepositions: {
+            dailyCurrent: prepDailyCount,
+            weeklyCurrent: prepWeeklyCount,
+          },
+        }}
+        initialDailyTarget={prepDailyTarget}
+        initialWeeklyTarget={prepWeeklyTarget}
+      />
 
       {/* Add / Edit Preposition Modal */}
       {modalOpen && (

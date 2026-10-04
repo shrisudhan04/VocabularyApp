@@ -986,7 +986,7 @@ export default function App() {
                   if (mainCategory === "Grammar") setGrammarSubView("list");
                 }}
               >
-                📑 Overview &amp; Reference
+                📑 Overview 
               </button>
               <button
                 className={`sub-tab ${currentSubView === "flashcards" ? "active" : ""}`}

@@ -1,5 +1,8 @@
-import { useState, useRef } from "react";
-
+import { useState, useRef, useEffect } from "react";
+import {
+  requestMobileNotificationPermission,
+  startHourlyNounNotifier,
+} from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
@@ -56,7 +59,6 @@ const playDuplicateSound = async () => {
     const ctx = await getActiveAudioContext();
     if (!ctx) return;
 
-    // Two rapid warning beeps
     [0, 0.16].forEach((delay) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -171,7 +173,31 @@ export default function NounsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
+  // 🔔 Hourly Notification State & Effects (Moved inside component)
+  const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
+
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    let timerId = null;
+    if (hourlyAlertsActive && vocabList?.length > 0) {
+      timerId = startHourlyNounNotifier(vocabList);
+    }
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [hourlyAlertsActive, vocabList]);
+
+  const handleToggleHourlyNotifications = async () => {
+    if (!hourlyAlertsActive) {
+      const granted = await requestMobileNotificationPermission();
+      if (granted) {
+        setHourlyAlertsActive(true);
+      }
+    } else {
+      setHourlyAlertsActive(false);
+    }
+  };
 
   const getGoalCounts = (list) => {
     const now = new Date();
@@ -240,7 +266,34 @@ export default function NounsPage({
 
     return false;
   };
+const handleTriggerInstantNotification = async () => {
+  if (!vocabList || vocabList.length === 0) {
+    alert("Please add at least one noun first!");
+    return;
+  }
 
+  // Check or request notification permission
+  let permission = Notification.permission;
+  if (permission !== "granted") {
+    const granted = await requestMobileNotificationPermission();
+    if (!granted) {
+      alert("Notification permissions were not granted.");
+      return;
+    }
+  }
+
+  // Pick a random noun from current list
+  const randomNoun = vocabList[Math.floor(Math.random() * vocabList.length)];
+
+  // Trigger web/device notification
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(`🇩🇪 ${randomNoun.article} ${randomNoun.noun}`, {
+      body: `Meaning: ${randomNoun.meaning} | Plural: ${randomNoun.plural || "—"}`,
+      tag: "test-noun-alert",
+      renotify: true,
+    });
+  }
+};
   const handleConfirmReset = () => {
     playDangerSound();
     onCommitNouns([]);
@@ -471,7 +524,6 @@ export default function NounsPage({
     );
 
     if (isDuplicate) {
-      // ⚠️ Immediately plays buzzer on duplicate submit
       playDuplicateSound();
       setDuplicateWordName(cleanNoun);
       setDuplicateModalOpen(true);
@@ -487,7 +539,6 @@ export default function NounsPage({
         item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
       );
     } else {
-      // 🔊 Play success chime on brand new addition
       playSuccessSound();
 
       updated = [
@@ -560,6 +611,35 @@ export default function NounsPage({
             </div>
 
             <div className="filters-cluster">
+              <button
+    type="button"
+    onClick={handleToggleHourlyNotifications}
+    className={`btn ${hourlyAlertsActive ? "btn-primary" : "btn-secondary"}`}
+    title="Get a new German noun notification every 60 minutes"
+  >
+    {hourlyAlertsActive ? "🔔 Hourly Alerts: ON" : "🔕 Hourly Alerts: OFF"}
+  </button>
+
+  {/* 🚀 NEW: Instant Notification Trigger Button */}
+  <button
+    type="button"
+    onClick={handleTriggerInstantNotification}
+    className="btn btn-secondary"
+    title="Send a sample notification right now"
+  >
+    ⚡ Test Notification
+  </button>
+
+  
+              <button
+                type="button"
+                onClick={handleToggleHourlyNotifications}
+                className={`btn ${hourlyAlertsActive ? "btn-primary" : "btn-secondary"}`}
+                title="Get a new German noun notification every 60 minutes"
+              >
+                {hourlyAlertsActive ? "🔔 Hourly Alerts: ON" : "🔕 Hourly Alerts: OFF"}
+              </button>
+
               <div className="filters">
                 <CustomDropdown
                   icon="🏷"

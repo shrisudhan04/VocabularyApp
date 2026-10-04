@@ -100,18 +100,53 @@ async function writeToVaultDB(storeName, key, data) {
 
 const CSS = `
 :root {
-  --bg: #f8fafc; --card: #ffffff; --line: #eef2f6; --line-2: #e2e8f0;
-  --ink: #0f172a; --ink-2: #1e293b; --muted: #64748b; --faint: #94a3b8;
-  --brand: #4f46e5;
-  --der: #0284c7; --der-bg: #e0f2fe;
-  --die: #db2777; --die-bg: #fce7f3;
-  --das: #16a34a; --das-bg: #dcfce7;
-  --dativ: #7c3aed; --dativ-bg: #ede9fe;
-  --akku: #ea580c; --akku-bg: #ffedd5;
-  --both: #0891b2; --both-bg: #cffafe;
-  --wechsel: #d97706; --wechsel-bg: #fef3c7;
+  --bg: #fcfaf7;
+  --card: #ffffff;
+  --card-inner: #f5f0e8;
+  --line: #ede5d8;
+  --line-2: #ded2bf;
+  --ink: #292524;
+  --ink-2: #44403c;
+  --muted: #78716c;
+  --faint: #a8a29e;
+  --brand: #b45309;
+
+  --der: #0369a1; --der-bg: #e0f2fe;
+  --die: #be123c; --die-bg: #ffe4e6;
+  --das: #15803d; --das-bg: #dcfce7;
+  --dativ: #6d28d9; --dativ-bg: #ede9fe;
+  --akku: #c2410c; --akku-bg: #ffedd5;
+  --both: #0e7490; --both-bg: #cffafe;
+  --wechsel: #b45309; --wechsel-bg: #fef3c7;
+
+  --modal-bg: #ffffff;
+  --input-bg: #fcfaf7;
 }
-html, body, #root { margin: 0 !important; padding: 0 !important; width: 100% !important; min-height: 100vh; background: var(--bg); }
+
+[data-theme="dark"] {
+  --bg: #1c1917;           /* Deep dark espresso */
+  --card: #292524;         /* Warm charcoal */
+  --card-inner: #201d1b;
+  --line: #3c3836;
+  --line-2: #57534e;
+  --ink: #fafaf9;
+  --ink-2: #e7e5e4;
+  --muted: #a8a29e;
+  --faint: #78716c;
+  --brand: #f59e0b;
+
+  --der: #38bdf8; --der-bg: rgba(56, 189, 248, 0.2);
+  --die: #fb7185; --die-bg: rgba(251, 113, 133, 0.2);
+  --das: #4ade80; --das-bg: rgba(74, 222, 128, 0.2);
+  --dativ: #c084fc; --dativ-bg: rgba(192, 132, 252, 0.2);
+  --akku: #fb923c; --akku-bg: rgba(251, 146, 60, 0.2);
+  --both: #22d3ee; --both-bg: rgba(34, 211, 238, 0.2);
+  --wechsel: #facc15; --wechsel-bg: rgba(250, 204, 21, 0.2);
+
+  --modal-bg: #292524;
+  --input-bg: #1c1917;
+}
+html, body, #root { margin: 0 !important; padding: 0 !important; width: 100% !important; min-height: 100vh; background: var(--bg); color: var(--ink); }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 button, input, select, textarea { font-family: inherit; }
 button { cursor: pointer; }
@@ -125,16 +160,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .header { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 28px;
   display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .header-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.logo { width: 50px; height: 50px; flex: none; border-radius: 12px; background: #ecfdf5; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.logo { width: 50px; height: 50px; flex: none; border-radius: 12px; background: rgba(16, 185, 129, 0.15); display: flex; align-items: center; justify-content: center; font-size: 24px; }
 .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .title { font-size: 21px; font-weight: 700; margin: 0; color: var(--ink); }
-.badge { font-size: 11px; background: #dcfce7; color: #166534; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+.badge { font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
 .subtitle { font-size: 13px; color: var(--muted); margin: 6px 0 0; overflow-wrap: anywhere; }
 .header-actions { display: flex; gap: 10px; align-items: center; }
 
 .btn { border-radius: 8px; padding: 10px 16px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; min-height: 40px; }
 .btn-primary { background: var(--brand); color: #fff; border: none; }
-.btn-secondary { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+.btn-secondary { background: var(--card); color: var(--ink); border: 1px solid var(--line-2); }
+.btn-theme { background: var(--card-inner); border: 1px solid var(--line-2); color: var(--ink); padding: 10px 14px; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .fab { display: none; }
 
@@ -143,24 +179,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .main-tabs { display: flex; gap: 6px; background: var(--line-2); padding: 5px; border-radius: 12px; overflow-x: auto; scrollbar-width: none; }
 .main-tabs::-webkit-scrollbar { display: none; }
 .main-tab { border: none; padding: 10px 20px; border-radius: 9px; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: var(--muted); white-space: nowrap; }
-.main-tab.active { background: #fff; color: var(--brand); box-shadow: 0 2px 5px rgba(0,0,0,.08); }
+.main-tab.active { background: var(--card); color: var(--brand); box-shadow: 0 2px 5px rgba(0,0,0,.15); }
 
 /* Sub View Switcher */
 .sub-tabs-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-bottom: 4px; }
-.sub-tabs { display: inline-flex; background: #e2e8f0; padding: 4px; border-radius: 10px; gap: 4px; }
+.sub-tabs { display: inline-flex; background: var(--line-2); padding: 4px; border-radius: 10px; gap: 4px; }
 .sub-tab { border: none; padding: 7px 18px; border-radius: 8px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--muted); }
-.sub-tab.active { background: var(--brand); color: #fff; box-shadow: 0 1px 3px rgba(79,70,229,.25); }
+.sub-tab.active { background: var(--brand); color: #fff; box-shadow: 0 1px 3px rgba(79,70,229,.35); }
 
 /* Stats Grid */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-height: 105px;
   display: flex; flex-direction: column; justify-content: space-between; }
-.stat.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+.stat.dark { background: #020617; border-color: #1e293b; color: #fff; }
 .stat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .stat-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .6px; }
-.stat.dark .stat-label { color: var(--faint); }
+.stat.dark .stat-label { color: #94a3b8; }
 .stat-pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
-.stat-pill.dark { background: var(--ink-2); color: #38bdf8; font-weight: 600; }
+.stat-pill.dark { background: #1e293b; color: #38bdf8; font-weight: 600; }
 .stat-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 14px; }
 .stat-value { font-size: 28px; font-weight: 700; line-height: 1; }
 .stat-note { font-size: 12px; font-weight: 600; }
@@ -181,20 +217,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .search { position: relative; flex: 1 1 340px; max-width: 520px; }
 .search span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 13px; }
-.search input { width: 100%; padding: 10px 14px 10px 38px; border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; font-size: 14px; min-height: 42px; }
+.search input { width: 100%; padding: 10px 14px 10px 38px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 14px; min-height: 42px; }
 .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .filters-label { font-size: 12px; color: var(--muted); font-weight: 600; margin-right: 4px; }
 .chip { border: 1px solid; padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; min-height: 34px; }
-.chip.all  { background: #f8fafc; color: #475569; border-color: var(--line-2); }
-.chip.der  { background: #f0f9ff; color: var(--der); border-color: #bae6fd; }
-.chip.die  { background: #fdf2f8; color: var(--die); border-color: #fbcfe8; }
-.chip.das  { background: #f0fdf4; color: var(--das); border-color: #bbf7d0; }
-.chip.dativ { background: var(--dativ-bg); color: var(--dativ); border-color: #ddd6fe; }
-.chip.akku { background: var(--akku-bg); color: var(--akku); border-color: #fed7aa; }
-.chip.both { background: var(--both-bg); color: var(--both); border-color: #a5f3fc; }
-.chip.wechsel { background: var(--wechsel-bg); color: var(--wechsel); border-color: #fde68a; }
+.chip.all  { background: var(--card-inner); color: var(--ink-2); border-color: var(--line-2); }
+.chip.der  { background: var(--der-bg); color: var(--der); border-color: var(--der); }
+.chip.die  { background: var(--die-bg); color: var(--die); border-color: var(--die); }
+.chip.das  { background: var(--das-bg); color: var(--das); border-color: var(--das); }
+.chip.dativ { background: var(--dativ-bg); color: var(--dativ); border-color: var(--dativ); }
+.chip.akku { background: var(--akku-bg); color: var(--akku); border-color: var(--akku); }
+.chip.both { background: var(--both-bg); color: var(--both); border-color: var(--both); }
+.chip.wechsel { background: var(--wechsel-bg); color: var(--wechsel); border-color: var(--wechsel); }
 
-.chip.all.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.chip.all.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .chip.der.on { background: var(--der); color: #fff; border-color: var(--der); }
 .chip.die.on { background: var(--die); color: #fff; border-color: var(--die); }
 .chip.das.on { background: var(--das); color: #fff; border-color: var(--das); }
@@ -207,7 +243,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 16px 16px; }
 .list-head { padding: 12px 8px; font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: .5px; border-bottom: 1px solid var(--line); }
 
-/* Tight column alignment without gaping voids */
 .nouns-head, .noun-row {
   display: grid;
   grid-template-columns: 48px 80px 180px 180px 1fr 140px 120px !important;
@@ -229,7 +264,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   align-items: center;
 }
 
-.row { padding: 14px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.row { padding: 14px 8px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink); }
 .row:last-child { border-bottom: none; }
 .c-idx { text-align: center; color: var(--faint); font-weight: 500; }
 .noun-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -239,10 +274,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .c-mean { color: var(--ink-2); font-weight: 600; }
 .c-eg { color: var(--muted); font-size: 12px; font-style: italic; }
 .status { border: 1px solid; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.status.done { background: #f0fdf4; border-color: #86efac; color: var(--das); }
-.status.todo { background: #f8fafc; border-color: #cbd5e1; color: var(--muted); }
+.status.done { background: var(--das-bg); border-color: var(--das); color: var(--das); }
+.status.todo { background: var(--card-inner); border-color: var(--line-2); color: var(--muted); }
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
-.icon-btn { width: 36px; height: 36px; min-width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; background: #f8fafc; border: 1px solid var(--line-2); border-radius: 8px; }
+.icon-btn { width: 36px; height: 36px; min-width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; background: var(--card-inner); border: 1px solid var(--line-2); border-radius: 8px; color: var(--ink); }
 .empty { text-align: center; padding: 36px; color: var(--faint); }
 
 /* Patterns Tab */
@@ -253,10 +288,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .pattern-col.das { border-top-color: var(--das); }
 .pattern-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .pattern-header h3 { margin: 0; font-size: 18px; }
-.pattern-card { background: #f8fafc; border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; position: relative; }
+.pattern-card { background: var(--card-inner); border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; position: relative; }
 .pattern-card-top { display: flex; justify-content: space-between; align-items: center; }
 .pattern-badge { align-self: flex-start; font-weight: 700; font-size: 13px; font-family: monospace; padding: 3px 8px; border-radius: 6px; }
-.pattern-delete-btn { background: none; border: none; font-size: 13px; opacity: .5; padding: 2px; }
+.pattern-delete-btn { background: none; border: none; font-size: 13px; opacity: .5; padding: 2px; color: var(--ink); }
 .pattern-delete-btn:hover { opacity: 1; }
 .pattern-rule { font-size: 12.5px; color: var(--ink-2); font-weight: 500; margin: 0; }
 .pattern-eg { font-size: 12px; color: var(--muted); font-style: italic; margin: 0; }
@@ -264,14 +299,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Panels */
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 48px 24px; text-align: center; }
 .flash-wrap { display: flex; flex-direction: column; align-items: center; gap: 24px; }
-.flash { width: min(480px, 100%); min-height: 250px; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; cursor: pointer; user-select: none; }
+.flash { width: min(480px, 100%); min-height: 250px; background: var(--card-inner); border: 2px dashed var(--line-2); border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; cursor: pointer; user-select: none; }
 .flash h2 { font-size: 42px; margin: 16px 0; overflow-wrap: anywhere; color: var(--ink); font-weight: 700; }
 .flash-controls { display: flex; gap: 12px; align-items: center; }
 
 /* Quiz */
 .quiz { max-width: 460px; margin: 0 auto; text-align: center; }
 .quiz-head { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.quiz-card { background: #f8fafc; padding: 32px 24px; border-radius: 14px; border: 1px solid var(--line-2); }
+.quiz-card { background: var(--card-inner); padding: 32px 24px; border-radius: 14px; border: 1px solid var(--line-2); }
 .quiz-card h1 { font-size: 42px; margin: 14px 0 8px; overflow-wrap: anywhere; color: var(--ink); font-weight: 700; }
 .quiz-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; }
 .quiz-opt { color: #fff; border: none; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 700; min-height: 48px; }
@@ -280,26 +315,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .quiz-opt[disabled] { opacity: .6; }
 
 /* Modal */
-.overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
-.modal { background: #fff; border-radius: 14px; padding: 28px; width: 100%; max-width: 440px; box-shadow: 0 10px 25px rgba(0,0,0,.1); max-height: 100%; overflow-y: auto; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
+.modal { background: var(--modal-bg); border: 1px solid var(--line-2); border-radius: 14px; padding: 28px; width: 100%; max-width: 440px; box-shadow: 0 10px 25px rgba(0,0,0,.3); max-height: 100%; overflow-y: auto; color: var(--ink); }
 .modal h3 { margin: 0 0 16px; font-size: 18px; color: var(--ink); }
 .modal form { display: flex; flex-direction: column; gap: 16px; }
-.modal-label { font-size: 12px; font-weight: 600; color: #475569; }
-.modal-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 15px; margin-top: 6px; background: #fff; min-height: 42px; }
+.modal-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.modal-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line-2); font-size: 15px; margin-top: 6px; background: var(--input-bg); color: var(--ink); min-height: 42px; }
 .radios { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
-.radio { flex: 1 1 30%; text-align: center; padding: 10px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; background: #f1f5f9; color: #334155; }
-.radio.on { background: var(--ink); color: #fff; }
+.radio { flex: 1 1 30%; text-align: center; padding: 10px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; background: var(--card-inner); color: var(--ink); border: 1px solid var(--line-2); }
+.radio.on { background: var(--brand); color: #fff; border-color: var(--brand); }
 .radio input { display: none; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
 
-/* ================= TABLET ================= */
+/* Tablet & Mobile */
 @media (max-width: 1024px) {
   .page { padding: 20px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .patterns-grid { grid-template-columns: 1fr; }
 }
 
-/* ================= MOBILE ================= */
 @media (max-width: 640px) {
   .page { padding: 12px 12px calc(96px + env(safe-area-inset-bottom)); }
   .container { gap: 14px; }
@@ -308,7 +342,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .logo { width: 42px; height: 42px; font-size: 20px; border-radius: 10px; }
   .title { font-size: 17px; line-height: 1.25; }
   .subtitle { font-size: 12px; margin-top: 4px; }
-  .header-actions { width: 100%; }
+  .header-actions { width: 100%; display: flex; justify-content: space-between; }
   .header-actions .btn-primary { display: none; }
   .btn { padding: 10px 8px; font-size: 12.5px; }
 
@@ -342,7 +376,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .list-head { display: none; }
   
   .noun-row {
-    background: #fff; border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
+    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
     display: grid !important;
     grid-template-columns: auto 1fr auto !important;
     grid-template-areas: "art noun noun" "plural plural plural" "mean mean mean" "status status actions" !important;
@@ -350,7 +384,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .noun-row.der { border-left-color: var(--der); } .noun-row.die { border-left-color: var(--die); } .noun-row.das { border-left-color: var(--das); }
 
   .verb-row {
-    background: #fff; border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
+    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
     display: grid !important;
     grid-template-columns: auto 1fr auto !important;
     grid-template-areas: "case verb verb" "mean mean mean" "eg eg eg" "status status actions" !important;
@@ -360,7 +394,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .verb-row.Both { border-left-color: var(--both); }
 
   .prep-row {
-    background: #fff; border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
+    background: var(--card); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 12px 14px; gap: 8px 10px;
     display: grid !important;
     grid-template-columns: auto 1fr auto !important;
     grid-template-areas: "case prep prep" "mean mean mean" "eg eg eg" "status status actions" !important;
@@ -417,6 +451,21 @@ export default function App() {
   const [prepsList, setPrepsList] = useState([]);
   const [isReady, setIsReady] = useState(false);
   const [isPersisted, setIsPersisted] = useState(false);
+
+  // Theme State ("light" | "dark")
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("vocab_vault_theme") ||
+      (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("vocab_vault_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((t) => (t === "light" ? "dark" : "light"));
+  };
 
   // Main Section Tabs: "Nouns" | "Patterns" | "Verbs" | "Prepositions"
   const [mainCategory, setMainCategory] = useState("Nouns");
@@ -754,6 +803,16 @@ export default function App() {
           </div>
 
           <div className="header-actions">
+            {/* Dark Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              className="btn btn-theme"
+              title={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
+              aria-label="Toggle theme"
+            >
+              {theme === "light" ? "🌙 Dark" : "☀️ Light"}
+            </button>
+
             {mainCategory === "Nouns" && currentSubView === "list" && (
               <button
                 onClick={() => {
@@ -993,7 +1052,7 @@ export default function App() {
                           >
                             ✏️
                           </button>
-                          <button onClick={() => handleDeleteNoun(item.id)} className="icon-btn" title="Delete">🗑️</button>
+                          <button onClick={() => handleDeleteNoun(item.id)} className="icon-btn" title="Delete">🗑️️</button>
                         </div>
                       </div>
                     ))
@@ -1011,9 +1070,9 @@ export default function App() {
                     <div className="flash" onClick={() => setNounCardFlipped(!nounCardFlipped)}>
                       {!nounCardFlipped ? (
                         <>
-                          <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>GUESS ARTICLE, PLURAL &amp; MEANING</span>
+                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GUESS ARTICLE, PLURAL &amp; MEANING</span>
                           <h2>{nounCard.noun}</h2>
-                          <span style={{ fontSize: 12, color: "#94a3b8" }}>(Tap to flip)</span>
+                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
                         </>
                       ) : (
                         <>
@@ -1021,12 +1080,12 @@ export default function App() {
                             {nounCard.article} {nounCard.noun}
                           </span>
                           {nounCard.plural && (
-                            <p style={{ fontSize: 16, fontWeight: 700, color: "#475569", margin: "10px 0 0" }}>
+                            <p style={{ fontSize: 16, fontWeight: 700, color: "var(--muted)", margin: "10px 0 0" }}>
                               Plural: {nounCard.plural}
                             </p>
                           )}
                           <h3 style={{ fontSize: 24, margin: "10px 0 6px", color: "var(--ink-2)" }}>{nounCard.meaning}</h3>
-                          <p style={{ color: "#64748b", margin: 0, fontSize: 14 }}>{nounCard.gender}</p>
+                          <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>{nounCard.gender}</p>
                         </>
                       )}
                     </div>
@@ -1050,7 +1109,7 @@ export default function App() {
                         Next ▶
                       </button>
                     </div>
-                    <span style={{ color: "#64748b", fontSize: 13 }}>
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>
                       Noun {nounCardIndex + 1} of {vocabList.length}
                     </span>
                   </div>
@@ -1070,12 +1129,12 @@ export default function App() {
                     </div>
 
                     <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>Choose the correct article:</span>
+                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct article:</span>
                       <h1>{nounQuizWord.noun}</h1>
-                      <p style={{ color: "#64748b", margin: "4px 0", fontSize: 14 }}>
+                      <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
                         Plural: <strong style={{ color: "var(--ink)" }}>{nounQuizWord.plural || "—"}</strong>
                       </p>
-                      <p style={{ color: "#64748b", margin: 0, fontSize: 15 }}>
+                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
                         Meaning: <strong style={{ color: "var(--ink-2)" }}>{nounQuizWord.meaning}</strong>
                       </p>
                     </div>
@@ -1231,9 +1290,9 @@ export default function App() {
                     <div className="flash" onClick={() => setPatternCardFlipped(!patternCardFlipped)}>
                       {!patternCardFlipped ? (
                         <>
-                          <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>WHICH ARTICLE BELONGS TO THIS PATTERN?</span>
+                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE BELONGS TO THIS PATTERN?</span>
                           <h2 style={{ fontFamily: "monospace", letterSpacing: "1px" }}>{patternCard.ending}</h2>
-                          <span style={{ fontSize: 12, color: "#94a3b8" }}>(Tap to reveal article &amp; rules)</span>
+                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to reveal article &amp; rules)</span>
                         </>
                       ) : (
                         <>
@@ -1243,7 +1302,7 @@ export default function App() {
                           <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-2)", margin: "14px 0 6px" }}>
                             {patternCard.rule}
                           </p>
-                          <p style={{ fontSize: 13, color: "#64748b", margin: 0, fontStyle: "italic" }}>
+                          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, fontStyle: "italic" }}>
                             e.g. {patternCard.examples}
                           </p>
                         </>
@@ -1269,7 +1328,7 @@ export default function App() {
                         Next ▶
                       </button>
                     </div>
-                    <span style={{ color: "#64748b", fontSize: 13 }}>
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>
                       Pattern {patternCardIndex + 1} of {patternsList.length}
                     </span>
                   </div>
@@ -1289,9 +1348,9 @@ export default function App() {
                     </div>
 
                     <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>Which article goes with this suffix?</span>
+                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which article goes with this suffix?</span>
                       <h1 style={{ fontFamily: "monospace" }}>{patternQuizWord.ending}</h1>
-                      <p style={{ color: "#64748b", margin: 0, fontSize: 14 }}>
+                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>
                         Rule: <strong style={{ color: "var(--ink-2)" }}>{patternQuizWord.rule}</strong>
                       </p>
                     </div>
@@ -1483,9 +1542,9 @@ export default function App() {
                     <div className="flash" onClick={() => setVerbCardFlipped(!verbCardFlipped)}>
                       {!verbCardFlipped ? (
                         <>
-                          <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>WHICH CASE DOES THIS VERB GOVERN?</span>
+                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH CASE DOES THIS VERB GOVERN?</span>
                           <h2>{verbCard.verb}</h2>
-                          <span style={{ fontSize: 12, color: "#94a3b8" }}>(Tap to flip)</span>
+                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
                         </>
                       ) : (
                         <>
@@ -1494,7 +1553,7 @@ export default function App() {
                           </span>
                           <h3 style={{ fontSize: 22, margin: "14px 0 6px", color: "var(--ink-2)" }}>{verbCard.meaning}</h3>
                           {verbCard.example && (
-                            <p style={{ color: "#64748b", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{verbCard.example}"</p>
+                            <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{verbCard.example}"</p>
                           )}
                         </>
                       )}
@@ -1519,7 +1578,7 @@ export default function App() {
                         Next ▶
                       </button>
                     </div>
-                    <span style={{ color: "#64748b", fontSize: 13 }}>
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>
                       Verb {verbCardIndex + 1} of {verbsList.length}
                     </span>
                   </div>
@@ -1539,9 +1598,9 @@ export default function App() {
                     </div>
 
                     <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>Which case is required by this verb?</span>
+                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this verb?</span>
                       <h1>{verbQuizWord.verb}</h1>
-                      <p style={{ color: "#64748b", margin: 0, fontSize: 15 }}>
+                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
                         Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
                       </p>
                     </div>
@@ -1739,9 +1798,9 @@ export default function App() {
                     <div className="flash" onClick={() => setPrepCardFlipped(!prepCardFlipped)}>
                       {!prepCardFlipped ? (
                         <>
-                          <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>WHICH CASE DOES THIS PREPOSITION TAKE?</span>
+                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH CASE DOES THIS PREPOSITION TAKE?</span>
                           <h2>{prepCard.prep}</h2>
-                          <span style={{ fontSize: 12, color: "#94a3b8" }}>(Tap to flip)</span>
+                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
                         </>
                       ) : (
                         <>
@@ -1750,7 +1809,7 @@ export default function App() {
                           </span>
                           <h3 style={{ fontSize: 22, margin: "14px 0 6px", color: "var(--ink-2)" }}>{prepCard.meaning}</h3>
                           {prepCard.example && (
-                            <p style={{ color: "#64748b", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{prepCard.example}"</p>
+                            <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{prepCard.example}"</p>
                           )}
                         </>
                       )}
@@ -1775,7 +1834,7 @@ export default function App() {
                         Next ▶
                       </button>
                     </div>
-                    <span style={{ color: "#64748b", fontSize: 13 }}>
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>
                       Preposition {prepCardIndex + 1} of {prepsList.length}
                     </span>
                   </div>
@@ -1795,9 +1854,9 @@ export default function App() {
                     </div>
 
                     <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>Which case is required by this preposition?</span>
+                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this preposition?</span>
                       <h1>{prepQuizWord.prep}</h1>
-                      <p style={{ color: "#64748b", margin: 0, fontSize: 15 }}>
+                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
                         Meaning: <strong style={{ color: "var(--ink-2)" }}>{prepQuizWord.meaning}</strong>
                       </p>
                     </div>

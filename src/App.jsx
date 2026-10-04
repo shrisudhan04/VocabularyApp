@@ -2,16 +2,18 @@ import { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 const DB_NAME = "GermanVocabVault";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 const STORE_NAME = "vocabulary_store";
 const VERBS_STORE_NAME = "verbs_store";
 const PATTERNS_STORE_NAME = "patterns_store";
 const PREPOSITIONS_STORE_NAME = "prepositions_store";
+const TIME_STORE_NAME = "time_store";
 
 const BACKUP_KEY = "current_vocab_data";
 const VERBS_BACKUP_KEY = "current_verbs_data";
 const PATTERNS_BACKUP_KEY = "current_patterns_data";
 const PREPOSITIONS_BACKUP_KEY = "current_prepositions_data";
+const TIME_BACKUP_KEY = "current_time_data";
 
 // ---------- SEED DATA ----------
 const SEED_DATA = [
@@ -47,7 +49,7 @@ const SEED_VERBS = [
   { id: 121, verb: "geben", preterite: "gab", participle: "gegeben", auxiliary: "hat", caseType: "Both / Common", meaning: "to give", example: "Ich gab dem Kind das bunte Buch.", status: "Mastered", createdAt: "2026-10-04T11:15:00.000Z" },
   { id: 122, verb: "bringen", preterite: "brachte", participle: "gebracht", auxiliary: "hat", caseType: "Both / Common", meaning: "to bring", example: "Der Kellner brachte dem Gast das Essen.", status: "In Progress", createdAt: "2026-10-04T12:00:00.000Z" },
   { id: 123, verb: "schenken", preterite: "schenkte", participle: "geschenkt", auxiliary: "hat", caseType: "Both / Common", meaning: "to gift", example: "Er schenkte seiner Freundin eine weiße Blume.", status: "In Progress", createdAt: "2026-10-04T13:30:00.000Z" },
-  { id: 124, verb: "erklären", preterite: "erklärte", participle: "erklärt", auxiliary: "hat", caseType: "Both / Common", meaning: "to explain", example: "Der Lehrer erklärte den Schülern die Grammatikregel.", status: "Mastered", createdAt: "2026-10-04T14:45:00.000Z" }
+  { id: 124, verb: "erklären", preterite: "erklärte", participle: "erklärt", auxiliary: "hat", caseType: "Both / Common", meaning: "to explain", example: "Der Lehrer erklärte den Schülern die Grammatikregel.", status: "Mastered", createdAt: "2026-10-04T14:45:00.000Z" },
 ];
 
 const SEED_PATTERNS = [
@@ -78,6 +80,21 @@ const SEED_PREPOSITIONS = [
   { id: 207, prep: "in", caseType: "Wechsel", meaning: "in / into (Dat: location, Akk: direction)", example: "Ich bin im Haus (Dat). Ich gehe ins Haus (Akk).", status: "Mastered", createdAt: "2026-09-30T10:00:00.000Z" },
   { id: 208, prep: "auf", caseType: "Wechsel", meaning: "on / onto (horizontal)", example: "Das Buch liegt auf dem Tisch (Dat).", status: "In Progress", createdAt: "2026-10-02T10:00:00.000Z" },
   { id: 209, prep: "an", caseType: "Wechsel", meaning: "at / on (vertical edge)", example: "Das Bild hängt an der Wand (Dat).", status: "In Progress", createdAt: "2026-10-04T10:00:00.000Z" },
+];
+
+const SEED_TIME = [
+  { id: "t1", digital: "08:00", formal: "Es ist acht Uhr.", informal: "Es ist acht.", rule: "Exact hour (volle Stunde)" },
+  { id: "t2", digital: "08:05", formal: "Es ist acht Uhr fünf.", informal: "Es ist fünf nach acht.", rule: "5 past (nach)" },
+  { id: "t3", digital: "08:15", formal: "Es ist acht Uhr fünfzehn.", informal: "Es ist Viertel nach acht.", rule: "Quarter past (Viertel nach)" },
+  { id: "t4", digital: "08:20", formal: "Es ist acht Uhr zwanzig.", informal: "Es ist zwanzig nach acht / zehn vor halb neun.", rule: "20 past or 10 before half" },
+  { id: "t5", digital: "08:25", formal: "Es ist acht Uhr fünfundzwanzig.", informal: "Es ist fünf vor halb neun.", rule: "5 before half past" },
+  { id: "t6", digital: "08:30", formal: "Es ist acht Uhr dreißig.", informal: "Es ist halb neun.", rule: "Half past ('halfway to next hour')" },
+  { id: "t7", digital: "08:35", formal: "Es ist acht Uhr fünfunddreißig.", informal: "Es ist fünf nach halb neun.", rule: "5 past half past" },
+  { id: "t8", digital: "08:40", formal: "Es ist acht Uhr vierzig.", informal: "Es ist zwanzig vor neun / zehn nach halb neun.", rule: "20 to or 10 past half" },
+  { id: "t9", digital: "08:45", formal: "Es ist acht Uhr fünfundvierzig.", informal: "Es ist Viertel vor neun.", rule: "Quarter to (Viertel vor)" },
+  { id: "t10", digital: "08:50", formal: "Es ist acht Uhr fünfzig.", informal: "Es ist zehn vor neun.", rule: "10 to (vor)" },
+  { id: "t11", digital: "14:15", formal: "Es ist vierzehn Uhr fünfzehn.", informal: "Es ist Viertel nach zwei.", rule: "Afternoon 24h vs. 12h" },
+  { id: "t12", digital: "20:30", formal: "Es ist zwanzig Uhr dreißig.", informal: "Es ist halb neun (abends).", rule: "Evening 24h vs. 12h" },
 ];
 
 const GRAMMAR_TOPICS = [
@@ -139,21 +156,6 @@ const ADJECTIVE_ENDINGS_RULES = [
   { type: "Strong (zero article)", nom: "m: -er, f: -e, n: -es, pl: -e", akk: "m: -en, f: -e, n: -es, pl: -e", dat: "m: -em, f: -er, n: -em, pl: -en", gen: "m: -en, f: -er, n: -en, pl: -er" },
 ];
 
-const TIME_COMPARISON_DATA = [
-  { id: "t1", digital: "08:00", formal: "Es ist acht Uhr.", informal: "Es ist acht.", rule: "Exact hour (volle Stunde)" },
-  { id: "t2", digital: "08:05", formal: "Es ist acht Uhr fünf.", informal: "Es ist fünf nach acht.", rule: "5 past (nach)" },
-  { id: "t3", digital: "08:15", formal: "Es ist acht Uhr fünfzehn.", informal: "Es ist Viertel nach acht.", rule: "Quarter past (Viertel nach)" },
-  { id: "t4", digital: "08:20", formal: "Es ist acht Uhr zwanzig.", informal: "Es ist zwanzig nach acht / zehn vor halb neun.", rule: "20 past or 10 before half" },
-  { id: "t5", digital: "08:25", formal: "Es ist acht Uhr fünfundzwanzig.", informal: "Es ist fünf vor halb neun.", rule: "5 before half past" },
-  { id: "t6", digital: "08:30", formal: "Es ist acht Uhr dreißig.", informal: "Es ist halb neun.", rule: "Half past ('halfway to next hour')" },
-  { id: "t7", digital: "08:35", formal: "Es ist acht Uhr fünfunddreißig.", informal: "Es ist fünf nach halb neun.", rule: "5 past half past" },
-  { id: "t8", digital: "08:40", formal: "Es ist acht Uhr vierzig.", informal: "Es ist zwanzig vor neun / zehn nach halb neun.", rule: "20 to or 10 past half" },
-  { id: "t9", digital: "08:45", formal: "Es ist acht Uhr fünfundvierzig.", informal: "Es ist Viertel vor neun.", rule: "Quarter to (Viertel vor)" },
-  { id: "t10", digital: "08:50", formal: "Es ist acht Uhr fünfzig.", informal: "Es ist zehn vor neun.", rule: "10 to (vor)" },
-  { id: "t11", digital: "14:15", formal: "Es ist vierzehn Uhr fünfzehn.", informal: "Es ist Viertel nach zwei.", rule: "Afternoon 24h vs. 12h" },
-  { id: "t12", digital: "20:30", formal: "Es ist zwanzig Uhr dreißig.", informal: "Es ist halb neun (abends).", rule: "Evening 24h vs. 12h" },
-];
-
 const TIME_RULES = [
   { term: "Formal (Offiziell)", desc: "Uses the 24-hour clock. Pattern: [Stunde] + Uhr + [Minute]. No 'vor', 'nach', or 'halb'." },
   { term: "Informal (Umgangssprachlich)", desc: "Uses the 12-hour clock. Expressed relative to the hour using 'vor' (before), 'nach' (after), and 'halb' (halfway to)." },
@@ -174,7 +176,7 @@ const TIME_QUIZ = [
   { q: "Wie spät ist es um 14:30? (Informell)", answer: "halb drei", options: ["halb zwei", "halb drei", "zwei Uhr dreißig"], expl: "'halb' points to the upcoming hour (3), so 14:30 is 'halb drei'." },
   { q: "Wie sagt man 18:15 offiziell (Formal)?", answer: "achtzehn Uhr fünfzehn", options: ["Viertel nach sechs", "achtzehn Uhr fünfzehn", "sechs Uhr fünfzehn"], expl: "Formal uses 24h format: [Hour] Uhr [Minutes]." },
   { q: "Was bedeutet 'Es ist Viertel vor fünf'?", answer: "04:45 / 16:45", options: ["04:15 / 16:15", "05:15 / 17:15", "04:45 / 16:45"], expl: "'Viertel vor' means 15 minutes before the hour." },
-  { q: "Wie heißt 08:25 umgangssprachlich?", answer: "fünf vor halb neun", options: ["fünfundzwanzig nach acht", "fünf nach halb acht", "fünf vor halb neun"], expl: "German relates 25 past to half-past: 5 before half 9." }
+  { q: "Wie heißt 08:25 umgangssprachlich?", answer: "fünf vor halb neun", options: ["fünfundzwanzig nach acht", "fünf nach halb acht", "fünf vor halb neun"], expl: "German relates 25 past to half-past: 5 before half 9." },
 ];
 
 const GRAMMAR_FLASHCARDS = [
@@ -222,6 +224,7 @@ function openVaultDB() {
       if (!db.objectStoreNames.contains(VERBS_STORE_NAME)) db.createObjectStore(VERBS_STORE_NAME);
       if (!db.objectStoreNames.contains(PATTERNS_STORE_NAME)) db.createObjectStore(PATTERNS_STORE_NAME);
       if (!db.objectStoreNames.contains(PREPOSITIONS_STORE_NAME)) db.createObjectStore(PREPOSITIONS_STORE_NAME);
+      if (!db.objectStoreNames.contains(TIME_STORE_NAME)) db.createObjectStore(TIME_STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -310,13 +313,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   top: 0;
   z-index: 80;
   width: 100%;
-  background: var(--bg); /* or var(--card) */
-  border-bottom: none;   /* removes the mild horizontal line */
+  background: var(--bg);
+  border-bottom: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 24px;
-}.kebab-btn {
+}
+.kebab-btn {
   background: transparent;
   border: none;
   width: 40px;
@@ -327,7 +331,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   padding: 0;
   cursor: pointer;
 }
-
 .hamburger-icon {
   display: flex;
   flex-direction: column;
@@ -335,7 +338,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   width: 22px;
   height: 18px;
 }
-
 .hamburger-icon span {
   display: block;
   height: 4px;
@@ -357,9 +359,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   color: var(--brand);
   text-align: center;
 }
-.header-spacer {
-  width: 40px;
-}
+.header-spacer { width: 40px; }
 
 /* Sidebar Drawer */
 .sidebar-overlay {
@@ -373,10 +373,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   visibility: hidden;
   transition: opacity 0.25s ease, visibility 0.25s ease;
 }
-.sidebar-overlay.open {
-  opacity: 1;
-  visibility: visible;
-}
+.sidebar-overlay.open { opacity: 1; visibility: visible; }
 .sidebar {
   width: 320px;
   max-width: 85vw;
@@ -391,9 +388,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 10px 0 25px rgba(0,0,0,0.15);
 }
-.sidebar-overlay.open .sidebar {
-  transform: translateX(0);
-}
+.sidebar-overlay.open .sidebar { transform: translateX(0); }
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -416,16 +411,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   padding: 4px 8px;
   border-radius: 6px;
 }
-.sidebar-close-btn:hover {
-  color: var(--danger);
-  background: var(--card-inner);
-}
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-}
+.sidebar-close-btn:hover { color: var(--danger); background: var(--card-inner); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
 .sidebar-tab-btn {
   border: 1px solid transparent;
   padding: 12px 14px;
@@ -441,11 +428,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   width: 100%;
   text-align: left;
 }
-.sidebar-tab-btn:hover {
-  border-color: var(--brand);
-  color: var(--brand);
-  background: var(--card);
-}
+.sidebar-tab-btn:hover { border-color: var(--brand); color: var(--brand); background: var(--card); }
 .sidebar-tab-btn.active {
   background: var(--brand);
   color: #fff;
@@ -453,11 +436,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   box-shadow: 0 4px 10px rgba(180, 83, 9, 0.3);
 }
 
-.page { background: var(--bg); min-height: calc(100vh - 65px); width: 100%; padding: 20px 32px 36px; display: flex; justify-content: center;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+.page {
+  background: var(--bg);
+  min-height: calc(100vh - 65px);
+  width: 100%;
+  padding: 20px 32px 36px;
+  display: flex;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--ink);
+}
 .container { width: 100%; max-width: 1400px; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
-.btn { border-radius: 8px; padding: 10px 16px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; min-height: 40px; }
+.btn {
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-height: 40px;
+}
 .btn-primary { background: var(--brand); color: #fff; border: none; }
 .btn-secondary { background: var(--card); color: var(--ink); border: 1px solid var(--line-2); }
 .btn-danger { background: var(--danger); color: #fff; border: none; }
@@ -466,11 +468,35 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .sub-tabs-bar { display: flex; width: 100%; padding-bottom: 4px; }
 .sub-tabs { display: flex; width: 100%; background: var(--line-2); padding: 5px; border-radius: 12px; gap: 6px; }
-.sub-tab { flex: 1; border: none; padding: 10px 16px; border-radius: 9px; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: var(--muted); text-align: center; white-space: nowrap; }
+.sub-tab {
+  flex: 1;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
 .sub-tab.active { background: var(--brand); color: #fff; box-shadow: 0 2px 6px rgba(180, 83, 9, .35); }
 
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-height: 105px; display: flex; flex-direction: column; justify-content: space-between; }
+.stat {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px;
+  min-height: 105px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
 .stat.dark { background: #1c1917; border-color: #3c3836; color: #fff; }
 .stat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .stat-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .6px; }
@@ -493,15 +519,42 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .bg-wechsel { background: var(--wechsel-bg); color: var(--wechsel); }
 
 .section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--card); padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); }
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  background: var(--card);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
 .search { position: relative; flex: 1 1 240px; max-width: 380px; }
 .search span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 13px; }
-.search input { width: 100%; padding: 10px 14px 10px 38px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); font-size: 14px; min-height: 40px; }
+.search input {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  min-height: 40px;
+}
 
 .filters-cluster { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .filters-label { font-size: 12px; color: var(--muted); font-weight: 700; }
-.chip { border: 1px solid; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; min-height: 34px; }
+.chip {
+  border: 1px solid;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-height: 34px;
+}
 .chip.all  { background: var(--card-inner); color: var(--ink-2); border-color: var(--line-2); }
 .chip.der  { background: var(--der-bg); color: var(--der); border-color: var(--der); }
 .chip.die  { background: var(--die-bg); color: var(--die); border-color: var(--die); }
@@ -520,18 +573,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chip.both.on { background: var(--both); color: #fff; border-color: var(--both); }
 .chip.wechsel.on { background: var(--wechsel); color: #fff; border-color: var(--wechsel); }
 
-.date-select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); font-size: 12.5px; font-weight: 600; min-height: 36px; }
+.date-select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  min-height: 36px;
+}
 
 /* Custom Animated Dropdown */
-.dropdown-container {
-  position: relative;
-  display: inline-block;
-  user-select: none;
-}
-.dropdown-container.full-width {
-  display: block;
-  width: 100%;
-}
+.dropdown-container { position: relative; display: inline-block; user-select: none; }
+.dropdown-container.full-width { display: block; width: 100%; }
 .dropdown-trigger {
   min-height: 38px;
   padding: 8px 14px;
@@ -548,17 +603,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   width: 100%;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.dropdown-trigger:hover {
-  border-color: var(--brand);
-}
-.dropdown-arrow {
-  font-size: 10px;
-  color: var(--muted);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.dropdown-container.open .dropdown-arrow {
-  transform: rotate(180deg);
-}
+.dropdown-trigger:hover { border-color: var(--brand); }
+.dropdown-arrow { font-size: 10px; color: var(--muted); transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+.dropdown-container.open .dropdown-arrow { transform: rotate(180deg); }
 .dropdown-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -576,17 +623,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   visibility: hidden;
   transform: translateY(-8px) scale(0.97);
   transform-origin: top center;
-  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
-              visibility 0.22s;
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.22s;
   pointer-events: none;
 }
-.dropdown-container.open .dropdown-menu {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-}
+.dropdown-container.open .dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
 .dropdown-item {
   width: 100%;
   text-align: left;
@@ -603,15 +643,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   gap: 8px;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
-.dropdown-item:hover {
-  background: var(--card-inner);
-  color: var(--brand);
-}
-.dropdown-item.active {
-  background: var(--card-inner);
-  color: var(--brand);
-  font-weight: 700;
-}
+.dropdown-item:hover { background: var(--card-inner); color: var(--brand); }
+.dropdown-item.active { background: var(--card-inner); color: var(--brand); font-weight: 700; }
 
 .list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 16px 16px; overflow-x: auto; }
 .list-head { padding: 12px 8px; font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: .5px; border-bottom: 1px solid var(--line); }
@@ -622,14 +655,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   gap: 16px;
   align-items: center;
 }
-
 .verbs-head, .verb-row {
   display: grid;
   grid-template-columns: 44px 90px 140px 170px 160px 1fr 130px 110px !important;
   gap: 14px;
   align-items: center;
 }
-
 .preps-head, .prep-row {
   display: grid;
   grid-template-columns: 48px 110px 140px 200px 1fr 130px 120px !important;
@@ -651,10 +682,32 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .status.done { background: var(--das-bg); border-color: var(--das); color: var(--das); }
 .status.todo { background: var(--card-inner); border-color: var(--line-2); color: var(--muted); }
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
-.icon-btn { width: 36px; height: 36px; min-width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; background: var(--card-inner); border: 1px solid var(--line-2); border-radius: 8px; color: var(--ink); }
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: var(--card-inner);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  color: var(--ink);
+}
 
 .patterns-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.pattern-col { background: var(--card); border: 1px solid var(--line); border-top: 4px solid transparent; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.pattern-col {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-top: 4px solid transparent;
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .pattern-col.der { border-top-color: var(--der); }
 .pattern-col.die { border-top-color: var(--die); }
 .pattern-col.das { border-top-color: var(--das); }
@@ -682,7 +735,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 48px 24px; text-align: center; }
 .flash-wrap { display: flex; flex-direction: column; align-items: center; gap: 24px; }
-.flash { width: min(480px, 100%); min-height: 250px; background: var(--card-inner); border: 2px dashed var(--line-2); border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; cursor: pointer; user-select: none; }
+.flash {
+  width: min(480px, 100%);
+  min-height: 250px;
+  background: var(--card-inner);
+  border: 2px dashed var(--line-2);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  cursor: pointer;
+  user-select: none;
+}
 .flash h2 { font-size: 42px; margin: 16px 0; overflow-wrap: anywhere; color: var(--ink); font-weight: 700; }
 .flash-controls { display: flex; gap: 12px; align-items: center; }
 
@@ -737,67 +803,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   }
 
   .c-idx { display: none !important; }
-
-  .c-art, .c-case {
-    grid-column: 1;
-    display: flex;
-    justify-content: flex-start;
-    margin-bottom: 2px;
-    text-align: left;
-  }
-
-  .c-noun, .c-verb, .c-prep {
-    grid-column: 1;
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    gap: 8px;
-    font-size: 17px;
-    font-weight: 700;
-    text-align: left;
-  }
-
-  .c-plural, .c-past {
-    grid-column: 1;
-    text-align: left !important;
-    font-size: 13px;
-    margin: 2px 0;
-  }
-
-  .c-past {
-    color: var(--brand);
-    font-family: monospace;
-    font-weight: 600;
-  }
-
-  .c-mean {
-    grid-column: 1;
-    text-align: left !important;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--ink-2);
-    margin: 2px 0;
-  }
-
-  .c-eg {
-    grid-column: 1;
-    text-align: left !important;
-    font-size: 12.5px;
-    color: var(--muted);
-    font-style: italic;
-    margin: 2px 0;
-  }
-
-  .c-status {
-    grid-column: 1;
-    display: flex;
-    justify-content: flex-start;
-    margin-top: 6px;
-  }
-
-  .noun-wrap {
-    justify-content: flex-start !important;
-  }
+  .c-art, .c-case { grid-column: 1; display: flex; justify-content: flex-start; margin-bottom: 2px; text-align: left; }
+  .c-noun, .c-verb, .c-prep { grid-column: 1; display: flex; justify-content: flex-start; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; text-align: left; }
+  .c-plural, .c-past { grid-column: 1; text-align: left !important; font-size: 13px; margin: 2px 0; }
+  .c-past { color: var(--brand); font-family: monospace; font-weight: 600; }
+  .c-mean { grid-column: 1; text-align: left !important; font-size: 14px; font-weight: 600; color: var(--ink-2); margin: 2px 0; }
+  .c-eg { grid-column: 1; text-align: left !important; font-size: 12.5px; color: var(--muted); font-style: italic; margin: 2px 0; }
+  .c-status { grid-column: 1; display: flex; justify-content: flex-start; margin-top: 6px; }
+  .noun-wrap { justify-content: flex-start !important; }
 
   .actions {
     grid-column: 2;
@@ -903,6 +916,7 @@ export default function App() {
   const [verbsList, setVerbsList] = useState([]);
   const [patternsList, setPatternsList] = useState([]);
   const [prepsList, setPrepsList] = useState([]);
+  const [timeList, setTimeList] = useState([]);
   const [isReady, setIsReady] = useState(false);
 
   const [theme] = useState(() => localStorage.getItem("vocab_vault_theme") || "light");
@@ -956,6 +970,11 @@ export default function App() {
   const [prepModalOpen, setPrepModalOpen] = useState(false);
   const [editingPrepId, setEditingPrepId] = useState(null);
   const [prepFormData, setPrepFormData] = useState({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" });
+
+  // Time Modal
+  const [timeModalOpen, setTimeModalOpen] = useState(false);
+  const [editingTimeId, setEditingTimeId] = useState(null);
+  const [timeFormData, setTimeFormData] = useState({ digital: "", formal: "", informal: "", rule: "" });
 
   // Confirmation Pop-up State
   const [confirmModal, setConfirmModal] = useState({
@@ -1041,9 +1060,9 @@ export default function App() {
         }
 
         let storedVocab = await loadFromVaultDB(STORE_NAME, BACKUP_KEY);
-        if (!storedVocab || storedVocab.some(n => !n.createdAt)) {
-          const merged = (storedVocab && storedVocab.length) ? storedVocab.map(item => {
-            const match = SEED_DATA.find(s => s.id === item.id);
+        if (!storedVocab || storedVocab.some((n) => !n.createdAt)) {
+          const merged = (storedVocab && storedVocab.length) ? storedVocab.map((item) => {
+            const match = SEED_DATA.find((s) => s.id === item.id);
             return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
           }) : SEED_DATA;
           await writeToVaultDB(STORE_NAME, BACKUP_KEY, merged);
@@ -1053,9 +1072,9 @@ export default function App() {
         }
 
         let storedPatterns = await loadFromVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY);
-        if (!storedPatterns || storedPatterns.some(p => !p.createdAt)) {
-          const merged = (storedPatterns && storedPatterns.length) ? storedPatterns.map(item => {
-            const match = SEED_PATTERNS.find(s => s.id === item.id);
+        if (!storedPatterns || storedPatterns.some((p) => !p.createdAt)) {
+          const merged = (storedPatterns && storedPatterns.length) ? storedPatterns.map((item) => {
+            const match = SEED_PATTERNS.find((s) => s.id === item.id);
             return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
           }) : SEED_PATTERNS;
           await writeToVaultDB(PATTERNS_STORE_NAME, PATTERNS_BACKUP_KEY, merged);
@@ -1065,9 +1084,9 @@ export default function App() {
         }
 
         let storedPreps = await loadFromVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY);
-        if (!storedPreps || storedPreps.some(p => !p.createdAt)) {
-          const merged = (storedPreps && storedPreps.length) ? storedPreps.map(item => {
-            const match = SEED_PREPOSITIONS.find(s => s.id === item.id);
+        if (!storedPreps || storedPreps.some((p) => !p.createdAt)) {
+          const merged = (storedPreps && storedPreps.length) ? storedPreps.map((item) => {
+            const match = SEED_PREPOSITIONS.find((s) => s.id === item.id);
             return { ...item, createdAt: item.createdAt || (match ? match.createdAt : new Date().toISOString()) };
           }) : SEED_PREPOSITIONS;
           await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, merged);
@@ -1075,12 +1094,21 @@ export default function App() {
         } else {
           setPrepsList(storedPreps);
         }
+
+        let storedTimes = await loadFromVaultDB(TIME_STORE_NAME, TIME_BACKUP_KEY);
+        if (!storedTimes || storedTimes.length === 0) {
+          await writeToVaultDB(TIME_STORE_NAME, TIME_BACKUP_KEY, SEED_TIME);
+          setTimeList(SEED_TIME);
+        } else {
+          setTimeList(storedTimes);
+        }
       } catch (err) {
         console.error("IndexedDB error:", err);
         setVerbsList(SEED_VERBS);
         setVocabList(SEED_DATA);
         setPatternsList(SEED_PATTERNS);
         setPrepsList(SEED_PREPOSITIONS);
+        setTimeList(SEED_TIME);
       } finally {
         setIsReady(true);
       }
@@ -1107,6 +1135,11 @@ export default function App() {
   const commitPreps = async (newList) => {
     setPrepsList(newList);
     await writeToVaultDB(PREPOSITIONS_STORE_NAME, PREPOSITIONS_BACKUP_KEY, newList);
+  };
+
+  const commitTimes = async (newList) => {
+    setTimeList(newList);
+    await writeToVaultDB(TIME_STORE_NAME, TIME_BACKUP_KEY, newList);
   };
 
   const handleSaveNounModal = (e) => {
@@ -1145,6 +1178,16 @@ export default function App() {
       : [...prepsList, { id: Date.now(), ...prepFormData, createdAt: new Date().toISOString() }];
     commitPreps(updated);
     setPrepModalOpen(false);
+  };
+
+  const handleSaveTimeModal = (e) => {
+    e.preventDefault();
+    if (!timeFormData.digital.trim() || !timeFormData.formal.trim()) return;
+    const updated = editingTimeId
+      ? timeList.map((item) => ((item.id || item.digital) === editingTimeId ? { ...item, ...timeFormData } : item))
+      : [...timeList, { id: `t-${Date.now()}`, ...timeFormData, createdAt: new Date().toISOString() }];
+    commitTimes(updated);
+    setTimeModalOpen(false);
   };
 
   const speakGerman = (phrase) => {
@@ -1255,7 +1298,7 @@ export default function App() {
     { id: "Patterns", icon: "📐", count: patternsList.length },
     { id: "Verbs", icon: "⚡", count: verbsList.length },
     { id: "Prepositions", icon: "🎯", count: prepsList.length },
-    { id: "Time", icon: "⏰", count: TIME_COMPARISON_DATA.length },
+    { id: "Time", icon: "⏰", count: timeList.length },
     { id: "Grammar", icon: "📚", count: GRAMMAR_TOPICS.length },
   ];
 
@@ -1266,17 +1309,17 @@ export default function App() {
       {/* TOP HEADER */}
       <header className="app-header">
         <button
-  type="button"
-  className="kebab-btn"
-  aria-label="Open Navigation Menu"
-  onClick={() => setSidebarOpen(true)}
->
-  <span className="hamburger-icon">
-    <span></span>
-    <span></span>
-    <span></span>
-  </span>
-</button>
+          type="button"
+          className="kebab-btn"
+          aria-label="Open Navigation Menu"
+          onClick={() => setSidebarOpen(true)}
+        >
+          <span className="hamburger-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </button>
         <h2 className="app-title">deutschly</h2>
         <div className="header-spacer" />
       </header>
@@ -1709,635 +1752,682 @@ export default function App() {
                         )}
                       </div>
 
-                    <button onClick={() => { setEditingVerbId(null); setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }} className="btn btn-primary">
-                      + Add Verb
-                    </button>
-                  </div>
-                </div>
-
-                <div className="list">
-                  <div className="list-head verbs-head">
-                    <span style={{ textAlign: "center" }}>#</span>
-                    <span>CASE</span>
-                    <span>INFINITIVE</span>
-                    <span>PAST (PRÄT / PART II)</span>
-                    <span>MEANING</span>
-                    <span>EXAMPLE SENTENCE</span>
-                    <span>STATUS</span>
-                    <span style={{ textAlign: "right" }}>ACTIONS</span>
-                  </div>
-                  {filteredVerbs.map((item, index) => (
-                    <div className={`row verb-row ${item.caseType === "Both / Common" ? "Both" : item.caseType}`} key={item.id}>
-                      <div className="c-idx">{index + 1}</div>
-                      <div className="c-case"><span className={`pill ${VERB_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
-                      <div className="c-verb" style={{ fontWeight: 700 }}>{item.verb}</div>
-                      <div className="c-past">{item.preterite || "—"} / {item.participle || "—"}</div>
-                      <div className="c-mean">{item.meaning}</div>
-                      <div className="c-eg">{item.example || "—"}</div>
-                      <div className="c-status">
-                        <button onClick={() => commitVerbs(verbsList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))} className={`status ${item.status === "Mastered" ? "done" : "todo"}`}>
-                          {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
-                        </button>
-                      </div>
-                      <div className="actions">
-                        <button onClick={() => speakGerman(`${item.verb}. ${item.preterite || ""}. ${item.participle || ""}. ${item.example || ""}`)} className="icon-btn">🔊</button>
-                        <button onClick={() => { setEditingVerbId(item.id); setVerbFormData({ verb: item.verb, preterite: item.preterite || "", participle: item.participle || "", caseType: item.caseType, meaning: item.meaning, example: item.example, status: item.status }); setVerbModalOpen(true); }} className="icon-btn">✏️</button>
-                        <button onClick={() => requestConfirmation("Delete Verb", `Are you sure you want to delete the verb "${item.verb}"?`, () => commitVerbs(verbsList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
-                      </div>
+                      <button onClick={() => { setEditingVerbId(null); setVerbFormData({ verb: "", preterite: "", participle: "", caseType: "Dativ", meaning: "", example: "", status: "In Progress" }); setVerbModalOpen(true); }} className="btn btn-primary">
+                        + Add Verb
+                      </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </div>
 
-            {verbSubView === "flashcards" && (
-              <div className="panel">
-                {!verbCard ? <p>No verbs available.</p> : (
-                  <div className="flash-wrap">
-                    <div className="flash" onClick={() => setVerbCardFlipped(!verbCardFlipped)}>
-                      {!verbCardFlipped ? (
-                        <>
-                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>RECALL CASE &amp; PAST TENSE FORMS</span>
-                          <h2>{verbCard.verb}</h2>
-                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className={`pill ${VERB_CASE_CLASS[verbCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>{verbCard.caseType}</span>
-                          <p style={{ margin: "14px 0 4px", fontSize: 18, fontWeight: 700, color: "var(--brand)" }}>
-                            Präteritum: {verbCard.preterite || "—"} | Partizip II: {verbCard.participle || "—"}
-                          </p>
-                          <h3 style={{ fontSize: 22, margin: "6px 0", color: "var(--ink-2)" }}>{verbCard.meaning}</h3>
-                          {verbCard.example && <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{verbCard.example}"</p>}
-                        </>
+                  <div className="list">
+                    <div className="list-head verbs-head">
+                      <span style={{ textAlign: "center" }}>#</span>
+                      <span>CASE</span>
+                      <span>INFINITIVE</span>
+                      <span>PAST (PRÄT / PART II)</span>
+                      <span>MEANING</span>
+                      <span>EXAMPLE SENTENCE</span>
+                      <span>STATUS</span>
+                      <span style={{ textAlign: "right" }}>ACTIONS</span>
+                    </div>
+                    {filteredVerbs.map((item, index) => (
+                      <div className={`row verb-row ${item.caseType === "Both / Common" ? "Both" : item.caseType}`} key={item.id}>
+                        <div className="c-idx">{index + 1}</div>
+                        <div className="c-case"><span className={`pill ${VERB_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
+                        <div className="c-verb" style={{ fontWeight: 700 }}>{item.verb}</div>
+                        <div className="c-past">{item.preterite || "—"} / {item.participle || "—"}</div>
+                        <div className="c-mean">{item.meaning}</div>
+                        <div className="c-eg">{item.example || "—"}</div>
+                        <div className="c-status">
+                          <button onClick={() => commitVerbs(verbsList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))} className={`status ${item.status === "Mastered" ? "done" : "todo"}`}>
+                            {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
+                          </button>
+                        </div>
+                        <div className="actions">
+                          <button onClick={() => speakGerman(`${item.verb}. ${item.preterite || ""}. ${item.participle || ""}. ${item.example || ""}`)} className="icon-btn">🔊</button>
+                          <button onClick={() => { setEditingVerbId(item.id); setVerbFormData({ verb: item.verb, preterite: item.preterite || "", participle: item.participle || "", caseType: item.caseType, meaning: item.meaning, example: item.example, status: item.status }); setVerbModalOpen(true); }} className="icon-btn">✏️</button>
+                          <button onClick={() => requestConfirmation("Delete Verb", `Are you sure you want to delete the verb "${item.verb}"?`, () => commitVerbs(verbsList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {verbSubView === "flashcards" && (
+                <div className="panel">
+                  {!verbCard ? <p>No verbs available.</p> : (
+                    <div className="flash-wrap">
+                      <div className="flash" onClick={() => setVerbCardFlipped(!verbCardFlipped)}>
+                        {!verbCardFlipped ? (
+                          <>
+                            <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>RECALL CASE &amp; PAST TENSE FORMS</span>
+                            <h2>{verbCard.verb}</h2>
+                            <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className={`pill ${VERB_CASE_CLASS[verbCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>{verbCard.caseType}</span>
+                            <p style={{ margin: "14px 0 4px", fontSize: 18, fontWeight: 700, color: "var(--brand)" }}>
+                              Präteritum: {verbCard.preterite || "—"} | Partizip II: {verbCard.participle || "—"}
+                            </p>
+                            <h3 style={{ fontSize: 22, margin: "6px 0", color: "var(--ink-2)" }}>{verbCard.meaning}</h3>
+                            {verbCard.example && <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{verbCard.example}"</p>}
+                          </>
+                        )}
+                      </div>
+                      <div className="flash-controls">
+                        <button className="btn btn-secondary" disabled={verbCardIndex === 0} onClick={() => { setVerbCardIndex(verbCardIndex - 1); setVerbCardFlipped(false); }}>◀ Previous</button>
+                        <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.preterite || ""}. ${verbCard.participle || ""}.`)}>🔊 Pronounce</button>
+                        <button className="btn btn-secondary" disabled={verbCardIndex >= verbsList.length - 1} onClick={() => { setVerbCardIndex(verbCardIndex + 1); setVerbCardFlipped(false); }}>Next ▶</button>
+                      </div>
+                      <span style={{ color: "var(--muted)", fontSize: 13 }}>Verb {verbCardIndex + 1} of {verbsList.length}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {verbSubView === "quiz" && (
+                <div className="panel">
+                  {!verbQuizWord ? <p>Add verbs to start quiz.</p> : (
+                    <div className="quiz">
+                      <div className="quiz-head"><span>Question {verbQuizIndex + 1} of {verbsList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {verbQuizScore}</span></div>
+                      <div className="quiz-card">
+                        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this verb?</span>
+                        <h1>{verbQuizWord.verb}</h1>
+                        <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>Past: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong></p>
+                        <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong></p>
+                      </div>
+                      <div className="quiz-opts">
+                        {[{ l: "Dativ", v: "Dativ" }, { l: "Akkusativ", v: "Akkusativ" }, { l: "Both", v: "Both / Common" }].map((opt) => (
+                          <button key={opt.v} disabled={verbQuizFeedback !== null} className={`quiz-opt ${opt.l}`} onClick={() => {
+                            const ok = opt.v === verbQuizWord.caseType;
+                            if (ok) setVerbQuizScore((s) => s + 1);
+                            setVerbQuizFeedback(ok ? "Correct! 🎉" : `Wrong! "${verbQuizWord.verb}" governs "${verbQuizWord.caseType}".`);
+                          }}>{opt.l}</button>
+                        ))}
+                      </div>
+                      {verbQuizFeedback && (
+                        <div style={{ marginTop: 24 }}>
+                          <p style={{ fontSize: 15, fontWeight: 600 }}>{verbQuizFeedback}</p>
+                          <button className="btn btn-primary" onClick={() => {
+                            setVerbQuizFeedback(null);
+                            if (verbQuizIndex < verbsList.length - 1) setVerbQuizIndex((i) => i + 1);
+                            else { alert(`Verb Quiz finished! Score: ${verbQuizScore}/${verbsList.length}`); setVerbQuizIndex(0); setVerbQuizScore(0); }
+                          }}>{verbQuizIndex < verbsList.length - 1 ? "Next Verb" : "Restart"}</button>
+                        </div>
                       )}
                     </div>
-                    <div className="flash-controls">
-                      <button className="btn btn-secondary" disabled={verbCardIndex === 0} onClick={() => { setVerbCardIndex(verbCardIndex - 1); setVerbCardFlipped(false); }}>◀ Previous</button>
-                      <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.preterite || ""}. ${verbCard.participle || ""}.`)}>🔊 Pronounce</button>
-                      <button className="btn btn-secondary" disabled={verbCardIndex >= verbsList.length - 1} onClick={() => { setVerbCardIndex(verbCardIndex + 1); setVerbCardFlipped(false); }}>Next ▶</button>
-                    </div>
-                    <span style={{ color: "var(--muted)", fontSize: 13 }}>Verb {verbCardIndex + 1} of {verbsList.length}</span>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
-            {verbSubView === "quiz" && (
-              <div className="panel">
-                {!verbQuizWord ? <p>Add verbs to start quiz.</p> : (
-                  <div className="quiz">
-                    <div className="quiz-head"><span>Question {verbQuizIndex + 1} of {verbsList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {verbQuizScore}</span></div>
-                    <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this verb?</span>
-                      <h1>{verbQuizWord.verb}</h1>
-                      <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>Past: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong></p>
-                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong></p>
+          {/* ==================== 4. PREPOSITIONS ==================== */}
+          {mainCategory === "Prepositions" && (
+            <>
+              {prepSubView === "list" && (
+                <div className="section">
+                  <div className="stats-grid">
+                    <div className="stat dark">
+                      <div className="stat-head"><span className="stat-label">TOTAL PREPOSITIONS</span><span className="stat-pill dark">{prepsMastered} mastered</span></div>
+                      <div className="stat-foot"><span className="stat-value">{prepsList.length}</span></div>
                     </div>
-                    <div className="quiz-opts">
-                      {[{ l: "Dativ", v: "Dativ" }, { l: "Akkusativ", v: "Akkusativ" }, { l: "Both", v: "Both / Common" }].map((opt) => (
-                        <button key={opt.v} disabled={verbQuizFeedback !== null} className={`quiz-opt ${opt.l}`} onClick={() => {
-                          const ok = opt.v === verbQuizWord.caseType;
-                          if (ok) setVerbQuizScore((s) => s + 1);
-                          setVerbQuizFeedback(ok ? "Correct! 🎉" : `Wrong! "${verbQuizWord.verb}" governs "${verbQuizWord.caseType}".`);
-                        }}>{opt.l}</button>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akk</span></div>
+                      <div className="stat-foot"><span className="stat-value c-akku">{countPrep("Akkusativ")}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dat</span></div>
+                      <div className="stat-foot"><span className="stat-value c-dativ">{countPrep("Dativ")}</span></div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-head"><span className="stat-label">WECHSEL</span><span className="stat-pill bg-wechsel">Dat / Akk</span></div>
+                      <div className="stat-foot"><span className="stat-value c-wechsel">{countPrep("Wechsel")}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="toolbar">
+                    <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search preposition, meaning, or sentence..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+
+                    <div className="filters-cluster">
+                      <div className="filters">
+                        <span className="filters-label">Case:</span>
+                        <button onClick={() => setPrepFilter("all")} className={`chip all ${prepFilter === "all" ? "on" : ""}`}>All</button>
+                        <button onClick={() => setPrepFilter("Akkusativ")} className={`chip akku ${prepFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
+                        <button onClick={() => setPrepFilter("Dativ")} className={`chip dativ ${prepFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
+                        <button onClick={() => setPrepFilter("Wechsel")} className={`chip wechsel ${prepFilter === "Wechsel" ? "on" : ""}`}>Wechsel</button>
+                      </div>
+
+                      <div className="filters">
+                        <span className="filters-label">Status:</span>
+                        <button onClick={() => setPrepStatusFilter("all")} className={`chip all ${prepStatusFilter === "all" ? "on" : ""}`}>All</button>
+                        <button onClick={() => setPrepStatusFilter("In Progress")} className={`chip all ${prepStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
+                        <button onClick={() => setPrepStatusFilter("Mastered")} className={`chip das ${prepStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                      </div>
+
+                      <div className="filters">
+                        <span className="filters-label">Created:</span>
+                        <CustomDropdown
+                          icon="📅"
+                          value={dateFilter}
+                          options={DATE_OPTIONS}
+                          onChange={(val) => setDateFilter(val)}
+                        />
+                        {dateFilter === "custom" && (
+                          <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                        )}
+                      </div>
+
+                      <button onClick={() => { setEditingPrepId(null); setPrepFormData({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" }); setPrepModalOpen(true); }} className="btn btn-primary">
+                        + Add Preposition
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="list">
+                    <div className="list-head preps-head"><span style={{ textAlign: "center" }}>#</span><span>CASE</span><span>PREPOSITION</span><span>MEANING</span><span>EXAMPLE SENTENCE</span><span>STATUS</span><span style={{ textAlign: "right" }}>ACTIONS</span></div>
+                    {filteredPreps.map((item, index) => (
+                      <div className={`row prep-row ${item.caseType}`} key={item.id}>
+                        <div className="c-idx">{index + 1}</div>
+                        <div className="c-case"><span className={`pill ${PREP_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
+                        <div className="c-prep" style={{ fontWeight: 700 }}>{item.prep}</div>
+                        <div className="c-mean">{item.meaning}</div>
+                        <div className="c-eg">{item.example || "—"}</div>
+                        <div className="c-status">
+                          <button onClick={() => commitPreps(prepsList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))} className={`status ${item.status === "Mastered" ? "done" : "todo"}`}>
+                            {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
+                          </button>
+                        </div>
+                        <div className="actions">
+                          <button onClick={() => speakGerman(`${item.prep}. ${item.example || ""}`)} className="icon-btn">🔊</button>
+                          <button onClick={() => { setEditingPrepId(item.id); setPrepFormData({ prep: item.prep, caseType: item.caseType, meaning: item.meaning, example: item.example, status: item.status }); setPrepModalOpen(true); }} className="icon-btn">✏️</button>
+                          <button onClick={() => requestConfirmation("Delete Preposition", `Are you sure you want to delete "${item.prep}"?`, () => commitPreps(prepsList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {prepSubView === "flashcards" && (
+                <div className="panel">
+                  {!prepCard ? <p>No prepositions available.</p> : (
+                    <div className="flash-wrap">
+                      <div className="flash" onClick={() => setPrepCardFlipped(!prepCardFlipped)}>
+                        {!prepCardFlipped ? (
+                          <>
+                            <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH CASE DOES THIS PREPOSITION TAKE?</span>
+                            <h2>{prepCard.prep}</h2>
+                            <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className={`pill ${PREP_CASE_CLASS[prepCard.caseType] || "bg-both"}`} style={{ fontSize: 22, padding: "6px 20px" }}>{prepCard.caseType === "Wechsel" ? "Wechselpräposition (Dat/Akk)" : `+ ${prepCard.caseType}`}</span>
+                            <h3 style={{ fontSize: 22, margin: "14px 0 6px", color: "var(--ink-2)" }}>{prepCard.meaning}</h3>
+                            {prepCard.example && <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{prepCard.example}"</p>}
+                          </>
+                        )}
+                      </div>
+                      <div className="flash-controls">
+                        <button className="btn btn-secondary" disabled={prepCardIndex === 0} onClick={() => { setPrepCardIndex(prepCardIndex - 1); setPrepCardFlipped(false); }}>◀ Previous</button>
+                        <button className="btn btn-secondary mid" onClick={() => speakGerman(`${prepCard.prep}. ${prepCard.example || ""}`)}>🔊 Pronounce</button>
+                        <button className="btn btn-secondary" disabled={prepCardIndex >= prepsList.length - 1} onClick={() => { setPrepCardIndex(prepCardIndex + 1); setPrepCardFlipped(false); }}>Next ▶</button>
+                      </div>
+                      <span style={{ color: "var(--muted)", fontSize: 13 }}>Preposition {prepCardIndex + 1} of {prepsList.length}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {prepSubView === "quiz" && (
+                <div className="panel">
+                  {!prepQuizWord ? <p>Add prepositions to start quiz.</p> : (
+                    <div className="quiz">
+                      <div className="quiz-head"><span>Question {prepQuizIndex + 1} of {prepsList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {prepQuizScore}</span></div>
+                      <div className="quiz-card">
+                        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this preposition?</span>
+                        <h1>{prepQuizWord.prep}</h1>
+                        <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{prepQuizWord.meaning}</strong></p>
+                      </div>
+                      <div className="quiz-opts">
+                        {["Akkusativ", "Dativ", "Wechsel"].map((opt) => (
+                          <button key={opt} disabled={prepQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
+                            const ok = opt === prepQuizWord.caseType;
+                            if (ok) setPrepQuizScore((s) => s + 1);
+                            setPrepQuizFeedback(ok ? "Correct! 🎉" : `Wrong! "${prepQuizWord.prep}" takes "${prepQuizWord.caseType}".`);
+                          }}>{opt}</button>
+                        ))}
+                      </div>
+                      {prepQuizFeedback && (
+                        <div style={{ marginTop: 24 }}>
+                          <p style={{ fontSize: 15, fontWeight: 600 }}>{prepQuizFeedback}</p>
+                          <button className="btn btn-primary" onClick={() => {
+                            setPrepQuizFeedback(null);
+                            if (prepQuizIndex < prepsList.length - 1) setPrepQuizIndex((i) => i + 1);
+                            else { alert(`Preposition Quiz finished! Score: ${prepQuizScore}/${prepsList.length}`); setPrepQuizIndex(0); setPrepQuizScore(0); }
+                          }}>{prepQuizIndex < prepsList.length - 1 ? "Next Preposition" : "Restart"}</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ==================== 5. TIME (UHRZEIT) ==================== */}
+          {mainCategory === "Time" && (
+            <>
+              {timeSubView === "list" && (
+                <div className="grammar-hub-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Uhrzeit (Formal 24h vs. Informal 12h Format):</span>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <div className="filters">
+                        <button onClick={() => setTimeViewMode("all")} className={`chip all ${timeViewMode === "all" ? "on" : ""}`}>
+                          ⚖️ Compare Both
+                        </button>
+                        <button onClick={() => setTimeViewMode("formal")} className={`chip der ${timeViewMode === "formal" ? "on" : ""}`}>
+                          🏢 Formal (24h)
+                        </button>
+                        <button onClick={() => setTimeViewMode("informal")} className={`chip die ${timeViewMode === "informal" ? "on" : ""}`}>
+                          ☕ Informal (12h)
+                        </button>
+                      </div>
+                      
+                      {/* ADD TIME BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingTimeId(null);
+                          setTimeFormData({ digital: "", formal: "", informal: "", rule: "" });
+                          setTimeModalOpen(true);
+                        }}
+                        className="btn btn-primary"
+                      >
+                        + Add Time
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="table-wrap">
+                    <table className="grammar-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 90 }}>Digital</th>
+                          {(timeViewMode === "all" || timeViewMode === "formal") && <th>Formal (Offiziell / 24h)</th>}
+                          {(timeViewMode === "all" || timeViewMode === "informal") && <th>Informal (Umgangssprachlich / 12h)</th>}
+                          <th>Rule / Structure</th>
+                          <th style={{ textAlign: "right" }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {timeList.map((t) => (
+                          <tr key={t.id || t.digital}>
+                            <td style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 14 }}>{t.digital}</td>
+                            {(timeViewMode === "all" || timeViewMode === "formal") && (
+                              <td style={{ color: "var(--der)", fontWeight: 600 }}>{t.formal}</td>
+                            )}
+                            {(timeViewMode === "all" || timeViewMode === "informal") && (
+                              <td style={{ color: "var(--die)", fontWeight: 600 }}>{t.informal || "—"}</td>
+                            )}
+                            <td style={{ fontSize: 13, color: "var(--muted)" }}>{t.rule}</td>
+                            <td style={{ textAlign: "right" }}>
+                              <div style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => speakGerman(timeViewMode === "formal" ? t.formal : t.informal || t.formal)}
+                                  className="icon-btn"
+                                  title="Pronounce"
+                                >
+                                  🔊
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingTimeId(t.id || t.digital);
+                                    setTimeFormData({
+                                      digital: t.digital,
+                                      formal: t.formal,
+                                      informal: t.informal || "",
+                                      rule: t.rule || "",
+                                    });
+                                    setTimeModalOpen(true);
+                                  }}
+                                  className="icon-btn"
+                                  title="Edit"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    requestConfirmation("Delete Time Entry", `Are you sure you want to delete "${t.digital}"?`, () =>
+                                      commitTimes(timeList.filter((item) => (item.id || item.digital) !== (t.id || t.digital)))
+                                    )
+                                  }
+                                  className="icon-btn"
+                                  title="Delete"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grammar-rule-box">
+                    <strong>Essential Uhrzeit Rules:</strong>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 10 }}>
+                      {TIME_RULES.map((r, i) => (
+                        <div key={i} style={{ background: "var(--card)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line-2)" }}>
+                          <span style={{ fontWeight: 700, color: "var(--brand)", fontSize: 13 }}>{r.term}</span>
+                          <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.4 }}>{r.desc}</p>
+                        </div>
                       ))}
                     </div>
-                    {verbQuizFeedback && (
-                      <div style={{ marginTop: 24 }}>
-                        <p style={{ fontSize: 15, fontWeight: 600 }}>{verbQuizFeedback}</p>
-                        <button className="btn btn-primary" onClick={() => {
-                          setVerbQuizFeedback(null);
-                          if (verbQuizIndex < verbsList.length - 1) setVerbQuizIndex((i) => i + 1);
-                          else { alert(`Verb Quiz finished! Score: ${verbQuizScore}/${verbsList.length}`); setVerbQuizIndex(0); setVerbQuizScore(0); }
-                        }}>{verbQuizIndex < verbsList.length - 1 ? "Next Verb" : "Restart"}</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ==================== 4. PREPOSITIONS ==================== */}
-        {mainCategory === "Prepositions" && (
-          <>
-            {prepSubView === "list" && (
-              <div className="section">
-                <div className="stats-grid">
-                  <div className="stat dark">
-                    <div className="stat-head"><span className="stat-label">TOTAL PREPOSITIONS</span><span className="stat-pill dark">{prepsMastered} mastered</span></div>
-                    <div className="stat-foot"><span className="stat-value">{prepsList.length}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">AKKUSATIV</span><span className="stat-pill bg-akku">Akk</span></div>
-                    <div className="stat-foot"><span className="stat-value c-akku">{countPrep("Akkusativ")}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dat</span></div>
-                    <div className="stat-foot"><span className="stat-value c-dativ">{countPrep("Dativ")}</span></div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-head"><span className="stat-label">WECHSEL</span><span className="stat-pill bg-wechsel">Dat / Akk</span></div>
-                    <div className="stat-foot"><span className="stat-value c-wechsel">{countPrep("Wechsel")}</span></div>
                   </div>
                 </div>
+              )}
 
-                <div className="toolbar">
-                  <div className="search"><span role="img" aria-label="search">🔍</span><input type="search" placeholder="Search preposition, meaning, or sentence..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-
-                  <div className="filters-cluster">
-                    <div className="filters">
-                      <span className="filters-label">Case:</span>
-                      <button onClick={() => setPrepFilter("all")} className={`chip all ${prepFilter === "all" ? "on" : ""}`}>All</button>
-                      <button onClick={() => setPrepFilter("Akkusativ")} className={`chip akku ${prepFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
-                      <button onClick={() => setPrepFilter("Dativ")} className={`chip dativ ${prepFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
-                      <button onClick={() => setPrepFilter("Wechsel")} className={`chip wechsel ${prepFilter === "Wechsel" ? "on" : ""}`}>Wechsel</button>
-                    </div>
-
-                    <div className="filters">
-                      <span className="filters-label">Status:</span>
-                      <button onClick={() => setPrepStatusFilter("all")} className={`chip all ${prepStatusFilter === "all" ? "on" : ""}`}>All</button>
-                      <button onClick={() => setPrepStatusFilter("In Progress")} className={`chip all ${prepStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
-                      <button onClick={() => setPrepStatusFilter("Mastered")} className={`chip das ${prepStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
-                    </div>
-
-                    <div className="filters">
-                      <span className="filters-label">Created:</span>
-                      <CustomDropdown
-                        icon="📅"
-                        value={dateFilter}
-                        options={DATE_OPTIONS}
-                        onChange={(val) => setDateFilter(val)}
-                      />
-                      {dateFilter === "custom" && (
-                        <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
-                      )}
-                    </div>
-
-                    <button onClick={() => { setEditingPrepId(null); setPrepFormData({ prep: "", caseType: "Akkusativ", meaning: "", example: "", status: "In Progress" }); setPrepModalOpen(true); }} className="btn btn-primary">
-                      + Add Preposition
-                    </button>
-                  </div>
-                </div>
-
-                <div className="list">
-                  <div className="list-head preps-head"><span style={{ textAlign: "center" }}>#</span><span>CASE</span><span>PREPOSITION</span><span>MEANING</span><span>EXAMPLE SENTENCE</span><span>STATUS</span><span style={{ textAlign: "right" }}>ACTIONS</span></div>
-                  {filteredPreps.map((item, index) => (
-                    <div className={`row prep-row ${item.caseType}`} key={item.id}>
-                      <div className="c-idx">{index + 1}</div>
-                      <div className="c-case"><span className={`pill ${PREP_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
-                      <div className="c-prep" style={{ fontWeight: 700 }}>{item.prep}</div>
-                      <div className="c-mean">{item.meaning}</div>
-                      <div className="c-eg">{item.example || "—"}</div>
-                      <div className="c-status">
-                        <button onClick={() => commitPreps(prepsList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))} className={`status ${item.status === "Mastered" ? "done" : "todo"}`}>
-                          {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
-                        </button>
-                      </div>
-                      <div className="actions">
-                        <button onClick={() => speakGerman(`${item.prep}. ${item.example || ""}`)} className="icon-btn">🔊</button>
-                        <button onClick={() => { setEditingPrepId(item.id); setPrepFormData({ prep: item.prep, caseType: item.caseType, meaning: item.meaning, example: item.example, status: item.status }); setPrepModalOpen(true); }} className="icon-btn">✏️</button>
-                        <button onClick={() => requestConfirmation("Delete Preposition", `Are you sure you want to delete "${item.prep}"?`, () => commitPreps(prepsList.filter((i) => i.id !== item.id)))} className="icon-btn">🗑️</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {prepSubView === "flashcards" && (
-              <div className="panel">
-                {!prepCard ? <p>No prepositions available.</p> : (
+              {timeSubView === "flashcards" && (
+                <div className="panel">
                   <div className="flash-wrap">
-                    <div className="flash" onClick={() => setPrepCardFlipped(!prepCardFlipped)}>
-                      {!prepCardFlipped ? (
+                    <div className="flash" onClick={() => setTimeCardFlipped(!timeCardFlipped)}>
+                      {!timeCardFlipped ? (
                         <>
-                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH CASE DOES THIS PREPOSITION TAKE?</span>
-                          <h2>{prepCard.prep}</h2>
+                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>HOW DO YOU SAY THIS TIME IN GERMAN?</span>
+                          <h2 style={{ fontSize: 32 }}>{timeCard.prompt}</h2>
                           <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
                         </>
                       ) : (
                         <>
-                          <span className={`pill ${PREP_CASE_CLASS[prepCard.caseType] || "bg-both"}`} style={{ fontSize: 22, padding: "6px 20px" }}>{prepCard.caseType === "Wechsel" ? "Wechselpräposition (Dat/Akk)" : `+ ${prepCard.caseType}`}</span>
-                          <h3 style={{ fontSize: 22, margin: "14px 0 6px", color: "var(--ink-2)" }}>{prepCard.meaning}</h3>
-                          {prepCard.example && <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{prepCard.example}"</p>}
+                          <span className="pill bg-der" style={{ fontSize: 24, padding: "8px 24px" }}>{timeCard.answer}</span>
+                          <h3 style={{ fontSize: 18, margin: "14px 0 6px", color: "var(--ink-2)" }}>{timeCard.note}</h3>
                         </>
                       )}
                     </div>
                     <div className="flash-controls">
-                      <button className="btn btn-secondary" disabled={prepCardIndex === 0} onClick={() => { setPrepCardIndex(prepCardIndex - 1); setPrepCardFlipped(false); }}>◀ Previous</button>
-                      <button className="btn btn-secondary mid" onClick={() => speakGerman(`${prepCard.prep}. ${prepCard.example || ""}`)}>🔊 Pronounce</button>
-                      <button className="btn btn-secondary" disabled={prepCardIndex >= prepsList.length - 1} onClick={() => { setPrepCardIndex(prepCardIndex + 1); setPrepCardFlipped(false); }}>Next ▶</button>
+                      <button className="btn btn-secondary" disabled={timeCardIndex === 0} onClick={() => { setTimeCardIndex(timeCardIndex - 1); setTimeCardFlipped(false); }}>◀ Previous</button>
+                      <button className="btn btn-secondary mid" onClick={() => speakGerman(timeCard.answer)}>🔊 Pronounce</button>
+                      <button className="btn btn-secondary" disabled={timeCardIndex >= TIME_FLASHCARDS.length - 1} onClick={() => { setTimeCardIndex(timeCardIndex + 1); setTimeCardFlipped(false); }}>Next ▶</button>
                     </div>
-                    <span style={{ color: "var(--muted)", fontSize: 13 }}>Preposition {prepCardIndex + 1} of {prepsList.length}</span>
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>Flashcard {timeCardIndex + 1} of {TIME_FLASHCARDS.length}</span>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {prepSubView === "quiz" && (
-              <div className="panel">
-                {!prepQuizWord ? <p>Add prepositions to start quiz.</p> : (
+              {timeSubView === "quiz" && (
+                <div className="panel">
                   <div className="quiz">
-                    <div className="quiz-head"><span>Question {prepQuizIndex + 1} of {prepsList.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {prepQuizScore}</span></div>
+                    <div className="quiz-head"><span>Question {timeQuizIndex + 1} of {TIME_QUIZ.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {timeQuizScore}</span></div>
                     <div className="quiz-card">
-                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this preposition?</span>
-                      <h1>{prepQuizWord.prep}</h1>
-                      <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{prepQuizWord.meaning}</strong></p>
+                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Select the correct time:</span>
+                      <h1 style={{ fontSize: 24 }}>{timeQuizWord.q}</h1>
                     </div>
-                    <div className="quiz-opts">
-                      {["Akkusativ", "Dativ", "Wechsel"].map((opt) => (
-                        <button key={opt} disabled={prepQuizFeedback !== null} className={`quiz-opt ${opt}`} onClick={() => {
-                          const ok = opt === prepQuizWord.caseType;
-                          if (ok) setPrepQuizScore((s) => s + 1);
-                          setPrepQuizFeedback(ok ? "Correct! 🎉" : `Wrong! "${prepQuizWord.prep}" takes "${prepQuizWord.caseType}".`);
+                    <div className="quiz-opts" style={{ gridTemplateColumns: "1fr" }}>
+                      {timeQuizWord.options.map((opt) => (
+                        <button key={opt} disabled={timeQuizFeedback !== null} className="quiz-opt" onClick={() => {
+                          const ok = opt === timeQuizWord.answer;
+                          if (ok) setTimeQuizScore((s) => s + 1);
+                          setTimeQuizFeedback(ok ? `Correct! 🎉 ${timeQuizWord.expl}` : `Wrong! Correct phrasing is "${timeQuizWord.answer}". (${timeQuizWord.expl})`);
                         }}>{opt}</button>
                       ))}
                     </div>
-                    {prepQuizFeedback && (
+                    {timeQuizFeedback && (
                       <div style={{ marginTop: 24 }}>
-                        <p style={{ fontSize: 15, fontWeight: 600 }}>{prepQuizFeedback}</p>
+                        <p style={{ fontSize: 15, fontWeight: 600 }}>{timeQuizFeedback}</p>
                         <button className="btn btn-primary" onClick={() => {
-                          setPrepQuizFeedback(null);
-                          if (prepQuizIndex < prepsList.length - 1) setPrepQuizIndex((i) => i + 1);
-                          else { alert(`Preposition Quiz finished! Score: ${prepQuizScore}/${prepsList.length}`); setPrepQuizIndex(0); setPrepQuizScore(0); }
-                        }}>{prepQuizIndex < prepsList.length - 1 ? "Next Preposition" : "Restart"}</button>
+                          setTimeQuizFeedback(null);
+                          if (timeQuizIndex < TIME_QUIZ.length - 1) setTimeQuizIndex((i) => i + 1);
+                          else { alert(`Time Quiz finished! Final Score: ${timeQuizScore}/${TIME_QUIZ.length}`); setTimeQuizIndex(0); setTimeQuizScore(0); }
+                        }}>{timeQuizIndex < TIME_QUIZ.length - 1 ? "Next Question" : "Restart"}</button>
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ==================== 5. TIME (UHRZEIT) ==================== */}
-        {mainCategory === "Time" && (
-          <>
-            {timeSubView === "list" && (
-              <div className="grammar-hub-card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Uhrzeit (Formal 24h vs. Informal 12h Format):</span>
-                  <div className="filters">
-                    <button onClick={() => setTimeViewMode("all")} className={`chip all ${timeViewMode === "all" ? "on" : ""}`}>
-                      ⚖️ Compare Both
-                    </button>
-                    <button onClick={() => setTimeViewMode("formal")} className={`chip der ${timeViewMode === "formal" ? "on" : ""}`}>
-                      🏢 Formal (24h)
-                    </button>
-                    <button onClick={() => setTimeViewMode("informal")} className={`chip die ${timeViewMode === "informal" ? "on" : ""}`}>
-                      ☕ Informal (12h)
-                    </button>
-                  </div>
                 </div>
+              )}
+            </>
+          )}
 
-                <div className="table-wrap">
-                  <table className="grammar-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 90 }}>Digital</th>
-                        {(timeViewMode === "all" || timeViewMode === "formal") && <th>Formal (Offiziell / 24h)</th>}
-                        {(timeViewMode === "all" || timeViewMode === "informal") && <th>Informal (Umgangssprachlich / 12h)</th>}
-                        <th>Rule / Structure</th>
-                        <th style={{ textAlign: "right" }}>Listen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {TIME_COMPARISON_DATA.map((t) => (
-                        <tr key={t.digital}>
-                          <td style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 14 }}>{t.digital}</td>
-                          {(timeViewMode === "all" || timeViewMode === "formal") && (
-                            <td style={{ color: "var(--der)", fontWeight: 600 }}>{t.formal}</td>
-                          )}
-                          {(timeViewMode === "all" || timeViewMode === "informal") && (
-                            <td style={{ color: "var(--die)", fontWeight: 600 }}>{t.informal}</td>
-                          )}
-                          <td style={{ fontSize: 13, color: "var(--muted)" }}>{t.rule}</td>
-                          <td style={{ textAlign: "right" }}>
-                            <button
-                              onClick={() => speakGerman(timeViewMode === "formal" ? t.formal : t.informal)}
-                              className="icon-btn"
-                              title="Pronounce"
-                            >
-                              🔊
+          {/* ==================== 6. GRAMMAR HUB ==================== */}
+          {mainCategory === "Grammar" && (
+            <>
+              {grammarSubView === "list" && (
+                <div className="grammar-hub-card">
+                  <div className="grammar-topic-nav">
+                    {GRAMMAR_TOPICS.map((t) => (
+                      <button key={t.id} onClick={() => setActiveGrammarTopic(t.id)} className={`grammar-topic-btn ${activeGrammarTopic === t.id ? "active" : ""}`}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {activeGrammarTopic === "possessives" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Possessive Articles Matrix:</span>
+                        <div className="filters">
+                          {["Nominativ", "Akkusativ", "Dativ", "Genitiv"].map((c) => (
+                            <button key={c} onClick={() => setGrammarCaseFilter(c)} className={`chip ${grammarCaseFilter === c ? "all on" : "all"}`}>
+                              {c}
                             </button>
-                          </td>
-                        </tr>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="table-wrap">
+                        <table className="grammar-table">
+                          <thead>
+                            <tr>
+                              <th>Owner (Besitzer)</th>
+                              <th>Stem</th>
+                              <th>Masculine ({grammarCaseFilter})</th>
+                              <th>Feminine ({grammarCaseFilter})</th>
+                              <th>Neuter ({grammarCaseFilter})</th>
+                              <th>Plural ({grammarCaseFilter})</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {POSSESSIVE_STEMS.map((s) => (
+                              <tr key={s.owner}>
+                                <td style={{ fontWeight: 600 }}>{s.owner}</td>
+                                <td className="grammar-highlight">{s.stem}-</td>
+                                <td>{getPossessiveForm(s, "m", grammarCaseFilter)}</td>
+                                <td>{getPossessiveForm(s, "f", grammarCaseFilter)}</td>
+                                <td>{getPossessiveForm(s, "n", grammarCaseFilter)}</td>
+                                <td>{getPossessiveForm(s, "pl", grammarCaseFilter)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="grammar-rule-box">
+                        <strong>Core Rules to Remember:</strong><br />
+                        • <strong>euer</strong> drops its middle 'e' when taking an ending: <em>euer $\rightarrow$ eure, eurem, euren, eurer</em>.<br />
+                        • <strong>Dativ Plural:</strong> adds <strong>-en</strong> to the possessive, and the noun adds <strong>-n</strong> (<em>mit meinen Freunden</em>).<br />
+                        • <strong>Genitiv M/N:</strong> possessive takes <strong>-es</strong>, noun adds <strong>-(e)s</strong> (<em>das Auto meines Bruders</em>).
+                      </div>
+                    </div>
+                  )}
+
+                  {activeGrammarTopic === "articles" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Definite (der) &amp; Indefinite (ein / kein) Declension:</span>
+                      <div className="table-wrap">
+                        <table className="grammar-table">
+                          <thead>
+                            <tr>
+                              <th>Case</th>
+                              <th>Definite (der/die/das)</th>
+                              <th>Indefinite (ein/eine)</th>
+                              <th>Negative (kein-)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.keys(ARTICLES_TABLE).map((c) => (
+                              <tr key={c}>
+                                <td style={{ fontWeight: 700 }}>{c}</td>
+                                <td>{ARTICLES_TABLE[c].def_m} / {ARTICLES_TABLE[c].def_f} / {ARTICLES_TABLE[c].def_n} / {ARTICLES_TABLE[c].def_pl}</td>
+                                <td>{ARTICLES_TABLE[c].indef_m} / {ARTICLES_TABLE[c].indef_f} / {ARTICLES_TABLE[c].indef_n} / —</td>
+                                <td>{ARTICLES_TABLE[c].indef_m.replace("ein", "kein")} / {ARTICLES_TABLE[c].indef_f.replace("ein", "kein")} / {ARTICLES_TABLE[c].indef_n.replace("ein", "kein")} / {ARTICLES_TABLE[c].neg_pl}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeGrammarTopic === "demonstratives" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Demonstrative (dieser-) &amp; Interrogative (welcher-):</span>
+                      <div className="table-wrap">
+                        <table className="grammar-table">
+                          <thead>
+                            <tr>
+                              <th>Case</th>
+                              <th>dieser (this) [m / f / n / pl]</th>
+                              <th>welcher (which) [m / f / n / pl]</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.keys(DEMONSTRATIVES_TABLE).map((c) => (
+                              <tr key={c}>
+                                <td style={{ fontWeight: 700 }}>{c}</td>
+                                <td>{DEMONSTRATIVES_TABLE[c].m} / {DEMONSTRATIVES_TABLE[c].f} / {DEMONSTRATIVES_TABLE[c].n} / {DEMONSTRATIVES_TABLE[c].pl}</td>
+                                <td>{DEMONSTRATIVES_TABLE[c].wm} / {DEMONSTRATIVES_TABLE[c].wf} / {DEMONSTRATIVES_TABLE[c].wn} / {DEMONSTRATIVES_TABLE[c].wpl}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeGrammarTopic === "personal" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Personal Pronouns (Personalpronomen):</span>
+                      <div className="table-wrap">
+                        <table className="grammar-table">
+                          <thead>
+                            <tr>
+                              <th>Person</th>
+                              <th>Nominativ</th>
+                              <th>Akkusativ</th>
+                              <th>Dativ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {PERSONAL_PRONOUNS_TABLE.map((row) => (
+                              <tr key={row.p}>
+                                <td style={{ fontWeight: 600 }}>{row.p}</td>
+                                <td>{row.nom}</td>
+                                <td className="grammar-highlight">{row.akk}</td>
+                                <td style={{ fontWeight: 700, color: "var(--dativ)" }}>{row.dat}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeGrammarTopic === "adjectives" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Adjective Declension (Adjektivdeklination):</span>
+                      <div className="table-wrap">
+                        <table className="grammar-table">
+                          <thead>
+                            <tr>
+                              <th>Declension Type</th>
+                              <th>Nominativ</th>
+                              <th>Akkusativ</th>
+                              <th>Dativ / Genitiv</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ADJECTIVE_ENDINGS_RULES.map((r) => (
+                              <tr key={r.type}>
+                                <td style={{ fontWeight: 700 }}>{r.type}</td>
+                                <td>{r.nom}</td>
+                                <td>{r.akk}</td>
+                                <td>{r.dat}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {grammarSubView === "flashcards" && (
+                <div className="panel">
+                  <div className="flash-wrap">
+                    <div className="flash" onClick={() => setGrammarCardFlipped(!grammarCardFlipped)}>
+                      {!grammarCardFlipped ? (
+                        <>
+                          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GRAMMAR PRACTICE PROMPT</span>
+                          <h2 style={{ fontSize: 32 }}>{grammarCard.prompt}</h2>
+                          <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="pill bg-der" style={{ fontSize: 26, padding: "8px 24px" }}>{grammarCard.answer}</span>
+                          <h3 style={{ fontSize: 20, margin: "14px 0 6px", color: "var(--ink-2)" }}>{grammarCard.note}</h3>
+                        </>
+                      )}
+                    </div>
+                    <div className="flash-controls">
+                      <button className="btn btn-secondary" disabled={grammarCardIndex === 0} onClick={() => { setGrammarCardIndex(grammarCardIndex - 1); setGrammarCardFlipped(false); }}>◀ Previous</button>
+                      <button className="btn btn-secondary mid" onClick={() => speakGerman(grammarCard.answer)}>🔊 Pronounce</button>
+                      <button className="btn btn-secondary" disabled={grammarCardIndex >= GRAMMAR_FLASHCARDS.length - 1} onClick={() => { setGrammarCardIndex(grammarCardIndex + 1); setGrammarCardFlipped(false); }}>Next ▶</button>
+                    </div>
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>Flashcard {grammarCardIndex + 1} of {GRAMMAR_FLASHCARDS.length}</span>
+                  </div>
+                </div>
+              )}
+
+              {grammarSubView === "quiz" && (
+                <div className="panel">
+                  <div className="quiz">
+                    <div className="quiz-head"><span>Question {grammarQuizIndex + 1} of {GRAMMAR_QUIZ.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {grammarQuizScore}</span></div>
+                    <div className="quiz-card">
+                      <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Fill in the correct form:</span>
+                      <h1 style={{ fontSize: 26 }}>{grammarQuizWord.q}</h1>
+                    </div>
+                    <div className="quiz-opts">
+                      {grammarQuizWord.options.map((opt) => (
+                        <button key={opt} disabled={grammarQuizFeedback !== null} className="quiz-opt" onClick={() => {
+                          const ok = opt === grammarQuizWord.answer;
+                          if (ok) setGrammarQuizScore((s) => s + 1);
+                          setTimeQuizFeedback(ok ? `Correct! 🎉 ${grammarQuizWord.expl}` : `Wrong! Correct form is "${grammarQuizWord.answer}". (${grammarQuizWord.expl})`);
+                        }}>{opt}</button>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="grammar-rule-box">
-                  <strong>Essential Uhrzeit Rules:</strong>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 10 }}>
-                    {TIME_RULES.map((r, i) => (
-                      <div key={i} style={{ background: "var(--card)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line-2)" }}>
-                        <span style={{ fontWeight: 700, color: "var(--brand)", fontSize: 13 }}>{r.term}</span>
-                        <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.4 }}>{r.desc}</p>
+                    </div>
+                    {grammarQuizFeedback && (
+                      <div style={{ marginTop: 24 }}>
+                        <p style={{ fontSize: 15, fontWeight: 600 }}>{grammarQuizFeedback}</p>
+                        <button className="btn btn-primary" onClick={() => {
+                          setGrammarQuizFeedback(null);
+                          if (grammarQuizIndex < GRAMMAR_QUIZ.length - 1) setGrammarQuizIndex((i) => i + 1);
+                          else { alert(`Grammar Quiz finished! Final Score: ${grammarQuizScore}/${GRAMMAR_QUIZ.length}`); setGrammarQuizIndex(0); setGrammarQuizScore(0); }
+                        }}>{grammarQuizIndex < GRAMMAR_QUIZ.length - 1 ? "Next Question" : "Restart"}</button>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {timeSubView === "flashcards" && (
-              <div className="panel">
-                <div className="flash-wrap">
-                  <div className="flash" onClick={() => setTimeCardFlipped(!timeCardFlipped)}>
-                    {!timeCardFlipped ? (
-                      <>
-                        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>HOW DO YOU SAY THIS TIME IN GERMAN?</span>
-                        <h2 style={{ fontSize: 32 }}>{timeCard.prompt}</h2>
-                        <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="pill bg-der" style={{ fontSize: 24, padding: "8px 24px" }}>{timeCard.answer}</span>
-                        <h3 style={{ fontSize: 18, margin: "14px 0 6px", color: "var(--ink-2)" }}>{timeCard.note}</h3>
-                      </>
                     )}
                   </div>
-                  <div className="flash-controls">
-                    <button className="btn btn-secondary" disabled={timeCardIndex === 0} onClick={() => { setTimeCardIndex(timeCardIndex - 1); setTimeCardFlipped(false); }}>◀ Previous</button>
-                    <button className="btn btn-secondary mid" onClick={() => speakGerman(timeCard.answer)}>🔊 Pronounce</button>
-                    <button className="btn btn-secondary" disabled={timeCardIndex >= TIME_FLASHCARDS.length - 1} onClick={() => { setTimeCardIndex(timeCardIndex + 1); setTimeCardFlipped(false); }}>Next ▶</button>
-                  </div>
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>Flashcard {timeCardIndex + 1} of {TIME_FLASHCARDS.length}</span>
                 </div>
-              </div>
-            )}
-
-            {timeSubView === "quiz" && (
-              <div className="panel">
-                <div className="quiz">
-                  <div className="quiz-head"><span>Question {timeQuizIndex + 1} of {TIME_QUIZ.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {timeQuizScore}</span></div>
-                  <div className="quiz-card">
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Select the correct time:</span>
-                    <h1 style={{ fontSize: 24 }}>{timeQuizWord.q}</h1>
-                  </div>
-                  <div className="quiz-opts" style={{ gridTemplateColumns: "1fr" }}>
-                    {timeQuizWord.options.map((opt) => (
-                      <button key={opt} disabled={timeQuizFeedback !== null} className="quiz-opt" onClick={() => {
-                        const ok = opt === timeQuizWord.answer;
-                        if (ok) setTimeQuizScore((s) => s + 1);
-                        setTimeQuizFeedback(ok ? `Correct! 🎉 ${timeQuizWord.expl}` : `Wrong! Correct phrasing is "${timeQuizWord.answer}". (${timeQuizWord.expl})`);
-                      }}>{opt}</button>
-                    ))}
-                  </div>
-                  {timeQuizFeedback && (
-                    <div style={{ marginTop: 24 }}>
-                      <p style={{ fontSize: 15, fontWeight: 600 }}>{timeQuizFeedback}</p>
-                      <button className="btn btn-primary" onClick={() => {
-                        setTimeQuizFeedback(null);
-                        if (timeQuizIndex < TIME_QUIZ.length - 1) setTimeQuizIndex((i) => i + 1);
-                        else { alert(`Time Quiz finished! Final Score: ${timeQuizScore}/${TIME_QUIZ.length}`); setTimeQuizIndex(0); setTimeQuizScore(0); }
-                      }}>{timeQuizIndex < TIME_QUIZ.length - 1 ? "Next Question" : "Restart"}</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ==================== 6. GRAMMAR HUB ==================== */}
-        {mainCategory === "Grammar" && (
-          <>
-            {grammarSubView === "list" && (
-              <div className="grammar-hub-card">
-                <div className="grammar-topic-nav">
-                  {GRAMMAR_TOPICS.map((t) => (
-                    <button key={t.id} onClick={() => setActiveGrammarTopic(t.id)} className={`grammar-topic-btn ${activeGrammarTopic === t.id ? "active" : ""}`}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                {activeGrammarTopic === "possessives" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Possessive Articles Matrix:</span>
-                      <div className="filters">
-                        {["Nominativ", "Akkusativ", "Dativ", "Genitiv"].map((c) => (
-                          <button key={c} onClick={() => setGrammarCaseFilter(c)} className={`chip ${grammarCaseFilter === c ? "all on" : "all"}`}>
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="table-wrap">
-                      <table className="grammar-table">
-                        <thead>
-                          <tr>
-                            <th>Owner (Besitzer)</th>
-                            <th>Stem</th>
-                            <th>Masculine ({grammarCaseFilter})</th>
-                            <th>Feminine ({grammarCaseFilter})</th>
-                            <th>Neuter ({grammarCaseFilter})</th>
-                            <th>Plural ({grammarCaseFilter})</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {POSSESSIVE_STEMS.map((s) => (
-                            <tr key={s.owner}>
-                              <td style={{ fontWeight: 600 }}>{s.owner}</td>
-                              <td className="grammar-highlight">{s.stem}-</td>
-                              <td>{getPossessiveForm(s, "m", grammarCaseFilter)}</td>
-                              <td>{getPossessiveForm(s, "f", grammarCaseFilter)}</td>
-                              <td>{getPossessiveForm(s, "n", grammarCaseFilter)}</td>
-                              <td>{getPossessiveForm(s, "pl", grammarCaseFilter)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="grammar-rule-box">
-                      <strong>Core Rules to Remember:</strong><br />
-                      • <strong>euer</strong> drops its middle 'e' when taking an ending: <em>euer $\rightarrow$ eure, eurem, euren, eurer</em>.<br />
-                      • <strong>Dativ Plural:</strong> adds <strong>-en</strong> to the possessive, and the noun adds <strong>-n</strong> (<em>mit meinen Freunden</em>).<br />
-                      • <strong>Genitiv M/N:</strong> possessive takes <strong>-es</strong>, noun adds <strong>-(e)s</strong> (<em>das Auto meines Bruders</em>).
-                    </div>
-                  </div>
-                )}
-
-                {activeGrammarTopic === "articles" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Definite (der) &amp; Indefinite (ein / kein) Declension:</span>
-                    <div className="table-wrap">
-                      <table className="grammar-table">
-                        <thead>
-                          <tr>
-                            <th>Case</th>
-                            <th>Definite (der/die/das)</th>
-                            <th>Indefinite (ein/eine)</th>
-                            <th>Negative (kein-)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.keys(ARTICLES_TABLE).map((c) => (
-                            <tr key={c}>
-                              <td style={{ fontWeight: 700 }}>{c}</td>
-                              <td>{ARTICLES_TABLE[c].def_m} / {ARTICLES_TABLE[c].def_f} / {ARTICLES_TABLE[c].def_n} / {ARTICLES_TABLE[c].def_pl}</td>
-                              <td>{ARTICLES_TABLE[c].indef_m} / {ARTICLES_TABLE[c].indef_f} / {ARTICLES_TABLE[c].indef_n} / —</td>
-                              <td>{ARTICLES_TABLE[c].indef_m.replace("ein", "kein")} / {ARTICLES_TABLE[c].indef_f.replace("ein", "kein")} / {ARTICLES_TABLE[c].indef_n.replace("ein", "kein")} / {ARTICLES_TABLE[c].neg_pl}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {activeGrammarTopic === "demonstratives" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Demonstrative (dieser-) &amp; Interrogative (welcher-):</span>
-                    <div className="table-wrap">
-                      <table className="grammar-table">
-                        <thead>
-                          <tr>
-                            <th>Case</th>
-                            <th>dieser (this) [m / f / n / pl]</th>
-                            <th>welcher (which) [m / f / n / pl]</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.keys(DEMONSTRATIVES_TABLE).map((c) => (
-                            <tr key={c}>
-                              <td style={{ fontWeight: 700 }}>{c}</td>
-                              <td>{DEMONSTRATIVES_TABLE[c].m} / {DEMONSTRATIVES_TABLE[c].f} / {DEMONSTRATIVES_TABLE[c].n} / {DEMONSTRATIVES_TABLE[c].pl}</td>
-                              <td>{DEMONSTRATIVES_TABLE[c].wm} / {DEMONSTRATIVES_TABLE[c].wf} / {DEMONSTRATIVES_TABLE[c].wn} / {DEMONSTRATIVES_TABLE[c].wpl}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {activeGrammarTopic === "personal" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Personal Pronouns (Personalpronomen):</span>
-                    <div className="table-wrap">
-                      <table className="grammar-table">
-                        <thead>
-                          <tr>
-                            <th>Person</th>
-                            <th>Nominativ</th>
-                            <th>Akkusativ</th>
-                            <th>Dativ</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {PERSONAL_PRONOUNS_TABLE.map((row) => (
-                            <tr key={row.p}>
-                              <td style={{ fontWeight: 600 }}>{row.p}</td>
-                              <td>{row.nom}</td>
-                              <td className="grammar-highlight">{row.akk}</td>
-                              <td style={{ fontWeight: 700, color: "var(--dativ)" }}>{row.dat}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {activeGrammarTopic === "adjectives" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Adjective Declension (Adjektivdeklination):</span>
-                    <div className="table-wrap">
-                      <table className="grammar-table">
-                        <thead>
-                          <tr>
-                            <th>Declension Type</th>
-                            <th>Nominativ</th>
-                            <th>Akkusativ</th>
-                            <th>Dativ / Genitiv</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {ADJECTIVE_ENDINGS_RULES.map((r) => (
-                            <tr key={r.type}>
-                              <td style={{ fontWeight: 700 }}>{r.type}</td>
-                              <td>{r.nom}</td>
-                              <td>{r.akk}</td>
-                              <td>{r.dat}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {grammarSubView === "flashcards" && (
-              <div className="panel">
-                <div className="flash-wrap">
-                  <div className="flash" onClick={() => setGrammarCardFlipped(!grammarCardFlipped)}>
-                    {!grammarCardFlipped ? (
-                      <>
-                        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GRAMMAR PRACTICE PROMPT</span>
-                        <h2 style={{ fontSize: 32 }}>{grammarCard.prompt}</h2>
-                        <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="pill bg-der" style={{ fontSize: 26, padding: "8px 24px" }}>{grammarCard.answer}</span>
-                        <h3 style={{ fontSize: 20, margin: "14px 0 6px", color: "var(--ink-2)" }}>{grammarCard.note}</h3>
-                      </>
-                    )}
-                  </div>
-                  <div className="flash-controls">
-                    <button className="btn btn-secondary" disabled={grammarCardIndex === 0} onClick={() => { setGrammarCardIndex(grammarCardIndex - 1); setGrammarCardFlipped(false); }}>◀ Previous</button>
-                    <button className="btn btn-secondary mid" onClick={() => speakGerman(grammarCard.answer)}>🔊 Pronounce</button>
-                    <button className="btn btn-secondary" disabled={grammarCardIndex >= GRAMMAR_FLASHCARDS.length - 1} onClick={() => { setGrammarCardIndex(grammarCardIndex + 1); setGrammarCardFlipped(false); }}>Next ▶</button>
-                  </div>
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>Flashcard {grammarCardIndex + 1} of {GRAMMAR_FLASHCARDS.length}</span>
-                </div>
-              </div>
-            )}
-
-            {grammarSubView === "quiz" && (
-              <div className="panel">
-                <div className="quiz">
-                  <div className="quiz-head"><span>Question {grammarQuizIndex + 1} of {GRAMMAR_QUIZ.length}</span><span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {grammarQuizScore}</span></div>
-                  <div className="quiz-card">
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Fill in the correct form:</span>
-                    <h1 style={{ fontSize: 26 }}>{grammarQuizWord.q}</h1>
-                  </div>
-                  <div className="quiz-opts">
-                    {grammarQuizWord.options.map((opt) => (
-                      <button key={opt} disabled={grammarQuizFeedback !== null} className="quiz-opt" onClick={() => {
-                        const ok = opt === grammarQuizWord.answer;
-                        if (ok) setGrammarQuizScore((s) => s + 1);
-                        setGrammarQuizFeedback(ok ? `Correct! 🎉 ${grammarQuizWord.expl}` : `Wrong! Correct form is "${grammarQuizWord.answer}". (${grammarQuizWord.expl})`);
-                      }}>{opt}</button>
-                    ))}
-                  </div>
-                  {grammarQuizFeedback && (
-                    <div style={{ marginTop: 24 }}>
-                      <p style={{ fontSize: 15, fontWeight: 600 }}>{grammarQuizFeedback}</p>
-                      <button className="btn btn-primary" onClick={() => {
-                        setGrammarQuizFeedback(null);
-                        if (grammarQuizIndex < GRAMMAR_QUIZ.length - 1) setGrammarQuizIndex((i) => i + 1);
-                        else { alert(`Grammar Quiz finished! Final Score: ${grammarQuizScore}/${GRAMMAR_QUIZ.length}`); setGrammarQuizIndex(0); setGrammarQuizScore(0); }
-                      }}>{grammarQuizIndex < GRAMMAR_QUIZ.length - 1 ? "Next Question" : "Restart"}</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* ==================== CONFIRMATION POP-UP MODAL ==================== */}
@@ -2491,6 +2581,67 @@ export default function App() {
                 />
               </div>
               <div className="modal-actions"><button type="button" onClick={() => setPrepModalOpen(false)} className="btn btn-secondary">Cancel</button><button type="submit" className="btn btn-primary">Save Preposition</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== TIME MODAL ==================== */}
+      {timeModalOpen && (
+        <div className="overlay" onClick={(e) => e.target === e.currentTarget && setTimeModalOpen(false)}>
+          <div className="modal">
+            <h3>{editingTimeId ? "Edit Time Expression" : "Add Time Expression"}</h3>
+            <form onSubmit={handleSaveTimeModal}>
+              <div>
+                <label className="modal-label">Digital Time (e.g. 09:15 or 17:30)</label>
+                <input
+                  className="modal-input"
+                  type="text"
+                  required
+                  placeholder="e.g. 14:45"
+                  value={timeFormData.digital}
+                  onChange={(e) => setTimeFormData({ ...timeFormData, digital: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="modal-label">Formal / Official Phrasing (24h)</label>
+                <input
+                  className="modal-input"
+                  type="text"
+                  required
+                  placeholder="e.g. Es ist vierzehn Uhr fünfundvierzig."
+                  value={timeFormData.formal}
+                  onChange={(e) => setTimeFormData({ ...timeFormData, formal: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="modal-label">Informal Phrasing (12h)</label>
+                <input
+                  className="modal-input"
+                  type="text"
+                  placeholder="e.g. Es ist Viertel vor drei."
+                  value={timeFormData.informal}
+                  onChange={(e) => setTimeFormData({ ...timeFormData, informal: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="modal-label">Rule / Explanation</label>
+                <input
+                  className="modal-input"
+                  type="text"
+                  placeholder="e.g. Quarter to next hour (Viertel vor)"
+                  value={timeFormData.rule}
+                  onChange={(e) => setTimeFormData({ ...timeFormData, rule: e.target.value })}
+                />
+              </div>
+              <div className="modal-actions">
+                <button type="button" onClick={() => setTimeModalOpen(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save Time
+                </button>
+              </div>
             </form>
           </div>
         </div>

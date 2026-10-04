@@ -637,14 +637,7 @@ const handleTriggerInstantNotification = async () => {
             </div>
 
             <div className="filters-cluster">
-              <button
-    type="button"
-    onClick={handleToggleHourlyNotifications}
-    className={`btn ${hourlyAlertsActive ? "btn-primary" : "btn-secondary"}`}
-    title="Get a new German noun notification every 60 minutes"
-  >
-    {hourlyAlertsActive ? "🔔 Hourly Alerts: ON" : "🔕 Hourly Alerts: OFF"}
-  </button>
+              
 
   {/* 🚀 NEW: Instant Notification Trigger Button */}
   <button

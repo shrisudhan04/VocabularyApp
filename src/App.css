@@ -586,9 +586,28 @@ textarea:focus-visible {
 
 .filters-cluster {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
+}
+
+.filters-cluster > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.filters-cluster::-webkit-scrollbar {
+  height: 4px;
+}
+
+.filters-cluster::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
 }
 
 /* --- STICKY FLOATING ACTION BUTTON (FAB) --- */
@@ -1326,33 +1345,7 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 14px;
 }
-.filters-cluster {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 6px; /* Prevents scrollbar from overlapping borders */
-}
 
-/* Prevent dropdowns and buttons from squishing */
-.filters-cluster > * {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-/* Optional: Slim, subtle scrollbar */
-.filters-cluster::-webkit-scrollbar {
-  height: 4px;
-}
-
-.filters-cluster::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 4px;
-}
 .confirm-icon {
   margin-top: 10px;
   font-size: 60px;
@@ -1394,25 +1387,26 @@ textarea:focus-visible {
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
 
   .list-head {
     display: none;
   }
 
+  /* Compact Card Layout */
   .noun-row,
   .verb-row,
   .prep-row {
     background: var(--card);
     border: 1px solid var(--line);
     border-left-width: 5px;
-    border-radius: 14px;
-    padding: 14px 16px;
+    border-radius: 12px;
+    padding: 8px 12px;
     display: grid !important;
     grid-template-columns: 1fr auto !important;
     align-items: center;
-    gap: 12px;
+    gap: 4px;
   }
 
   .c-idx {
@@ -1424,7 +1418,7 @@ textarea:focus-visible {
     grid-column: 1;
     display: flex;
     justify-content: flex-start;
-    margin-bottom: 2px;
+    margin-bottom: 0;
     text-align: left;
   }
 
@@ -1435,8 +1429,8 @@ textarea:focus-visible {
     display: flex;
     justify-content: flex-start;
     align-items: center;
-    gap: 8px;
-    font-size: 17px;
+    gap: 6px;
+    font-size: 15px;
     font-weight: 700;
     text-align: left;
   }
@@ -1445,8 +1439,9 @@ textarea:focus-visible {
   .c-past {
     grid-column: 1;
     text-align: left !important;
-    font-size: 13px;
-    margin: 2px 0;
+    font-size: 12.5px;
+    margin: 1px 0;
+    line-height: 1.2;
   }
 
   .c-past {
@@ -1457,32 +1452,35 @@ textarea:focus-visible {
   .c-mean {
     grid-column: 1;
     text-align: left !important;
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
     color: var(--ink-2);
-    margin: 2px 0;
+    margin: 1px 0;
+    line-height: 1.2;
   }
 
   .c-eg {
     grid-column: 1;
     text-align: left !important;
-    font-size: 12.5px;
+    font-size: 12px;
     color: var(--muted);
     font-style: italic;
-    margin: 2px 0;
+    margin: 1px 0;
+    line-height: 1.2;
   }
 
   .c-status {
     grid-column: 1;
     display: flex;
     justify-content: flex-start;
-    margin-top: 6px;
+    margin-top: 2px;
   }
 
   .noun-wrap {
     justify-content: flex-start !important;
   }
 
+  /* Compact Vertical Action Controls */
   .actions {
     grid-column: 2;
     grid-row: 1 / span 8;
@@ -1490,22 +1488,24 @@ textarea:focus-visible {
     flex-direction: column !important;
     justify-content: center;
     align-items: center;
-    gap: 8px;
-    padding-left: 12px;
+    gap: 4px;
+    padding-left: 8px;
     border-left: 1px solid var(--line);
     margin-left: auto;
   }
 
   .icon-btn {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    font-size: 13px;
+    border-radius: 6px;
   }
 
   .status {
-    padding: 6px 12px;
-    min-height: 34px;
-    font-size: 12px;
+    padding: 3px 8px;
+    min-height: 26px;
+    font-size: 11px;
     align-self: flex-start;
   }
 

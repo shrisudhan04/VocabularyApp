@@ -37,6 +37,7 @@ import Sidebar from "./components/Sidebar";
 import SubTabs from "./components/SubTabs";
 import ConfirmModal from "./components/ConfirmModal";
 import GoalModal from "./components/GoalModal";
+import ReportModal from "./components/ReportModal";
 
 // Pages
 import NounsPage from "./pages/NounsPage";
@@ -57,6 +58,7 @@ export default function App() {
   const [theme] = useState(() => localStorage.getItem("vocab_vault_theme") || "light");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [mainCategory, setMainCategory] = useState("Nouns");
 
   const [subViews, setSubViews] = useState({
@@ -311,6 +313,7 @@ export default function App() {
           setSidebarOpen(false);
         }}
         onOpenGoals={() => setGoalModalOpen(true)}
+        onOpenReport={() => setReportOpen(true)}
       />
 
       <GoalModal
@@ -318,6 +321,18 @@ export default function App() {
         onClose={() => setGoalModalOpen(false)}
         defaultCategory={mainCategory}
         categoryStats={categoryStats}
+      />
+
+      <ReportModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        lists={{
+          Nouns: vocabList,
+          Verbs: verbsList,
+          Patterns: patternsList,
+          Prepositions: prepsList,
+          Time: timeList,
+        }}
       />
 
       <main className="page">

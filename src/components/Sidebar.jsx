@@ -7,6 +7,7 @@ export default function Sidebar({
   activeCategory,
   onSelectCategory,
   onOpenGoals,
+  onOpenReport,
 }) {
   return (
     <div
@@ -46,6 +47,23 @@ export default function Sidebar({
           >
             <span>🎯 Study Goals</span>
             <span className="nav-count goal-badge">Daily / Weekly</span>
+          </button>
+
+          {/* Report Button */}
+          <button
+            type="button"
+            className="sidebar-tab-btn sidebar-goal-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.currentTarget.blur();
+              onClose();
+              if (typeof onOpenReport === "function") {
+                onOpenReport();
+              }
+            }}
+          >
+            <span>📊 Report</span>
+            <span className="nav-count goal-badge">By date</span>
           </button>
 
           <div className="sidebar-divider" />

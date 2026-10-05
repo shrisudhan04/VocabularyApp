@@ -1,0 +1,207 @@
+/* src/components/ReportModal.css */
+.report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(30, 20, 12, 0.55);
+  backdrop-filter: blur(3px);
+  animation: report-fade 0.18s ease;
+}
+
+.report-modal {
+  width: min(540px, 100%);
+  overflow: visible;
+  padding: 22px 22px 20px;
+  border-radius: 22px;
+  background: #ffffff;
+  color: #3b2a1e;
+  font-family: inherit;
+  box-shadow: 0 24px 60px rgba(40, 24, 10, 0.3);
+  animation: report-pop 0.22s ease;
+}
+
+/* ---------- Header ---------- */
+.report-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.report-modal .report-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #3b2a1e;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto; /* keeps controls at the top-right */
+}
+
+
+.report-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #8a7766;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.report-close:hover {
+  background: #f7f1e8;
+  color: #3b2a1e;
+}
+
+/* ---------- Chart ---------- */
+/* scroll container: lets the chart scroll sideways on small screens */
+.report-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #dcc9ad transparent;
+  padding-bottom: 6px;
+}
+.report-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.report-scroll::-webkit-scrollbar-thumb {
+  background: #dcc9ad;
+  border-radius: 6px;
+}
+
+.report-chart {
+  position: relative; /* column offsets are measured from here */
+  display: flex;
+  align-items: flex-end;
+  min-width: 100%;
+  width: max-content;
+  padding: 4px 0 0;
+}
+
+.report-col {
+  flex: 1 0 54px;
+  min-width: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 4px;
+}
+
+/* faint gridlines every 35px, drawn from the baseline up */
+.report-bar-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  border-bottom: 2px solid #eadfce;
+  background-image: repeating-linear-gradient(
+    to top,
+    transparent 0,
+    transparent 34px,
+    #f4ece0 34px,
+    #f4ece0 35px
+  );
+}
+
+.report-count {
+  margin-bottom: 5px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #3b2a1e;
+}
+.report-count.is-zero {
+  color: #b9a994;
+  font-weight: 600;
+}
+
+.report-bar {
+  width: 68%;
+  max-width: 40px;
+  border-radius: 9px 9px 0 0;
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  opacity: 0.78;
+  transition: height 0.3s ease, opacity 0.15s;
+}
+.report-col:hover .report-bar {
+  opacity: 1;
+}
+.report-col.is-current .report-bar {
+  opacity: 1;
+  box-shadow: 0 6px 14px rgba(180, 83, 9, 0.28);
+}
+.report-bar.is-empty {
+  background: #eadfce;
+  opacity: 1;
+  border-radius: 3px 3px 0 0;
+  box-shadow: none;
+}
+
+.report-label {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #8a7766;
+}
+.report-col.is-current .report-label {
+  color: #b45309;
+  font-weight: 800;
+}
+
+/* ---------- Summary ---------- */
+.report-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: #f7f1e8;
+}
+.report-summary-num {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #b45309;
+}
+.report-summary-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b5846;
+}
+
+@keyframes report-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes report-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 420px) {
+  .report-modal { padding: 18px 14px 16px; }
+  .report-col { padding: 0 2px; }
+  .report-label { font-size: 0.64rem; }
+}

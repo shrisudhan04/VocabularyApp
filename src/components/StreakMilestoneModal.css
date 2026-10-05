@@ -70,6 +70,7 @@
   font-weight: 800;
   color: #1c1917;
   letter-spacing: -0.02em;
+  font-family:poppins, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
 }
 
 .milestone-subtitle {

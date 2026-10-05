@@ -700,8 +700,20 @@ export default function NounsPage({
               />
             </div>
 
-            <div className="filters-cluster">
-              <div className="filters">
+            {/* Horizontally scrollable toolbar container */}
+            <div
+              className="filters-cluster"
+              style={{
+                display: "flex",
+                flexWrap: "nowrap",
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch",
+                maxWidth: "100%",
+                paddingBottom: "6px",
+                gap: "8px",
+              }}
+            >
+              <div className="filters" style={{ flexShrink: 0 }}>
                 <CustomDropdown
                   icon="🏷"
                   value={articleFilter}
@@ -710,7 +722,7 @@ export default function NounsPage({
                 />
               </div>
 
-              <div className="filters">
+              <div className="filters" style={{ flexShrink: 0 }}>
                 <CustomDropdown
                   icon="📌"
                   value={nounStatusFilter}
@@ -719,7 +731,7 @@ export default function NounsPage({
                 />
               </div>
 
-              <div className="filters">
+              <div className="filters" style={{ flexShrink: 0, display: "flex", gap: "6px" }}>
                 <CustomDropdown
                   icon="📅"
                   value={dateFilter}
@@ -744,7 +756,7 @@ export default function NounsPage({
                 onChange={importFromExcel}
               />
 
-              <div className="filters">
+              <div className="filters" style={{ flexShrink: 0 }}>
                 <CustomDropdown
                   icon="📊"
                   value=""
@@ -761,6 +773,7 @@ export default function NounsPage({
                 onClick={handleToggleHourlyNotifications}
                 className="btn btn-secondary"
                 title="Toggle Hourly Word Notification"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
               >
                 {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
               </button>
@@ -770,6 +783,7 @@ export default function NounsPage({
                 onClick={() => setGoalModalOpen(true)}
                 className="btn btn-secondary"
                 title="Configure Daily & Weekly Goals"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
               >
                 🎯 Goals
               </button>
@@ -782,6 +796,8 @@ export default function NounsPage({
                 }}
                 className="btn btn-secondary"
                 style={{
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
                   color: "#dc2626",
                   borderColor: "#fca5a5",
                   backgroundColor: "#fef2f2",
@@ -790,7 +806,6 @@ export default function NounsPage({
               >
                 🔄 Reset
               </button>
-
             </div>
           </div>
 
@@ -826,7 +841,7 @@ export default function NounsPage({
                 </div>
                 <div className="actions">
                   <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                  <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
+                  <button onClick={() => openEditModal(item)} className="icon-btn">✏️️</button>
                   <button
                     onClick={() =>
                       onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>

@@ -1326,7 +1326,33 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 14px;
 }
+.filters-cluster {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px; /* Prevents scrollbar from overlapping borders */
+}
 
+/* Prevent dropdowns and buttons from squishing */
+.filters-cluster > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Optional: Slim, subtle scrollbar */
+.filters-cluster::-webkit-scrollbar {
+  height: 4px;
+}
+
+.filters-cluster::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
 .confirm-icon {
   margin-top: 10px;
   font-size: 60px;

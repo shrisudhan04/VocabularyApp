@@ -561,12 +561,12 @@ textarea:focus-visible {
   flex: 1;
   min-width: 240px;
   background: #ffffff;
-  border: 1px solid var(--border, #e5e7eb);
+  border: 1px solid;
+  border-color: var(--line-2);
   border-radius: 12px;
   padding: 0 12px;
   height: 42px;
   box-sizing: border-box;
-  color: black;
 }
 
 .search span {

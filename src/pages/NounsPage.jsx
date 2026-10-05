@@ -14,9 +14,10 @@ import successGif from "../assets/Success.gif";
 import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import congratsAudio from "../assets/celebration.mp3";
+import noDataImg from "../assets/nodata.svg";
 import "../App.css";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.8-flash";
 
 // 🔍 Search helper: lowercase, strip accents, trim
 const normalize = (s = "") =>
@@ -161,7 +162,7 @@ const STATUS_FILTER_OPTIONS = [
 ];
 
 const EXCEL_ACTIONS = [
-  { label: "Excel Actions ▾", value: "" },
+  { label: "Excel Actions", value: "" },
   { label: "📥 Import", value: "import" },
   { label: "📤 Export", value: "export" },
 ];
@@ -718,7 +719,7 @@ export default function NounsPage({
             >
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 <CustomDropdown
-                  icon="🏷"
+                  icon="👤"
                   value={articleFilter}
                   options={GENDER_OPTIONS}
                   onChange={(val) => setArticleFilter(val)}
@@ -812,53 +813,116 @@ export default function NounsPage({
             </div>
           </div>
 
-          <div className="list">
-            <div className="list-head nouns-head">
-              <span style={{ textAlign: "center" }}>#</span>
-              <span>ARTICLE</span>
-              <span>GERMAN NOUN</span>
-              <span>PLURAL (DIE)</span>
-              <span>ENGLISH MEANING</span>
-              <span>STATUS</span>
-              <span style={{ textAlign: "right" }}>ACTIONS</span>
+          {filteredNouns.length === 0 ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "48px 20px",
+                background: "var(--card)",
+                borderRadius: "14px",
+                border: "1px dashed var(--line-2)",
+                textAlign: "center",
+                marginTop: "8px",
+              }}
+            >
+              <img
+                src={noDataImg}
+                alt="No Data Found"
+                style={{
+                  width: "200px",
+                  maxWidth: "80%",
+                  height: "auto",
+                  objectFit: "contain",
+                  marginBottom: "16px",
+                  opacity: 0.9,
+                }}
+              />
+              <h3 style={{ margin: "0 0 8px", fontSize: "19px", fontWeight: 700, color: "var(--ink)" }}>
+                No Nouns Found
+              </h3>
+              <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)", maxWidth: "340px", lineHeight: 1.5 }}>
+                {search || articleFilter !== "all" || nounStatusFilter !== "all" || dateFilter !== "all"
+                  ? "We couldn't find any nouns matching your current filters. Try changing or clearing them."
+                  : "You haven't added any nouns yet. Add your first German word to get started!"}
+              </p>
+              {search || articleFilter !== "all" || nounStatusFilter !== "all" || dateFilter !== "all" ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginTop: "16px" }}
+                  onClick={() => {
+                    setSearch("");
+                    setArticleFilter("all");
+                    setNounStatusFilter("all");
+                    setDateFilter("all");
+                    setCustomDate("");
+                  }}
+                >
+                  Clear Filters
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ marginTop: "16px" }}
+                  onClick={openAddModal}
+                >
+                  + Add First Noun
+                </button>
+              )}
             </div>
-            {filteredNouns.map((item, index) => (
-              <div className={`row noun-row ${item.article}`} key={item.id}>
-                <div className="c-idx">{index + 1}</div>
-                <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span></div>
-                <div className="c-noun">
-                  <div className="noun-wrap">
-                    <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
-                    <span className="gender">({item.gender})</span>
+          ) : (
+            <div className="list">
+              <div className="list-head nouns-head">
+                <span style={{ textAlign: "center" }}>#</span>
+                <span>ARTICLE</span>
+                <span>GERMAN NOUN</span>
+                <span>PLURAL (DIE)</span>
+                <span>ENGLISH MEANING</span>
+                <span>STATUS</span>
+                <span style={{ textAlign: "right" }}>ACTIONS</span>
+              </div>
+              {filteredNouns.map((item, index) => (
+                <div className={`row noun-row ${item.article}`} key={item.id}>
+                  <div className="c-idx">{index + 1}</div>
+                  <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span></div>
+                  <div className="c-noun">
+                    <div className="noun-wrap">
+                      <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
+                      <span className="gender">({item.gender})</span>
+                    </div>
+                  </div>
+                  <div className="c-plural">{item.plural || "—"}</div>
+                  <div className="c-mean">{item.meaning}</div>
+                  <div className="c-status">
+                    <button
+                      onClick={() => toggleStatus(item.id)}
+                      className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
+                    >
+                      {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
+                    </button>
+                  </div>
+                  <div className="actions">
+                    <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
+                    <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
+                    <button
+                      onClick={() =>
+                        onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
+                          onCommitNouns?.(list.filter((i) => i.id !== item.id))
+                        )
+                      }
+                      className="icon-btn"
+                    >
+                      🗑
+                    </button>
                   </div>
                 </div>
-                <div className="c-plural">{item.plural || "—"}</div>
-                <div className="c-mean">{item.meaning}</div>
-                <div className="c-status">
-                  <button
-                    onClick={() => toggleStatus(item.id)}
-                    className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
-                  >
-                    {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
-                  </button>
-                </div>
-                <div className="actions">
-                  <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                  <button onClick={() => openEditModal(item)} className="icon-btn">✏</button>
-                  <button
-                    onClick={() =>
-                      onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
-                        onCommitNouns?.(list.filter((i) => i.id !== item.id))
-                      )
-                    }
-                    className="icon-btn"
-                  >
-                    🗑
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -877,7 +941,22 @@ export default function NounsPage({
       {viewMode === "flashcards" && (
         <div className="panel">
           {!nounCard ? (
-            <p>No nouns available.</p>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "24px 16px",
+              }}
+            >
+              <img
+                src={noDataImg}
+                alt="No Data"
+                style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }}
+              />
+              <p style={{ color: "var(--muted)", margin: 0 }}>No nouns available for flashcards.</p>
+            </div>
           ) : (
             <div className="flash-wrap">
               <div className="flash" onClick={() => setCardFlipped(!cardFlipped)}>
@@ -922,7 +1001,22 @@ export default function NounsPage({
       {viewMode === "quiz" && (
         <div className="panel">
           {!nounQuizWord ? (
-            <p>Add nouns to start quiz.</p>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "24px 16px",
+              }}
+            >
+              <img
+                src={noDataImg}
+                alt="No Data"
+                style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }}
+              />
+              <p style={{ color: "var(--muted)", margin: 0 }}>Add nouns to start quiz.</p>
+            </div>
           ) : (
             <div className="quiz">
               <div className="quiz-head">

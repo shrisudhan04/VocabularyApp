@@ -27,6 +27,16 @@ const normalize = (s = "") =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
+// Fisher-Yates array shuffle helper
+const shuffleArray = (array) => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
 const getActiveAudioContext = async () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
@@ -523,6 +533,9 @@ export default function NounsPage({
   const [timeLeft, setTimeLeft] = useState(null);
   const [timerRunning, setTimerRunning] = useState(false);
 
+  // Shuffle seed for quiz ordering
+  const [quizShuffleKey, setQuizShuffleKey] = useState(0);
+
   // Quiz Progress
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
@@ -594,15 +607,18 @@ export default function NounsPage({
     return true;
   };
 
-  // Quiz Filtered Words with Count Limit
+  // Quiz Filtered Words with Count Limit & Shuffle Order
   const availableQuizPool = useMemo(() => {
-    return list.filter((item) => {
+    const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
       return matchesStatus && matchesDate;
     });
-  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate]);
+
+    // If shuffled, randomize order
+    return quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
+  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
@@ -670,6 +686,26 @@ export default function NounsPage({
   const handleQuizCalendarDateSelect = (dateStr) => {
     setQuizSpecificDate(dateStr);
     resetQuizProgress();
+  };
+
+  // Global Shuffle Handlers
+  const handleShuffleList = () => {
+    if (list.length <= 1) return;
+    const shuffled = shuffleArray(list);
+    onCommitNouns?.(shuffled);
+  };
+
+  const handleShuffleQuiz = () => {
+    setQuizShuffleKey((k) => k + 1);
+    resetQuizProgress();
+  };
+
+  const handleShuffleFlashcards = () => {
+    if (list.length <= 1) return;
+    const shuffled = shuffleArray(list);
+    onCommitNouns?.(shuffled);
+    setCardIndex(0);
+    setCardFlipped(false);
   };
 
   // Hourly notifier
@@ -1250,6 +1286,17 @@ export default function NounsPage({
                 />
               </div>
 
+              {/* 🔀 List Shuffle Button */}
+              <button
+                type="button"
+                onClick={handleShuffleList}
+                className="btn btn-secondary"
+                title="Shuffle noun list order"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                🔀 Shuffle
+              </button>
+
               <button
                 type="button"
                 onClick={handleToggleHourlyNotifications}
@@ -1395,7 +1442,7 @@ export default function NounsPage({
                   </div>
                   <div className="actions">
                     <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                    <button onClick={() => openEditModal(item)} className="icon-btn">✏️️</button>
+                    <button onClick={() => openEditModal(item)} className="icon-btn">✏</button>
                     <button
                       onClick={() =>
                         onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
@@ -1474,6 +1521,10 @@ export default function NounsPage({
                 </button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>
                   🔊 Pronounce
+                </button>
+                {/* 🔀 Flashcard Shuffle Button */}
+                <button className="btn btn-secondary" onClick={handleShuffleFlashcards} title="Shuffle Flashcards">
+                  🔀 Shuffle
                 </button>
                 <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
                   Next ▶
@@ -1665,6 +1716,23 @@ export default function NounsPage({
                   </button>
                 </div>
 
+                {/* 🔀 7. Quiz Shuffle Button */}
+                <button
+                  type="button"
+                  onClick={handleShuffleQuiz}
+                  className="btn btn-secondary"
+                  title="Shuffle quiz questions order"
+                  style={{
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                    height: "40px",
+                    borderRadius: "12px",
+                    padding: "0 12px",
+                  }}
+                >
+                  🔀 Shuffle
+                </button>
+
                 {/* Words Pool Count */}
                 <div
                   style={{
@@ -1824,9 +1892,6 @@ export default function NounsPage({
                       Type the German singular noun for:
                     </span>
                     <h1 style={{ color: "var(--brand, #b85c19)" }}>{nounQuizWord.meaning}</h1>
-                    {/* <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
-                      Article hint: <span className={`pill ${ARTICLE_CLASS[nounQuizWord.article]}`}>{nounQuizWord.article}</span>
-                    </p> */}
                   </>
                 )}
 
@@ -1907,7 +1972,7 @@ export default function NounsPage({
                       type="submit"
                       disabled={quizFeedback !== null || !quizTextInput.trim()}
                       className="btn btn-primary"
-                      style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop:7 }}
+                      style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop: 7 }}
                     >
                       Check
                     </button>
@@ -2061,7 +2126,7 @@ export default function NounsPage({
                 style={{ flex: 1, justifyContent: "center" }}
                 onClick={() => {
                   setScoreModal((p) => ({ ...p, isOpen: false }));
-                  resetQuizProgress();
+                  handleShuffleQuiz();
                   const parsed = parseInt(timerInput, 10);
                   if (!isNaN(parsed) && parsed > 0) {
                     setTimeLeft(parsed);

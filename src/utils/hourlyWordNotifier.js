@@ -51,7 +51,7 @@ export function startHourlyNounNotifier(vocabList) {
   const intervalId = setInterval(() => {
     const randomWord = vocabList[Math.floor(Math.random() * vocabList.length)];
     sendNounNotification(randomWord);
-  }, 60 * 60 * 1000);
+  }, 10 * 1000);
 
   return intervalId;
 }

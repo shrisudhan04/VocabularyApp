@@ -123,7 +123,6 @@ export async function sendNounNotification(nounItem) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
 
-  const title = `Word: ${nounItem.article || ""} ${nounItem.noun || ""}`.trim();
   const imageBanner = createPoppinsNotificationImage(nounItem);
 
   const options = {
@@ -139,7 +138,7 @@ export async function sendNounNotification(nounItem) {
     try {
       const registration = await navigator.serviceWorker.getRegistration();
       if (registration) {
-        await registration.showNotification(title, options);
+        await registration.showNotification("\u200B", options);
         return;
       }
     } catch (err) {
@@ -148,7 +147,7 @@ export async function sendNounNotification(nounItem) {
   }
 
   try {
-    new Notification(title, options);
+    new Notification("\u200B", options);
   } catch (err) {
     console.warn("Standard notification failed:", err);
   }

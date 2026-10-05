@@ -1571,3 +1571,94 @@ textarea:focus-visible {
   background-color: #edd8c4;
   color: #9d4c12;
 }
+/* Container alignment */
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Button with tactile spring feedback */
+.theme-toggle-btn {
+  position: relative;
+  background: var(--card, #ffffff);
+  border: 1px solid var(--line-2, #ede5d8);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #b85c19;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(184, 92, 25, 0.12);
+  transition: 
+    background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.3s ease,
+    transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease;
+}
+
+.theme-toggle-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 14px rgba(184, 92, 25, 0.22);
+}
+
+.theme-toggle-btn:active {
+  transform: scale(0.92);
+}
+
+/* Base icon sizing & overlap */
+.theme-icon {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  transition: 
+    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.3s ease,
+    stroke 0.3s ease;
+}
+
+/* --- Light Mode State --- */
+/* Moon is visible, ready to switch to dark */
+.theme-light .icon-moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+  color: #b85c19;
+}
+
+/* Sun is tucked away (rotated & scaled down) */
+.theme-light .icon-sun {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.35);
+  color: #f59e0b;
+}
+
+/* --- Dark Mode State --- */
+/* Sun spins in with rays expanded */
+.theme-dark .icon-sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+  color: #facc15;
+}
+
+/* Moon spins away */
+.theme-dark .icon-moon {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.35);
+  color: #b85c19;
+}
+
+/* Dark mode button styling */
+:root[data-theme="dark"] .theme-toggle-btn {
+  background: #24211e;
+  border-color: #3d352b;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .theme-toggle-btn:hover {
+  background: #2f2a24;
+  box-shadow: 0 0 16px rgba(250, 204, 21, 0.25); /* Subtle warm golden glow */
+}

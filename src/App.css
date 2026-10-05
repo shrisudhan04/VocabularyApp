@@ -1,8 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap');
 
 /* ==========================================================================
-   THEME VARIABLES
-   ========================================================================== */
+  THEME VARIABLES
+  ========================================================================== */
 
 :root {
   --bg: #fcfaf7;
@@ -71,8 +71,8 @@
 }
 
 /* ==========================================================================
-   GLOBAL RESET & BASE
-   ========================================================================== */
+  GLOBAL RESET & BASE
+  ========================================================================== */
 
 *,
 *::before,
@@ -114,8 +114,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   HEADER & LOGO
-   ========================================================================== */
+  HEADER & LOGO
+  ========================================================================== */
 
 .app-header {
   position: sticky;
@@ -146,11 +146,15 @@ textarea:focus-visible {
   padding: 0;
   cursor: pointer;
   border-radius: 8px;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, transform 0.15s ease;
 }
 
 .kebab-btn:hover {
   background: var(--card-inner);
+}
+
+.kebab-btn:active {
+  transform: scale(0.94);
 }
 
 .hamburger-icon {
@@ -167,7 +171,20 @@ textarea:focus-visible {
   width: 100%;
   background-color: #b45309;
   border-radius: 999px;
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transform-origin: center;
+  transition: transform 0.25s ease, width 0.2s ease, background-color 0.2s ease;
+}
+
+.kebab-btn:hover .hamburger-icon span:nth-child(1) {
+  transform: translateY(-1.5px);
+}
+
+.kebab-btn:hover .hamburger-icon span:nth-child(2) {
+  width: 70%;
+}
+
+.kebab-btn:hover .hamburger-icon span:nth-child(3) {
+  transform: translateY(1.5px);
 }
 
 /* 3D Bubble Wordmark */
@@ -191,8 +208,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   SIDEBAR & DRAWER
-   ========================================================================== */
+  SIDEBAR & DRAWER
+  ========================================================================== */
 
 .sidebar-overlay {
   position: fixed;
@@ -291,8 +308,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   PAGE LAYOUT & CONTAINER
-   ========================================================================== */
+  PAGE LAYOUT & CONTAINER
+  ========================================================================== */
 
 .page {
   background: var(--bg);
@@ -314,8 +331,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   BUTTONS
-   ========================================================================== */
+  BUTTONS
+  ========================================================================== */
 
 .btn {
   border-radius: 8px;
@@ -359,8 +376,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   SUB TABS
-   ========================================================================== */
+  SUB TABS
+  ========================================================================== */
 
 .sub-tabs-bar {
   display: flex;
@@ -402,8 +419,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   STATS CARDS
-   ========================================================================== */
+  STATS CARDS
+  ========================================================================== */
 
 .stats-grid {
   display: grid;
@@ -497,8 +514,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   COLOR SYSTEM
-   ========================================================================== */
+  COLOR SYSTEM
+  ========================================================================== */
 
 .c-der { color: var(--der); }
 .c-die { color: var(--die); }
@@ -517,8 +534,8 @@ textarea:focus-visible {
 .bg-wechsel { background: var(--wechsel-bg); color: var(--wechsel); }
 
 /* ==========================================================================
-   TOOLBAR & FILTERS
-   ========================================================================== */
+  TOOLBAR & FILTERS
+  ========================================================================== */
 
 .section {
   display: flex;
@@ -527,48 +544,88 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+/* --- TOOLBAR --- */
 .toolbar {
   display: flex;
-  gap: 12px;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 20px;
   flex-wrap: wrap;
-  background: var(--card);
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
+  width: 100%;
 }
 
 .search {
-  position: relative;
-  flex: 1 1 240px;
-  max-width: 380px;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 240px;
+  background: #ffffff;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  padding: 0 12px;
+  height: 42px;
+  box-sizing: border-box;
+  color: black;
 }
 
 .search span {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 13px;
+  font-size: 15px;
+  margin-right: 8px;
 }
 
 .search input {
-  width: 100%;
-  padding: 10px 14px 10px 38px;
-  border-radius: 10px;
-  border: 1px solid var(--line-2);
-  background: var(--bg);
-  color: var(--ink);
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
   font-size: 14px;
-  min-height: 40px;
+  color: var(--ink);
 }
 
 .filters-cluster {
   display: flex;
-  gap: 10px;
   align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
+}
+
+/* --- STICKY FLOATING ACTION BUTTON (FAB) --- */
+.fab-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 32px;
+  font-weight: 300;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+  cursor: pointer;
+  border: none;
+  background-color: var(--brand, #b45309);
+  color: #ffffff;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.2s ease,
+              background-color 0.2s ease;
+}
+
+.fab-btn:hover {
+  transform: translateY(-3px) scale(1.06) rotate(90deg);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  filter: brightness(1.08);
+}
+
+.fab-btn:active {
+  transform: translateY(0) scale(0.95) rotate(90deg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .filters {
@@ -626,8 +683,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   DROPDOWN
-   ========================================================================== */
+  DROPDOWN
+  ========================================================================== */
 
 .dropdown-container {
   position: relative;
@@ -735,8 +792,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   LISTS & TABLES
-   ========================================================================== */
+  LISTS & TABLES
+  ========================================================================== */
 
 .list {
   background: var(--card);
@@ -883,8 +940,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   PATTERNS
-   ========================================================================== */
+  PATTERNS
+  ========================================================================= */
 
 .patterns-grid {
   display: grid;
@@ -974,8 +1031,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   GRAMMAR
-   ========================================================================== */
+  GRAMMAR
+  ========================================================================== */
 
 .grammar-hub-card {
   background: var(--card);
@@ -1059,8 +1116,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   FLASHCARDS
-   ========================================================================== */
+  FLASHCARDS
+  ========================================================================== */
 
 .panel {
   background: var(--card);
@@ -1107,8 +1164,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   QUIZ
-   ========================================================================== */
+  QUIZ
+  ========================================================================== */
 
 .quiz {
   max-width: 480px;
@@ -1168,8 +1225,8 @@ textarea:focus-visible {
 .quiz-opt.Wechsel { background: var(--wechsel); }
 
 /* ==========================================================================
-   MODAL & DIALOGS
-   ========================================================================== */
+  MODAL & DIALOGS
+  ========================================================================== */
 
 .overlay {
   position: fixed;
@@ -1282,8 +1339,8 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   RESPONSIVE DESIGN (MEDIA QUERIES)
-   ========================================================================== */
+  RESPONSIVE DESIGN (MEDIA QUERIES)
+  ========================================================================== */
 
 @media (max-width: 1024px) {
   .page {

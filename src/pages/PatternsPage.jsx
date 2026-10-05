@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
-import GoalModal from "../components/GoalModal"; // Adjust path if located elsewhere
+import GoalModal from "../components/GoalModal";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -11,6 +11,14 @@ import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
+
+// 🔍 Search helper: lowercase, strip accents, trim
+const normalize = (s = "") =>
+  String(s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
 
 // 🔊 Web Audio Synthesizer
 const getActiveAudioContext = async () => {
@@ -180,61 +188,56 @@ export default function PatternsPage({
 
   // ---------- Goal helpers ----------
   const getGoalCounts = (list = []) => {
-  const now = new Date();
+    const now = new Date();
 
-  // 1. Daily: Today 00:00:00.000 to 23:59:59.999
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    0, 0, 0, 0
-  ).getTime();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    23, 59, 59, 999
-  ).getTime();
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23, 59, 59, 999
+    ).getTime();
 
-  // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
-  // In JavaScript: Sunday is day 0, Saturday is day 6
-  const currentDayOfWeek = now.getDay(); 
+    const currentDayOfWeek = now.getDay();
 
-  const startOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek,
-    0, 0, 0, 0
-  ).getTime();
+    const startOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek,
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek + 6,
-    23, 59, 59, 999
-  ).getTime();
+    const endOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek + 6,
+      23, 59, 59, 999
+    ).getTime();
 
-  let daily = 0;
-  let weekly = 0;
+    let daily = 0;
+    let weekly = 0;
 
-  list.forEach((item) => {
-    if (!item?.createdAt) return;
-    const itemTime = new Date(item.createdAt).getTime();
+    list.forEach((item) => {
+      if (!item?.createdAt) return;
+      const itemTime = new Date(item.createdAt).getTime();
 
-    // Check strict Daily window (00:00 to 23:59 today)
-    if (itemTime >= startOfToday && itemTime <= endOfToday) {
-      daily += 1;
-    }
+      if (itemTime >= startOfToday && itemTime <= endOfToday) {
+        daily += 1;
+      }
 
-    // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
-    if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
-      weekly += 1;
-    }
-  });
+      if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
+        weekly += 1;
+      }
+    });
 
-  return { daily, weekly };
-};
+    return { daily, weekly };
+  };
 
   const getSavedTargets = () => {
     try {
@@ -287,7 +290,6 @@ export default function PatternsPage({
     return false;
   };
 
-  // Live Goal Progress calculations
   const { daily: patternDailyCount, weekly: patternWeeklyCount } = getGoalCounts(patternsList);
   const { daily: patternDailyTarget, weekly: patternWeeklyTarget } = getSavedTargets();
 
@@ -352,7 +354,6 @@ export default function PatternsPage({
           return;
         }
 
-        // Duplicate key = article + ending
         const existingKeys = new Set(
           patternsList.map((p) => `${p.article}|${p.ending?.trim().toLowerCase()}`)
         );
@@ -485,11 +486,13 @@ export default function PatternsPage({
   };
 
   const filteredPatterns = patternsList.filter((item) => {
-    const q = search.toLowerCase();
+    const q = normalize(search);
     const matchesSearch =
-      (item.ending || "").toLowerCase().includes(q) ||
-      (item.rule || "").toLowerCase().includes(q) ||
-      (item.examples || "").toLowerCase().includes(q);
+      !q ||
+      normalize(item.ending).includes(q) ||
+      normalize(item.rule).includes(q) ||
+      normalize(item.examples).includes(q) ||
+      normalize(item.article).includes(q);
     const matchesArt = articleFilter === "all" || item.article === articleFilter;
     const itemStatus = item.status || "In Progress";
     const matchesStatus = statusFilter === "all" || itemStatus === statusFilter;
@@ -593,6 +596,7 @@ export default function PatternsPage({
     <>
       {viewMode === "list" && (
         <div className="section">
+          {/* Dashboard Stats */}
           <div className="stats-grid">
             <div className="stat dark">
               <div className="stat-head">
@@ -602,29 +606,6 @@ export default function PatternsPage({
               <div className="stat-foot">
                 <span className="stat-value">{patternsList.length}</span>
                 <span className="stat-note" style={{ color: "#a8a29e" }}>active rules</span>
-              </div>
-            </div>
-
-            {/* 🎯 Patterns Goal Stats Card */}
-            <div 
-              className="stat" 
-              style={{ cursor: "pointer", border: "1px solid #fed7aa" }} 
-              onClick={() => setGoalModalOpen(true)}
-              title="Click to manage pattern study targets"
-            >
-              <div className="stat-head">
-                <span className="stat-label">TODAY'S GOAL</span>
-                <span className="stat-pill" style={{ backgroundColor: "#ffedd5", color: "#c2410c", fontWeight: 700 }}>
-                  🎯 {patternDailyCount >= patternDailyTarget ? "Achieved!" : "In Progress"}
-                </span>
-              </div>
-              <div className="stat-foot">
-                <span className="stat-value" style={{ color: "#c2410c" }}>
-                  {patternDailyCount} <span style={{ fontSize: 16, color: "var(--muted)" }}>/ {patternDailyTarget}</span>
-                </span>
-                <span className="stat-note" style={{ color: "#9a3412" }}>
-                  Week: {patternWeeklyCount}/{patternWeeklyTarget}
-                </span>
               </div>
             </div>
 
@@ -642,6 +623,7 @@ export default function PatternsPage({
             </div>
           </div>
 
+          {/* Regular Inline Toolbar */}
           <div className="toolbar">
             <div className="search">
               <span>🔍</span>
@@ -654,25 +636,6 @@ export default function PatternsPage({
             </div>
 
             <div className="filters-cluster">
-              {/* 🎯 Goals Launcher Button */}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setGoalModalOpen(true)}
-                title="Set and track pattern study goals"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  borderColor: "#fed7aa",
-                  backgroundColor: "#fff7ed",
-                  color: "#9a3412",
-                  fontWeight: 600,
-                }}
-              >
-                <span>🎯</span> Goals ({patternDailyCount}/{patternDailyTarget})
-              </button>
-
               <div className="filters">
                 <CustomDropdown
                   icon="🏷"
@@ -744,13 +707,10 @@ export default function PatternsPage({
               >
                 🔄 Reset
               </button>
-
-              <button onClick={openAddModal} className="btn btn-primary">
-                + Add Suffix Pattern
-              </button>
             </div>
           </div>
 
+          {/* Patterns Grid */}
           <div className="patterns-grid">
             {["der", "die", "das"]
               .filter((art) => articleFilter === "all" || articleFilter === art)
@@ -818,6 +778,18 @@ export default function PatternsPage({
               })}
           </div>
         </div>
+      )}
+
+      {/* ➕ Sticky Floating Bottom-Right Add Button */}
+      {viewMode === "list" && (
+        <button
+          onClick={openAddModal}
+          className="fab-btn"
+          title="Add Suffix Pattern"
+          aria-label="Add Suffix Pattern"
+        >
+          +
+        </button>
       )}
 
       {viewMode === "flashcards" && (

@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from "react";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
-  
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
@@ -11,6 +10,7 @@ import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
+import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
 
@@ -201,61 +201,60 @@ export default function NounsPage({
   };
 
   const getGoalCounts = (list = []) => {
-  const now = new Date();
+    const now = new Date();
 
-  // 1. Daily: Today 00:00:00.000 to 23:59:59.999
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    0, 0, 0, 0
-  ).getTime();
+    // 1. Daily: Today 00:00:00.000 to 23:59:59.999
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    23, 59, 59, 999
-  ).getTime();
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23, 59, 59, 999
+    ).getTime();
 
-  // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
-  // In JavaScript: Sunday is day 0, Saturday is day 6
-  const currentDayOfWeek = now.getDay(); 
+    // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
+    const currentDayOfWeek = now.getDay(); 
 
-  const startOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek,
-    0, 0, 0, 0
-  ).getTime();
+    const startOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek,
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek + 6,
-    23, 59, 59, 999
-  ).getTime();
+    const endOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek + 6,
+      23, 59, 59, 999
+    ).getTime();
 
-  let daily = 0;
-  let weekly = 0;
+    let daily = 0;
+    let weekly = 0;
 
-  list.forEach((item) => {
-    if (!item?.createdAt) return;
-    const itemTime = new Date(item.createdAt).getTime();
+    list.forEach((item) => {
+      if (!item?.createdAt) return;
+      const itemTime = new Date(item.createdAt).getTime();
 
-    // Check strict Daily window (00:00 to 23:59 today)
-    if (itemTime >= startOfToday && itemTime <= endOfToday) {
-      daily += 1;
-    }
+      // Check strict Daily window (00:00 to 23:59 today)
+      if (itemTime >= startOfToday && itemTime <= endOfToday) {
+        daily += 1;
+      }
 
-    // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
-    if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
-      weekly += 1;
-    }
-  });
+      // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
+      if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
+        weekly += 1;
+      }
+    });
 
-  return { daily, weekly };
-};
+    return { daily, weekly };
+  };
 
   const getSavedTargets = () => {
     try {
@@ -305,59 +304,57 @@ export default function NounsPage({
 
     return false;
   };
-const handleTriggerInstantNotification = async () => {
-  if (!vocabList || vocabList.length === 0) {
-    alert("Please add at least one noun first!");
-    return;
-  }
 
-  if (!("Notification" in window)) {
-    alert("This browser does not support notifications.");
-    return;
-  }
-
-  // 1. Request permission if not already granted
-  let permission = Notification.permission;
-  if (permission !== "granted") {
-    permission = await Notification.requestPermission();
-    if (permission !== "granted") {
-      alert("Notification permissions were denied. Please enable them in your browser/device settings.");
+  const handleTriggerInstantNotification = async () => {
+    if (!vocabList || vocabList.length === 0) {
+      alert("Please add at least one noun first!");
       return;
     }
-  }
 
-  // 2. Select a random noun
-  const randomNoun = vocabList[Math.floor(Math.random() * vocabList.length)];
-  const title = `🇩🇪 ${randomNoun.article} ${randomNoun.noun}`;
-  const options = {
-    body: `Meaning: ${randomNoun.meaning} | Plural: ${randomNoun.plural || "—"}`,
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
-    tag: "noun-notification",
-    renotify: true,
-  };
+    if (!("Notification" in window)) {
+      alert("This browser does not support notifications.");
+      return;
+    }
 
-  // 3. Mobile Execution via Service Worker (Android / iOS PWA)
-  if ("serviceWorker" in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration && registration.showNotification) {
-        await registration.showNotification(title, options);
+    let permission = Notification.permission;
+    if (permission !== "granted") {
+      permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        alert("Notification permissions were denied. Please enable them in your browser/device settings.");
         return;
       }
-    } catch (err) {
-      console.warn("ServiceWorker showNotification failed, trying fallback:", err);
     }
-  }
 
-  // 4. Desktop / Fallback Execution
-  try {
-    new Notification(title, options);
-  } catch (err) {
-    console.error("Standard Notification API failed:", err);
-    alert("Unable to display notification on this device.");
-  }
-};
+    const randomNoun = vocabList[Math.floor(Math.random() * vocabList.length)];
+    const title = `🇩🇪 ${randomNoun.article} ${randomNoun.noun}`;
+    const options = {
+      body: `Meaning: ${randomNoun.meaning} | Plural: ${randomNoun.plural || "—"}`,
+      icon: "/favicon.ico",
+      badge: "/favicon.ico",
+      tag: "noun-notification",
+      renotify: true,
+    };
+
+    if ("serviceWorker" in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        if (registration && registration.showNotification) {
+          await registration.showNotification(title, options);
+          return;
+        }
+      } catch (err) {
+        console.warn("ServiceWorker showNotification failed, trying fallback:", err);
+      }
+    }
+
+    try {
+      new Notification(title, options);
+    } catch (err) {
+      console.error("Standard Notification API failed:", err);
+      alert("Unable to display notification on this device.");
+    }
+  };
+
   const handleConfirmReset = () => {
     playDangerSound();
     onCommitNouns([]);
@@ -675,28 +672,6 @@ const handleTriggerInstantNotification = async () => {
             </div>
 
             <div className="filters-cluster">
-              
-
-  {/* 🚀 NEW: Instant Notification Trigger Button */}
-  {/* <button
-    type="button"
-    onClick={handleTriggerInstantNotification}
-    className="btn btn-secondary"
-    title="Send a sample notification right now"
-  >
-    ⚡ Test Notification
-  </button> */}
-
-  
-              {/* <button
-                type="button"
-                onClick={handleToggleHourlyNotifications}
-                className={`btn ${hourlyAlertsActive ? "btn-primary" : "btn-secondary"}`}
-                title="Get a new German noun notification every 60 minutes"
-              >
-                {hourlyAlertsActive ? "🔔 Hourly Alerts: ON" : "🔕 Hourly Alerts: OFF"}
-              </button> */}
-
               <div className="filters">
                 <CustomDropdown
                   icon="🏷"
@@ -714,23 +689,6 @@ const handleTriggerInstantNotification = async () => {
                   onChange={(val) => setNounStatusFilter(val)}
                 />
               </div>
-
-              {/* <div className="filters">
-                <CustomDropdown
-                  icon="📅"
-                  value={dateFilter}
-                  options={DATE_OPTIONS}
-                  onChange={(val) => setDateFilter(val)}
-                />
-                {dateFilter === "custom" && (
-                  <input
-                    type="date"
-                    className="date-select"
-                    value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
-                  />
-                )}
-              </div> */}
 
               <input
                 type="file"
@@ -1175,8 +1133,8 @@ const handleTriggerInstantNotification = async () => {
             }}
           >
             <img
-              src={successGif}
-              alt="Celebration Success"
+              src={congratsGif}
+              alt="Celebration Congrats"
               style={{
                 width: 105,
                 height: 105,

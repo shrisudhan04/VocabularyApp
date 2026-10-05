@@ -20,6 +20,7 @@ import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
 } from "./utils/hourlyWordNotifier";
+import { calculateStreak } from "./utils/streakHelper";
 
 // Constants
 import {
@@ -38,6 +39,7 @@ import SubTabs from "./components/SubTabs";
 import ConfirmModal from "./components/ConfirmModal";
 import GoalModal from "./components/GoalModal";
 import ReportModal from "./components/ReportModal";
+import StreakMilestoneModal from "./components/StreakMilestoneModal"; // 👈 Import milestone modal
 
 // Pages
 import NounsPage from "./pages/NounsPage";
@@ -60,6 +62,9 @@ export default function App() {
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
 
+  // Milestone modal state
+  const [milestoneStreak, setMilestoneStreak] = useState(null);
+
   const [languageMode, setLanguageMode] = useState("EN");
   const [mainCategory, setMainCategory] = useState("Nouns");
 
@@ -79,6 +84,34 @@ export default function App() {
     onConfirm: () => {},
   });
 
+  // Calculate day-to-day streak
+  const streakData = useMemo(() => {
+    return calculateStreak({
+      Nouns: vocabList,
+      Verbs: verbsList,
+      Patterns: patternsList,
+      Prepositions: prepsList,
+      Time: timeList,
+    });
+  }, [vocabList, verbsList, patternsList, prepsList, timeList]);
+
+  // Check for 5-day milestone triggers (5, 10, 15, 20...)
+  useEffect(() => {
+    if (!isReady) return;
+    const currentStreak = streakData.streak;
+
+    if (currentStreak > 0 && currentStreak % 5 === 0 && streakData.activeToday) {
+      const lastCelebrated = Number(localStorage.getItem("last_celebrated_streak") || 0);
+
+      // Only trigger if this specific milestone hasn't been shown yet
+      if (lastCelebrated < currentStreak) {
+        setMilestoneStreak(currentStreak);
+        localStorage.setItem("last_celebrated_streak", String(currentStreak));
+      }
+    }
+  }, [streakData, isReady]);
+
+  // Daily & weekly progress calculations
   const categoryStats = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -307,7 +340,12 @@ export default function App() {
 
   return (
     <div className="page-shell" data-theme={theme}>
-      <Header onOpenSidebar={() => setSidebarOpen(true)} />
+      
+<Header
+  onOpenSidebar={() => setSidebarOpen(true)}
+  streakData={streakData}
+  onOpenMilestone={() => setMilestoneStreak(streakData.streak || 1)}
+/>
 
       <Sidebar
         isOpen={sidebarOpen}
@@ -344,6 +382,13 @@ export default function App() {
           Prepositions: prepsList,
           Time: timeList,
         }}
+      />
+
+      {/* 5-day Streak Milestone Popup */}
+      <StreakMilestoneModal
+        isOpen={Boolean(milestoneStreak)}
+        streak={milestoneStreak}
+        onClose={() => setMilestoneStreak(null)}
       />
 
       <main className="page">

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import StreakWidget from "./StreakWidget";
 import "../App.css";
 
-export default function Header({ onOpenSidebar }) {
+export default function Header({ onOpenSidebar, streakData, onOpenMilestone }) {
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem("app_theme") || "light";
   });
@@ -34,7 +35,18 @@ export default function Header({ onOpenSidebar }) {
 
       <h1 className="app-title">DEutschly</h1>
 
-      <div className="header-actions">
+      <div
+        className="header-actions"
+        style={{ display: "flex", alignItems: "center", gap: 10 }}
+      >
+        {streakData && (
+          <StreakWidget
+            streak={streakData.streak}
+            activeToday={streakData.activeToday}
+            onClick={onOpenMilestone}
+          />
+        )}
+
         <button
           type="button"
           className={`theme-toggle-btn ${isDark ? "theme-dark" : "theme-light"}`}

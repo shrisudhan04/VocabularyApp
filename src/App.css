@@ -545,6 +545,16 @@ textarea:focus-visible {
 }
 
 /* --- TOOLBAR --- */
+.toolbar-container {
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Chrome, Safari, and Opera */
+.toolbar-container::-webkit-scrollbar {
+  display: none;
+}
 .toolbar {
   display: flex;
   align-items: center;

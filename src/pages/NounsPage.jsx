@@ -54,7 +54,35 @@ const playSuccessSound = async () => {
   }
 };
 
-// 2. Duplicate warning buzzer (Two distinct descending warning pulses)
+// 2. Celebration MP3 for goal achievements (from public folder)
+let goalAudioInstance = null;
+
+const playGoalAchievedMusic = () => {
+  try {
+    // If audio is already playing, reset and restart
+    if (goalAudioInstance) {
+      goalAudioInstance.pause();
+      goalAudioInstance.currentTime = 0;
+    }
+    // Rename 'congrats.mp3' to match your exact file name in the public folder
+    goalAudioInstance = new Audio("/congrats.mp3");
+    goalAudioInstance.volume = 0.7;
+    goalAudioInstance.play().catch((err) => {
+      console.warn("Celebration audio playback error:", err);
+    });
+  } catch (err) {
+    console.warn("Failed to play goal music:", err);
+  }
+};
+
+const stopGoalAchievedMusic = () => {
+  if (goalAudioInstance) {
+    goalAudioInstance.pause();
+    goalAudioInstance.currentTime = 0;
+  }
+};
+
+// 3. Duplicate warning buzzer (Two distinct descending warning pulses)
 const playDuplicateSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -83,7 +111,7 @@ const playDuplicateSound = async () => {
   }
 };
 
-// 3. Danger warning for reset
+// 4. Danger warning for reset
 const playDangerSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -174,9 +202,7 @@ export default function NounsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
-  // 🔔 Hourly Notification State & Effects (Moved inside component)
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
-
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -203,7 +229,6 @@ export default function NounsPage({
   const getGoalCounts = (list = []) => {
     const now = new Date();
 
-    // 1. Daily: Today 00:00:00.000 to 23:59:59.999
     const startOfToday = new Date(
       now.getFullYear(),
       now.getMonth(),
@@ -218,7 +243,6 @@ export default function NounsPage({
       23, 59, 59, 999
     ).getTime();
 
-    // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
     const currentDayOfWeek = now.getDay(); 
 
     const startOfWeek = new Date(
@@ -242,12 +266,10 @@ export default function NounsPage({
       if (!item?.createdAt) return;
       const itemTime = new Date(item.createdAt).getTime();
 
-      // Check strict Daily window (00:00 to 23:59 today)
       if (itemTime >= startOfToday && itemTime <= endOfToday) {
         daily += 1;
       }
 
-      // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
       if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
         weekly += 1;
       }
@@ -281,6 +303,7 @@ export default function NounsPage({
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -292,6 +315,7 @@ export default function NounsPage({
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -303,56 +327,6 @@ export default function NounsPage({
     }
 
     return false;
-  };
-
-  const handleTriggerInstantNotification = async () => {
-    if (!vocabList || vocabList.length === 0) {
-      alert("Please add at least one noun first!");
-      return;
-    }
-
-    if (!("Notification" in window)) {
-      alert("This browser does not support notifications.");
-      return;
-    }
-
-    let permission = Notification.permission;
-    if (permission !== "granted") {
-      permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        alert("Notification permissions were denied. Please enable them in your browser/device settings.");
-        return;
-      }
-    }
-
-    const randomNoun = vocabList[Math.floor(Math.random() * vocabList.length)];
-    const title = `🇩🇪 ${randomNoun.article} ${randomNoun.noun}`;
-    const options = {
-      body: `Meaning: ${randomNoun.meaning} | Plural: ${randomNoun.plural || "—"}`,
-      icon: "/favicon.ico",
-      badge: "/favicon.ico",
-      tag: "noun-notification",
-      renotify: true,
-    };
-
-    if ("serviceWorker" in navigator) {
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        if (registration && registration.showNotification) {
-          await registration.showNotification(title, options);
-          return;
-        }
-      } catch (err) {
-        console.warn("ServiceWorker showNotification failed, trying fallback:", err);
-      }
-    }
-
-    try {
-      new Notification(title, options);
-    } catch (err) {
-      console.error("Standard Notification API failed:", err);
-      alert("Unable to display notification on this device.");
-    }
   };
 
   const handleConfirmReset = () => {
@@ -459,9 +433,11 @@ export default function NounsPage({
         });
 
         if (newEntries.length > 0) {
-          playSuccessSound();
           const updatedList = [...vocabList, ...newEntries];
-          verifyGoalMilestone(vocabList, updatedList, `${newEntries.length} new nouns`);
+          const reachedGoal = verifyGoalMilestone(vocabList, updatedList, `${newEntries.length} new nouns`);
+          if (!reachedGoal) {
+            playSuccessSound();
+          }
           onCommitNouns(updatedList);
         } else if (duplicateWords.length > 0) {
           playDuplicateSound();
@@ -600,8 +576,6 @@ export default function NounsPage({
         item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
       );
     } else {
-      playSuccessSound();
-
       updated = [
         ...vocabList,
         {
@@ -614,6 +588,10 @@ export default function NounsPage({
     }
 
     const reachedGoal = !isEditing && verifyGoalMilestone(vocabList, updated, `${nounFormData.article} ${cleanNoun}`);
+
+    if (!reachedGoal && !isEditing) {
+      playSuccessSound();
+    }
 
     onCommitNouns(updated);
     setModalOpen(false);
@@ -1115,7 +1093,12 @@ export default function NounsPage({
         <div
           className="overlay"
           style={{ zIndex: 1300 }}
-          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              stopGoalAchievedMusic();
+              setGoalCelebration((p) => ({ ...p, isOpen: false }));
+            }
+          }}
         >
           <div
             className="modal"
@@ -1207,7 +1190,10 @@ export default function NounsPage({
                 backgroundColor: "#b85c19",
                 borderColor: "#b85c19",
               }}
-              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+              onClick={() => {
+                stopGoalAchievedMusic();
+                setGoalCelebration((p) => ({ ...p, isOpen: false }));
+              }}
             >
               Awesome, Keep Going! 🚀
             </button>

@@ -1,5 +1,37 @@
+
+
 export default function ConfirmModal({ isOpen, title, message, onConfirm, onClose }) {
   if (!isOpen) return null;
+
+  const playSynthesizedDeleteSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      // Drop frequency quickly to create a 'popping/trash' downward tone
+      osc.frequency.setValueAtTime(260, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.15);
+
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch (e) {
+      console.warn("Web Audio API not supported", e);
+    }
+  };
+
+  const handleConfirm = () => {
+    playSynthesizedDeleteSound();
+    onConfirm();
+  };
 
   return (
     <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -12,7 +44,7 @@ export default function ConfirmModal({ isOpen, title, message, onConfirm, onClos
             <button type="button" onClick={onClose} className="btn btn-secondary">
               Cancel
             </button>
-            <button type="button" onClick={onConfirm} className="btn btn-danger">
+            <button type="button" onClick={handleConfirm} className="btn btn-danger">
               Confirm Delete
             </button>
           </div>

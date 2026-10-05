@@ -1670,7 +1670,7 @@ export default function VerbsPage({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  <span style={{ fontSize: "14px" }}>⏱️️</span>
+                  <span style={{ fontSize: "14px" }}>⏱</span>
                   <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>Timer:</span>
                   <input
                     type="text"
@@ -1922,11 +1922,23 @@ export default function VerbsPage({
               </div>
 
               {quizMode === "case" ? (
-                <div className="quiz-opts">
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    gap: "8px",
+                    width: "100%",
+                    maxWidth: "360px",
+                    margin: "16px auto 0",
+                    boxSizing: "border-box",
+                    padding: "0 6px",
+                  }}
+                >
                   {[
                     { label: "Dativ", val: "Dativ", bg: "#ede9fe", text: "#6d28d9", border: "#ddd6fe" },
                     { label: "Akkusativ", val: "Akkusativ", bg: "#ffedd5", text: "#c2410c", border: "#fed7aa" },
-                    { label: "Both / Common", val: "Both / Common", bg: "#cffafe", text: "#0e7490", border: "#a5f3fc" },
+                    { label: "Both", val: "Both / Common", bg: "#cffafe", text: "#0e7490", border: "#a5f3fc" },
                   ].map((btn) => (
                     <button
                       key={btn.val}
@@ -1934,15 +1946,23 @@ export default function VerbsPage({
                       disabled={quizFeedback !== null}
                       onClick={() => handleQuizCaseSelect(btn.val)}
                       style={{
+                        flex: "1 1 calc(33.333% - 8px)",
+                        minWidth: "80px",
+                        height: "40px",
+                        padding: "0 8px",
                         backgroundColor: btn.bg,
                         color: btn.text,
                         border: `1.5px solid ${btn.border}`,
-                        borderRadius: "16px",
-                        padding: "10px 22px",
+                        borderRadius: "12px",
                         fontWeight: 700,
-                        fontSize: "15px",
-                        cursor: "pointer",
-                        transition: "transform 0.15s ease, opacity 0.15s ease",
+                        fontSize: "13.5px",
+                        cursor: quizFeedback !== null ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxSizing: "border-box",
+                        whiteSpace: "nowrap",
+                        transition: "all 0.15s ease",
                       }}
                     >
                       {btn.label}

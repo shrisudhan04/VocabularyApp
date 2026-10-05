@@ -13,6 +13,7 @@ import successGif from "../assets/Success.gif";
 import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import "../App.css";
+import congratsAudio from "../assets/celebration.mp3";
 
 // 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
 const getActiveAudioContext = async () => {
@@ -54,18 +55,16 @@ const playSuccessSound = async () => {
   }
 };
 
-// 2. Celebration MP3 for goal achievements (from public folder)
+// 2. Goal Celebration MP3 from public folder
 let goalAudioInstance = null;
 
 const playGoalAchievedMusic = () => {
   try {
-    // If audio is already playing, reset and restart
     if (goalAudioInstance) {
       goalAudioInstance.pause();
       goalAudioInstance.currentTime = 0;
     }
-    // Rename 'congrats.mp3' to match your exact file name in the public folder
-    goalAudioInstance = new Audio("/congrats.mp3");
+    goalAudioInstance = new Audio(congratsAudio);
     goalAudioInstance.volume = 0.7;
     goalAudioInstance.play().catch((err) => {
       console.warn("Celebration audio playback error:", err);
@@ -74,7 +73,6 @@ const playGoalAchievedMusic = () => {
     console.warn("Failed to play goal music:", err);
   }
 };
-
 const stopGoalAchievedMusic = () => {
   if (goalAudioInstance) {
     goalAudioInstance.pause();

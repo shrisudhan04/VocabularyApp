@@ -5,6 +5,7 @@ import {
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import GoalModal from "../components/GoalModal";
 import { ARTICLE_CLASS, DATE_OPTIONS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -12,8 +13,18 @@ import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
 import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
-import "../App.css";
 import congratsAudio from "../assets/celebration.mp3";
+import "../App.css";
+
+const GEMINI_MODEL = "gemini-2.5-flash";
+
+// 🔍 Search helper: lowercase, strip accents, trim
+const normalize = (s = "") =>
+  String(s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
 
 // 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
 const getActiveAudioContext = async () => {
@@ -55,7 +66,7 @@ const playSuccessSound = async () => {
   }
 };
 
-// 2. Goal Celebration MP3 from public folder
+// 2. Goal Celebration MP3
 let goalAudioInstance = null;
 
 const playGoalAchievedMusic = () => {
@@ -73,6 +84,7 @@ const playGoalAchievedMusic = () => {
     console.warn("Failed to play goal music:", err);
   }
 };
+
 const stopGoalAchievedMusic = () => {
   if (goalAudioInstance) {
     goalAudioInstance.pause();
@@ -80,7 +92,7 @@ const stopGoalAchievedMusic = () => {
   }
 };
 
-// 3. Duplicate warning buzzer (Two distinct descending warning pulses)
+// 3. Duplicate warning buzzer (two descending warning pulses)
 const playDuplicateSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -154,12 +166,23 @@ const EXCEL_ACTIONS = [
   { label: "📤 Export", value: "export" },
 ];
 
+const EMPTY_FORM = {
+  noun: "",
+  plural: "",
+  article: "der",
+  meaning: "",
+  status: "In Progress",
+};
+
 export default function NounsPage({
-  viewMode,
-  vocabList,
+  viewMode = "list",
+  vocabList = [], // default guards against undefined
   onCommitNouns,
   onRequestConfirm,
 }) {
+  // Extra guard: also covers null or non-array values
+  const list = Array.isArray(vocabList) ? vocabList : [];
+
   const [search, setSearch] = useState("");
   const [articleFilter, setArticleFilter] = useState("all");
   const [nounStatusFilter, setNounStatusFilter] = useState("all");
@@ -168,20 +191,16 @@ export default function NounsPage({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingNounId, setEditingNounId] = useState(null);
-  const [nounFormData, setNounFormData] = useState({
-    noun: "",
-    plural: "",
-    article: "der",
-    meaning: "",
-    status: "In Progress",
-  });
+  const [nounFormData, setNounFormData] = useState(EMPTY_FORM);
 
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateWordName, setDuplicateWordName] = useState("");
   const [successModalOpen, setSuccessModalOpen] = useState(false);
-  const [successWordInfo, setSuccessWordInfo] = useState({ article: "", noun: "" });
+  const [successWordInfo, setSuccessWordInfo] = useState({ article: "", noun: "", isEdit: false });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
+  // 🎯 Study Goals Modal & Milestone State
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalCelebration, setGoalCelebration] = useState({
     isOpen: false,
     goalType: "daily",
@@ -203,15 +222,16 @@ export default function NounsPage({
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
 
+  // ---------- Hourly notifier ----------
   useEffect(() => {
     let timerId = null;
-    if (hourlyAlertsActive && vocabList?.length > 0) {
-      timerId = startHourlyNounNotifier(vocabList);
+    if (hourlyAlertsActive && list.length > 0) {
+      timerId = startHourlyNounNotifier(list);
     }
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [hourlyAlertsActive, vocabList]);
+  }, [hourlyAlertsActive, vocabList]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleHourlyNotifications = async () => {
     if (!hourlyAlertsActive) {
@@ -224,7 +244,9 @@ export default function NounsPage({
     }
   };
 
-  const getGoalCounts = (list = []) => {
+  // ---------- Goal helpers ----------
+  const getGoalCounts = (items = []) => {
+    const safeItems = Array.isArray(items) ? items : [];
     const now = new Date();
 
     const startOfToday = new Date(
@@ -241,7 +263,7 @@ export default function NounsPage({
       23, 59, 59, 999
     ).getTime();
 
-    const currentDayOfWeek = now.getDay(); 
+    const currentDayOfWeek = now.getDay();
 
     const startOfWeek = new Date(
       now.getFullYear(),
@@ -260,7 +282,7 @@ export default function NounsPage({
     let daily = 0;
     let weekly = 0;
 
-    list.forEach((item) => {
+    safeItems.forEach((item) => {
       if (!item?.createdAt) return;
       const itemTime = new Date(item.createdAt).getTime();
 
@@ -327,9 +349,13 @@ export default function NounsPage({
     return false;
   };
 
+  const { daily: nounDailyCount, weekly: nounWeeklyCount } = getGoalCounts(list);
+  const { daily: nounDailyTarget, weekly: nounWeeklyTarget } = getSavedTargets();
+
+  // ---------- Reset ----------
   const handleConfirmReset = () => {
     playDangerSound();
-    onCommitNouns([]);
+    onCommitNouns?.([]);
     setCardIndex(0);
     setCardFlipped(false);
     setQuizIndex(0);
@@ -338,13 +364,14 @@ export default function NounsPage({
     setResetModalOpen(false);
   };
 
+  // ---------- Excel export / import ----------
   const exportToExcel = () => {
-    if (!vocabList || vocabList.length === 0) {
+    if (list.length === 0) {
       alert("No nouns to export.");
       return;
     }
 
-    const exportData = vocabList.map((item, index) => ({
+    const exportData = list.map((item, index) => ({
       "#": index + 1,
       Article: item.article,
       Noun: item.noun,
@@ -388,7 +415,7 @@ export default function NounsPage({
         }
 
         const existingNounSet = new Set(
-          vocabList.map((v) => v.noun?.trim().toLowerCase())
+          list.map((v) => v.noun?.trim().toLowerCase())
         );
 
         const newEntries = [];
@@ -431,12 +458,12 @@ export default function NounsPage({
         });
 
         if (newEntries.length > 0) {
-          const updatedList = [...vocabList, ...newEntries];
-          const reachedGoal = verifyGoalMilestone(vocabList, updatedList, `${newEntries.length} new nouns`);
+          const updatedList = [...list, ...newEntries];
+          const reachedGoal = verifyGoalMilestone(list, updatedList, `${newEntries.length} new nouns`);
           if (!reachedGoal) {
             playSuccessSound();
           }
-          onCommitNouns(updatedList);
+          onCommitNouns?.(updatedList);
         } else if (duplicateWords.length > 0) {
           playDuplicateSound();
         }
@@ -456,6 +483,7 @@ export default function NounsPage({
     reader.readAsArrayBuffer(file);
   };
 
+  // ---------- AI generate ----------
   const generateGermanNoun = async () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -475,32 +503,21 @@ export default function NounsPage({
 
       const ai = new GoogleGenAI({ apiKey });
 
-      const promptConfig = {
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
         contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              article: {
-                type: Type.STRING,
-                enum: ["der", "die", "das"],
-              },
-              noun: {
-                type: Type.STRING,
-              },
-              plural: {
-                type: Type.STRING,
-              },
+              article: { type: Type.STRING, enum: ["der", "die", "das"] },
+              noun: { type: Type.STRING },
+              plural: { type: Type.STRING },
             },
             required: ["article", "noun", "plural"],
           },
         },
-      };
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        ...promptConfig,
       });
 
       const parsed = JSON.parse(response.text);
@@ -518,6 +535,7 @@ export default function NounsPage({
     }
   };
 
+  // ---------- Filtering ----------
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
     const itemDate = new Date(isoDate);
@@ -530,19 +548,43 @@ export default function NounsPage({
     return true;
   };
 
-  const filteredNouns = vocabList.filter((item) => {
-    const q = search.toLowerCase();
+  const filteredNouns = list.filter((item) => {
+    const q = normalize(search);
     const matchesSearch =
-      item.noun.toLowerCase().includes(q) ||
-      (item.plural && item.plural.toLowerCase().includes(q)) ||
-      item.meaning.toLowerCase().includes(q);
+      !q ||
+      normalize(item.noun).includes(q) ||
+      normalize(item.plural).includes(q) ||
+      normalize(item.meaning).includes(q) ||
+      normalize(item.article).includes(q);
     const matchesArt = articleFilter === "all" || item.article === articleFilter;
-    const matchesStatus = nounStatusFilter === "all" || item.status === nounStatusFilter;
+    const itemStatus = item.status || "In Progress";
+    const matchesStatus = nounStatusFilter === "all" || itemStatus === nounStatusFilter;
     return matchesSearch && matchesArt && matchesStatus && matchesDateFilter(item.createdAt);
   });
 
-  const nounsMastered = vocabList.filter((i) => i.status === "Mastered").length;
-  const countNoun = (art) => vocabList.filter((i) => i.article === art).length;
+  const nounsMastered = list.filter((i) => i.status === "Mastered").length;
+  const countNoun = (art) => list.filter((i) => i.article === art).length;
+
+  // ---------- Add / Edit ----------
+  const openAddModal = () => {
+    setEditingNounId(null);
+    setAiError("");
+    setNounFormData(EMPTY_FORM);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (item) => {
+    setEditingNounId(item.id);
+    setAiError("");
+    setNounFormData({
+      noun: item.noun,
+      plural: item.plural || "",
+      article: item.article,
+      meaning: item.meaning,
+      status: item.status || "In Progress",
+    });
+    setModalOpen(true);
+  };
 
   const handleSaveModal = (e) => {
     e.preventDefault();
@@ -552,7 +594,7 @@ export default function NounsPage({
       return;
     }
 
-    const isDuplicate = vocabList.some(
+    const isDuplicate = list.some(
       (item) =>
         item.noun.trim().toLowerCase() === cleanNoun.toLowerCase() &&
         item.id !== editingNounId
@@ -566,32 +608,34 @@ export default function NounsPage({
     }
 
     const gender = GENDER_MAP[nounFormData.article] || "";
-    let updated;
     const isEditing = Boolean(editingNounId);
+    let updated;
 
     if (isEditing) {
-      updated = vocabList.map((item) =>
-        item.id === editingNounId ? { ...item, ...nounFormData, gender } : item
+      updated = list.map((item) =>
+        item.id === editingNounId ? { ...item, ...nounFormData, noun: cleanNoun, gender } : item
       );
     } else {
       updated = [
-        ...vocabList,
+        ...list,
         {
           id: Date.now(),
           ...nounFormData,
+          noun: cleanNoun,
           gender,
           createdAt: new Date().toISOString(),
         },
       ];
     }
 
-    const reachedGoal = !isEditing && verifyGoalMilestone(vocabList, updated, `${nounFormData.article} ${cleanNoun}`);
+    const reachedGoal =
+      !isEditing && verifyGoalMilestone(list, updated, `${nounFormData.article} ${cleanNoun}`);
 
     if (!reachedGoal && !isEditing) {
       playSuccessSound();
     }
 
-    onCommitNouns(updated);
+    onCommitNouns?.(updated);
     setModalOpen(false);
 
     if (!reachedGoal) {
@@ -604,8 +648,17 @@ export default function NounsPage({
     }
   };
 
-  const nounCard = vocabList[cardIndex];
-  const nounQuizWord = vocabList[quizIndex];
+  const toggleStatus = (id) =>
+    onCommitNouns?.(
+      list.map((i) =>
+        i.id === id
+          ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" }
+          : i
+      )
+    );
+
+  const nounCard = list[cardIndex];
+  const nounQuizWord = list[quizIndex];
 
   return (
     <>
@@ -618,7 +671,7 @@ export default function NounsPage({
                 <span className="stat-pill dark">{nounsMastered} mastered</span>
               </div>
               <div className="stat-foot">
-                <span className="stat-value">{vocabList.length}</span>
+                <span className="stat-value">{list.length}</span>
                 <span className="stat-note" style={{ color: "#a8a29e" }}>all genders</span>
               </div>
             </div>
@@ -666,6 +719,23 @@ export default function NounsPage({
                 />
               </div>
 
+              <div className="filters">
+                <CustomDropdown
+                  icon="📅"
+                  value={dateFilter}
+                  options={DATE_OPTIONS}
+                  onChange={(val) => setDateFilter(val)}
+                />
+                {dateFilter === "custom" && (
+                  <input
+                    type="date"
+                    className="date-select"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                  />
+                )}
+              </div>
+
               <input
                 type="file"
                 ref={fileInputRef}
@@ -688,6 +758,24 @@ export default function NounsPage({
 
               <button
                 type="button"
+                onClick={handleToggleHourlyNotifications}
+                className="btn btn-secondary"
+                title="Toggle Hourly Word Notification"
+              >
+                {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setGoalModalOpen(true)}
+                className="btn btn-secondary"
+                title="Configure Daily & Weekly Goals"
+              >
+                🎯 Goals
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   playDangerSound();
                   setResetModalOpen(true);
@@ -703,23 +791,6 @@ export default function NounsPage({
                 🔄 Reset
               </button>
 
-              <button
-                onClick={() => {
-                  setEditingNounId(null);
-                  setAiError("");
-                  setNounFormData({
-                    noun: "",
-                    plural: "",
-                    article: "der",
-                    meaning: "",
-                    status: "In Progress",
-                  });
-                  setModalOpen(true);
-                }}
-                className="btn btn-primary"
-              >
-                + Add Noun
-              </button>
             </div>
           </div>
 
@@ -747,9 +818,7 @@ export default function NounsPage({
                 <div className="c-mean">{item.meaning}</div>
                 <div className="c-status">
                   <button
-                    onClick={() =>
-                      onCommitNouns(vocabList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))
-                    }
+                    onClick={() => toggleStatus(item.id)}
                     className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
                   >
                     {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
@@ -757,21 +826,11 @@ export default function NounsPage({
                 </div>
                 <div className="actions">
                   <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                  <button
-                    onClick={() => {
-                      setEditingNounId(item.id);
-                      setAiError("");
-                      setNounFormData({ noun: item.noun, plural: item.plural || "", article: item.article, meaning: item.meaning, status: item.status });
-                      setModalOpen(true);
-                    }}
-                    className="icon-btn"
-                  >
-                    ✏️
-                  </button>
+                  <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
                   <button
                     onClick={() =>
-                      onRequestConfirm("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
-                        onCommitNouns(vocabList.filter((i) => i.id !== item.id))
+                      onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
+                        onCommitNouns?.(list.filter((i) => i.id !== item.id))
                       )
                     }
                     className="icon-btn"
@@ -783,6 +842,18 @@ export default function NounsPage({
             ))}
           </div>
         </div>
+      )}
+
+      {/* ➕ Sticky Floating Bottom-Right Add Button */}
+      {viewMode === "list" && (
+        <button
+          onClick={openAddModal}
+          className="fab-btn"
+          title="Add Noun"
+          aria-label="Add Noun"
+        >
+          +
+        </button>
       )}
 
       {viewMode === "flashcards" && (
@@ -820,11 +891,11 @@ export default function NounsPage({
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>
                   🔊 Pronounce
                 </button>
-                <button className="btn btn-secondary" disabled={cardIndex >= vocabList.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
+                <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
                   Next ▶
                 </button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>Card {cardIndex + 1} of {vocabList.length}</span>
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>Card {cardIndex + 1} of {list.length}</span>
             </div>
           )}
         </div>
@@ -837,7 +908,7 @@ export default function NounsPage({
           ) : (
             <div className="quiz">
               <div className="quiz-head">
-                <span>Question {quizIndex + 1} of {vocabList.length}</span>
+                <span>Question {quizIndex + 1} of {list.length}</span>
                 <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
               </div>
               <div className="quiz-card">
@@ -869,16 +940,16 @@ export default function NounsPage({
                     className="btn btn-primary"
                     onClick={() => {
                       setQuizFeedback(null);
-                      if (quizIndex < vocabList.length - 1) {
+                      if (quizIndex < list.length - 1) {
                         setQuizIndex((i) => i + 1);
                       } else {
-                        alert(`Quiz finished! Score: ${quizScore}/${vocabList.length}`);
+                        alert(`Quiz finished! Score: ${quizScore}/${list.length}`);
                         setQuizIndex(0);
                         setQuizScore(0);
                       }
                     }}
                   >
-                    {quizIndex < vocabList.length - 1 ? "Next Word" : "Restart"}
+                    {quizIndex < list.length - 1 ? "Next Word" : "Restart"}
                   </button>
                 </div>
               )}
@@ -886,6 +957,21 @@ export default function NounsPage({
           )}
         </div>
       )}
+
+      {/* 🎯 Study Goals Modal */}
+      <GoalModal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        defaultCategory="Nouns"
+        categoryStats={{
+          Nouns: {
+            dailyCurrent: nounDailyCount,
+            weeklyCurrent: nounWeeklyCount,
+          },
+        }}
+        initialDailyTarget={nounDailyTarget}
+        initialWeeklyTarget={nounWeeklyTarget}
+      />
 
       {/* Add / Edit Noun Modal */}
       {modalOpen && (
@@ -1001,16 +1087,9 @@ export default function NounsPage({
             <img
               src={warningRedGif}
               alt="Warning"
-              style={{
-                width: 90,
-                height: 90,
-                objectFit: "contain",
-                marginBottom: 16,
-              }}
+              style={{ width: 90, height: 90, objectFit: "contain", marginBottom: 16 }}
             />
-            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>
-              Reset All Nouns?
-            </h3>
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>Reset All Nouns?</h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
               Are you sure you want to delete all nouns? This action will permanently remove your entire vocabulary list and cannot be undone.
             </p>
@@ -1063,12 +1142,7 @@ export default function NounsPage({
             <img
               src={alertGif}
               alt="Alert"
-              style={{
-                width: 100,
-                height: 100,
-                objectFit: "contain",
-                marginBottom: 16,
-              }}
+              style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }}
             />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--ink)" }}>Word Already Exists!</h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
@@ -1116,12 +1190,7 @@ export default function NounsPage({
             <img
               src={congratsGif}
               alt="Celebration Congrats"
-              style={{
-                width: 105,
-                height: 105,
-                objectFit: "contain",
-                marginBottom: 12,
-              }}
+              style={{ width: 105, height: 105, objectFit: "contain", marginBottom: 12 }}
             />
 
             <span
@@ -1221,12 +1290,7 @@ export default function NounsPage({
             <img
               src={successGif}
               alt="Success"
-              style={{
-                width: 100,
-                height: 100,
-                objectFit: "contain",
-                marginBottom: 16,
-              }}
+              style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }}
             />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--brand, #16a34a)" }}>
               {successWordInfo.isEdit ? "Noun Updated!" : "Noun Added Successfully!"}
@@ -1264,9 +1328,7 @@ export default function NounsPage({
               alignItems: "center",
             }}
           >
-            <h3 style={{ margin: "0 0 16px", fontSize: 20, color: "var(--ink)" }}>
-              Import Summary
-            </h3>
+            <h3 style={{ margin: "0 0 16px", fontSize: 20, color: "var(--ink)" }}>Import Summary</h3>
 
             <div
               style={{
@@ -1289,9 +1351,7 @@ export default function NounsPage({
                 }}
               >
                 <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.added}</div>
-                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>
-                  Added
-                </div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>Added</div>
               </div>
 
               <div
@@ -1306,9 +1366,7 @@ export default function NounsPage({
                 }}
               >
                 <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.duplicates}</div>
-                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>
-                  Duplicates
-                </div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>Duplicates</div>
               </div>
             </div>
 

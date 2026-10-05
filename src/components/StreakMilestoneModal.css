@@ -1782,6 +1782,7 @@ textarea:focus-visible {
   font-weight: 800;
   color: #1c1917;
   letter-spacing: -0.02em;
+  font-family:poppins, sans-serif;
 }
 
 [data-theme="dark"] .milestone-title {

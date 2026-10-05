@@ -222,7 +222,6 @@ export default function GoalModal({
             <div className="goal-card-top-row">
               <div className="goal-title-group">
                 <span className="goal-type-label">DAILY GOAL</span>
-                <span className="goal-unit-tag">Today (00:00 – 23:59)</span>
               </div>
               <div className="limit-stepper-control">
                 <span className="stepper-label">Target:</span>
@@ -284,7 +283,6 @@ export default function GoalModal({
             <div className="goal-card-top-row">
               <div className="goal-title-group">
                 <span className="goal-type-label">WEEKLY GOAL</span>
-                <span className="goal-unit-tag">Sun – Sat</span>
               </div>
               <div className="limit-stepper-control">
                 <span className="stepper-label">Target:</span>
@@ -325,7 +323,7 @@ export default function GoalModal({
                 <p className="goal-status-text">
                   {weeklyTarget - weeklyCurrent > 0 ? (
                     <>
-                      <strong>{weeklyTarget - weeklyCurrent}</strong> left to hit your weekly target
+                      <strong>{weeklyTarget - weeklyCurrent}</strong> left to hit weekly target
                     </>
                   ) : (
                     <span className="completed-tag">🚀 Weekly milestone crushed!</span>

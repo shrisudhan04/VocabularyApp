@@ -1486,7 +1486,7 @@ export default function NounsPage({
       )}
 
       {viewMode === "quiz" && (
-        <div className="panel">
+        <div className="panel" style={{ marginTop: "-6px", paddingTop: "14px" }}>
           {/* 🎛️ QUIZ TOOLBAR: When timer is running, ONLY the timer is visible */}
           <div
             className="quiz-controls-row"

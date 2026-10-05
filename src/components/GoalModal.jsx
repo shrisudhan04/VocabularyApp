@@ -289,7 +289,7 @@ export default function GoalModal({
                 <div className="stepper-box">
                   <button
                     type="button"
-                    onClick={() => updateWeeklyTarget(weeklyTarget - 10)}
+                    onClick={() => updateWeeklyTarget(weeklyTarget - 1)}
                     aria-label="Decrease weekly limit"
                   >
                     −
@@ -303,7 +303,7 @@ export default function GoalModal({
                   />
                   <button
                     type="button"
-                    onClick={() => updateWeeklyTarget(weeklyTarget + 10)}
+                    onClick={() => updateWeeklyTarget(weeklyTarget + 1)}
                     aria-label="Increase weekly limit"
                   >
                     +

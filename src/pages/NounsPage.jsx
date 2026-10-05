@@ -1523,9 +1523,7 @@ export default function NounsPage({
                   🔊 Pronounce
                 </button>
                 {/* 🔀 Flashcard Shuffle Button */}
-                <button className="btn btn-secondary" onClick={handleShuffleFlashcards} title="Shuffle Flashcards">
-                  🔀 Shuffle
-                </button>
+                
                 <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
                   Next ▶
                 </button>

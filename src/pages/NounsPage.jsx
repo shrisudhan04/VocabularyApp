@@ -1409,15 +1409,6 @@ export default function NounsPage({
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={handleShuffleList}
-                className="btn btn-secondary"
-                title="Shuffle noun list order"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                🔀 Shuffle
-              </button>
 
               <button
                 type="button"

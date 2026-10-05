@@ -165,6 +165,12 @@ const QUIZ_DATE_DROPDOWN_OPTIONS = [
   { label: "Specific Date...", value: "specific" },
 ];
 
+const QUIZ_MODE_OPTIONS = [
+  { label: "Article (der/die/das)", value: "article" },
+  { label: "English ➔ Noun", value: "english" },
+  { label: "Plural Form", value: "plural" },
+];
+
 const EXCEL_ACTIONS = [
   { label: "Excel Actions", value: "" },
   { label: "📥 Import", value: "import" },
@@ -504,10 +510,12 @@ export default function NounsPage({
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
 
-  // Quiz Filters
+  // Quiz Filters & Mode
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
+  const [quizMode, setQuizMode] = useState("article");
+  const [quizTextInput, setQuizTextInput] = useState("");
 
   // Quiz Controls: Question Count Limit & Timer
   const [wordCountInput, setWordCountInput] = useState("");
@@ -643,6 +651,7 @@ export default function NounsPage({
     setQuizIndex(0);
     setQuizScore(0);
     setQuizFeedback(null);
+    setQuizTextInput("");
   };
 
   const handleQuizStatusChange = (val) => {
@@ -818,9 +827,7 @@ export default function NounsPage({
     onCommitNouns?.([]);
     setCardIndex(0);
     setCardFlipped(false);
-    setQuizIndex(0);
-    setQuizScore(0);
-    setQuizFeedback(null);
+    resetQuizProgress();
     setResetModalOpen(false);
   };
 
@@ -1101,6 +1108,36 @@ export default function NounsPage({
       )
     );
 
+  const handleQuizTextSubmit = (e) => {
+    e?.preventDefault();
+    if (quizFeedback !== null || !nounQuizWord) return;
+
+    const entered = normalize(quizTextInput);
+
+    if (quizMode === "english") {
+      const targetNoun = normalize(nounQuizWord.noun);
+      const isCorrect = entered === targetNoun;
+      if (isCorrect) setQuizScore((prev) => prev + 1);
+      setQuizFeedback(
+        isCorrect
+          ? "Correct! 🎉"
+          : `Incorrect. The correct word is "${nounQuizWord.article} ${nounQuizWord.noun}".`
+      );
+    } else if (quizMode === "plural") {
+      const expectedPlural = nounQuizWord.plural || "";
+      const targetPlural = normalize(expectedPlural.replace(/^die\s+/i, ""));
+      const enteredPluralClean = entered.replace(/^die\s+/i, "");
+
+      const isCorrect = Boolean(targetPlural) && enteredPluralClean === targetPlural;
+      if (isCorrect) setQuizScore((prev) => prev + 1);
+      setQuizFeedback(
+        isCorrect
+          ? "Correct! 🎉"
+          : `Incorrect. The correct plural is "${expectedPlural || "—"}".`
+      );
+    }
+  };
+
   const nounCard = list[cardIndex];
   const nounQuizWord = quizList[quizIndex];
 
@@ -1358,7 +1395,7 @@ export default function NounsPage({
                   </div>
                   <div className="actions">
                     <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                    <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
+                    <button onClick={() => openEditModal(item)} className="icon-btn">✏️️</button>
                     <button
                       onClick={() =>
                         onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
@@ -1472,7 +1509,20 @@ export default function NounsPage({
           >
             {!timerRunning ? (
               <>
-                {/* 1. Status Dropdown */}
+                {/* 1. Quiz Mode Dropdown (Article, English, Plural) */}
+                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <CustomDropdown
+                    icon="🎯"
+                    value={quizMode}
+                    options={QUIZ_MODE_OPTIONS}
+                    onChange={(val) => {
+                      setQuizMode(val);
+                      resetQuizProgress();
+                    }}
+                  />
+                </div>
+
+                {/* 2. Status Dropdown */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
                     icon="📌"
@@ -1482,7 +1532,7 @@ export default function NounsPage({
                   />
                 </div>
 
-                {/* 2. Date Filter Custom Dropdown */}
+                {/* 3. Date Filter Custom Dropdown */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
                     icon="📅"
@@ -1492,7 +1542,7 @@ export default function NounsPage({
                   />
                 </div>
 
-                {/* 3. Real Calendar Picker: Appears ONLY when 'Specific Date...' is chosen */}
+                {/* 4. Real Calendar Picker: Appears ONLY when 'Specific Date...' is chosen */}
                 {quizDateMode === "specific" && (
                   <RealCalendarPicker
                     selectedDate={quizSpecificDate}
@@ -1500,7 +1550,7 @@ export default function NounsPage({
                   />
                 )}
 
-                {/* 4. Words Count Limit Pill */}
+                {/* 5. Words Count Limit Pill */}
                 <div
                   style={{
                     flexShrink: 0,
@@ -1546,7 +1596,7 @@ export default function NounsPage({
                   />
                 </div>
 
-                {/* 5. Set Timer Setup Pill */}
+                {/* 6. Set Timer Setup Pill */}
                 <div
                   style={{
                     flexShrink: 0,
@@ -1591,7 +1641,6 @@ export default function NounsPage({
                   />
                   <span style={{ fontSize: "12px", color: "var(--muted)", marginRight: 2 }}>s</span>
 
-                  {/* Start button with symbol only */}
                   <button
                     type="button"
                     onClick={handleStartTimer}
@@ -1655,7 +1704,6 @@ export default function NounsPage({
                 )}
               </>
             ) : (
-              /* ONLY THE TIMER IS VISIBLE WHEN RUNNING */
               <div
                 style={{
                   display: "inline-flex",
@@ -1683,7 +1731,6 @@ export default function NounsPage({
                   {timeLeft}s remaining
                 </span>
 
-                {/* Symbol-only Stop/Cancel Button */}
                 <button
                   type="button"
                   onClick={handleStopTimer}
@@ -1754,36 +1801,128 @@ export default function NounsPage({
                 <span>Question {quizIndex + 1} of {quizList.length}</span>
                 <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
               </div>
+
               <div className="quiz-card">
-                <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct article:</span>
-                <h1>{nounQuizWord.noun}</h1>
-                <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>Plural: <strong>{nounQuizWord.plural || "—"}</strong></p>
-                <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong style={{ color: "var(--ink-2)" }}>{nounQuizWord.meaning}</strong></p>
+                {quizMode === "article" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                      Choose the correct article:
+                    </span>
+                    <h1>{nounQuizWord.noun}</h1>
+                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
+                      Plural: <strong>{nounQuizWord.plural || "—"}</strong>
+                    </p>
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
+                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{nounQuizWord.meaning}</strong>
+                    </p>
+                  </>
+                )}
+
+                {quizMode === "english" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                      Type the German singular noun for:
+                    </span>
+                    <h1 style={{ color: "var(--brand, #b85c19)" }}>{nounQuizWord.meaning}</h1>
+                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
+                      Article hint: <span className={`pill ${ARTICLE_CLASS[nounQuizWord.article]}`}>{nounQuizWord.article}</span>
+                    </p>
+                  </>
+                )}
+
+                {quizMode === "plural" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                      Type the plural form for:
+                    </span>
+                    <h1>{nounQuizWord.article} {nounQuizWord.noun}</h1>
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
+                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{nounQuizWord.meaning}</strong>
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="quiz-opts">
-                {["der", "die", "das"].map((opt) => (
-                  <button
-                    key={opt}
-                    disabled={quizFeedback !== null}
-                    className={`quiz-opt ${opt}`}
-                    onClick={() => {
-                      const ok = opt === nounQuizWord.article;
-                      const nextScore = ok ? quizScore + 1 : quizScore;
-                      if (ok) setQuizScore(nextScore);
-                      setQuizFeedback(ok ? "Correct! 🎉" : `Wrong! Correct article is "${nounQuizWord.article}".`);
-                    }}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
+
+              {quizMode === "article" ? (
+                <div className="quiz-opts">
+                  {["der", "die", "das"].map((opt) => (
+                    <button
+                      key={opt}
+                      disabled={quizFeedback !== null}
+                      className={`quiz-opt ${opt}`}
+                      onClick={() => {
+                        const ok = opt === nounQuizWord.article;
+                        const nextScore = ok ? quizScore + 1 : quizScore;
+                        if (ok) setQuizScore(nextScore);
+                        setQuizFeedback(
+                          ok
+                            ? "Correct! 🎉"
+                            : `Wrong! Correct article is "${nounQuizWord.article}".`
+                        );
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <form
+                  onSubmit={handleQuizTextSubmit}
+                  style={{
+                    marginTop: 18,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 12,
+                    width: "100%",
+                    maxWidth: 420,
+                    marginInline: "auto",
+                  }}
+                >
+                  <div style={{ display: "flex", width: "100%", gap: 8 }}>
+                    <input
+                      type="text"
+                      autoFocus
+                      disabled={quizFeedback !== null}
+                      placeholder={
+                        quizMode === "english"
+                          ? "Type German word (e.g. Apfel)..."
+                          : "Type plural form (e.g. Äpfel)..."
+                      }
+                      value={quizTextInput}
+                      onChange={(e) => setQuizTextInput(e.target.value)}
+                      className="modal-input"
+                      style={{
+                        flex: 1,
+                        height: "46px",
+                        fontSize: "16px",
+                        fontWeight: 600,
+                        borderRadius: "12px",
+                        border: "1.5px solid var(--line-2, #ebdccb)",
+                        padding: "0 14px",
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={quizFeedback !== null || !quizTextInput.trim()}
+                      className="btn btn-primary"
+                      style={{ height: "46px", padding: "0 18px", borderRadius: "12px" }}
+                    >
+                      Check
+                    </button>
+                  </div>
+                </form>
+              )}
+
               {quizFeedback && (
-                <div style={{ marginTop: 24 }}>
-                  <p style={{ fontSize: 15, fontWeight: 600 }}>{quizFeedback}</p>
+                <div style={{ marginTop: 24, textAlign: "center" }}>
+                  <p style={{ fontSize: 16, fontWeight: 700 }}>{quizFeedback}</p>
                   <button
                     className="btn btn-primary"
                     onClick={() => {
                       setQuizFeedback(null);
+                      setQuizTextInput("");
                       if (quizIndex < quizList.length - 1) {
                         setQuizIndex((i) => i + 1);
                       } else {

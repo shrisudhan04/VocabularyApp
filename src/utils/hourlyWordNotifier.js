@@ -24,18 +24,19 @@ export async function sendNounNotification(nounItem) {
     renotify: true,
   };
 
-  // Try Service Worker registration first (standard for PWA / mobile browser)
-  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+  if ("serviceWorker" in navigator) {
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration =
+        (await navigator.serviceWorker.getRegistration()) ||
+        (await navigator.serviceWorker.ready);
       await registration.showNotification(title, options);
       return;
     } catch (err) {
-      console.warn("ServiceWorker notification failed, using desktop fallback:", err);
+      console.warn("ServiceWorker notification failed:", err);
     }
   }
 
-  // Fallback to standard Window Notification API
+  // Desktop-only fallback (throws on most mobile browsers)
   try {
     new Notification(title, options);
   } catch (err) {

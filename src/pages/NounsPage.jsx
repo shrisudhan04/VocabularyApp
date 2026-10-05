@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
+  sendNounNotification,
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
@@ -242,6 +243,27 @@ export default function NounsPage({
     } else {
       setHourlyAlertsActive(false);
     }
+  };
+
+  // Sends one notification immediately (manual trigger / test)
+  const handleTestNotification = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      alert("System notifications are not supported in this browser.");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      alert("Notifications are blocked. Enable them in your browser's site settings.");
+      return;
+    }
+    if (Notification.permission !== "granted") {
+      const granted = await requestMobileNotificationPermission();
+      if (!granted) return;
+    }
+    const word =
+      list.length > 0
+        ? list[Math.floor(Math.random() * list.length)]
+        : { article: "der", noun: "Test", plural: "Tests", meaning: "test" };
+    await sendNounNotification(word);
   };
 
   // ---------- Goal helpers ----------
@@ -780,6 +802,16 @@ export default function NounsPage({
                 style={{ flexShrink: 0, whiteSpace: "nowrap" }}
               >
                 {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTestNotification}
+                className="btn btn-secondary"
+                title="Send a word notification now"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                📨 Notify Now
               </button>
 
               <button

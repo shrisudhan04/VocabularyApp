@@ -1409,6 +1409,15 @@ export default function NounsPage({
                 />
               </div>
 
+              <button
+                type="button"
+                onClick={handleShuffleList}
+                className="btn btn-secondary"
+                title="Shuffle noun list order"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                🔀 Shuffle
+              </button>
 
               <button
                 type="button"
@@ -1634,9 +1643,6 @@ export default function NounsPage({
                 </button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>
                   🔊 Pronounce
-                </button>
-                <button className="btn btn-secondary" onClick={handleShuffleFlashcards} title="Shuffle Flashcards">
-                  🔀 Shuffle
                 </button>
                 <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
                   Next ▶

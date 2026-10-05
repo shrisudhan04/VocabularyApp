@@ -1653,7 +1653,6 @@ export default function VerbsPage({
               <div className="flash-controls">
                 <button className="btn btn-secondary" disabled={cardIndex === 0} onClick={() => { setCardIndex(cardIndex - 1); setCardFlipped(false); }}>◀ Previous</button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.preterite || ""}. ${verbCard.participle || ""}.`)}>🔊 Pronounce</button>
-                <button className="btn btn-secondary" onClick={handleShuffleFlashcards} title="Shuffle Flashcards">🔀 Shuffle</button>
                 <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>Next ▶</button>
               </div>
               <span style={{ color: "var(--muted)", fontSize: 13 }}>Verb {cardIndex + 1} of {list.length}</span>

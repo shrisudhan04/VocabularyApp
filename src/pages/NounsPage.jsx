@@ -176,11 +176,10 @@ const EMPTY_FORM = {
 
 export default function NounsPage({
   viewMode = "list",
-  vocabList = [], // default guards against undefined
+  vocabList = [],
   onCommitNouns,
   onRequestConfirm,
 }) {
-  // Extra guard: also covers null or non-array values
   const list = Array.isArray(vocabList) ? vocabList : [];
 
   const [search, setSearch] = useState("");
@@ -231,7 +230,7 @@ export default function NounsPage({
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [hourlyAlertsActive, vocabList]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hourlyAlertsActive, vocabList]);
 
   const handleToggleHourlyNotifications = async () => {
     if (!hourlyAlertsActive) {
@@ -700,20 +699,24 @@ export default function NounsPage({
               />
             </div>
 
-            {/* Horizontally scrollable toolbar container */}
+            {/* Strict Single-Row Horizontally Scrollable Filters */}
             <div
               className="filters-cluster"
               style={{
                 display: "flex",
+                flexDirection: "row",
                 flexWrap: "nowrap",
-                overflowX: "auto",
-                WebkitOverflowScrolling: "touch",
-                maxWidth: "100%",
-                paddingBottom: "6px",
+                alignItems: "center",
                 gap: "8px",
+                width: "100%",
+                maxWidth: "100%",
+                overflowX: "auto",
+                overflowY: "hidden",
+                WebkitOverflowScrolling: "touch",
+                padding: "4px 2px 8px 2px",
               }}
             >
-              <div className="filters" style={{ flexShrink: 0 }}>
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="🏷"
                   value={articleFilter}
@@ -722,7 +725,7 @@ export default function NounsPage({
                 />
               </div>
 
-              <div className="filters" style={{ flexShrink: 0 }}>
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="📌"
                   value={nounStatusFilter}
@@ -731,7 +734,7 @@ export default function NounsPage({
                 />
               </div>
 
-              <div className="filters" style={{ flexShrink: 0, display: "flex", gap: "6px" }}>
+              <div style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="📅"
                   value={dateFilter}
@@ -756,7 +759,7 @@ export default function NounsPage({
                 onChange={importFromExcel}
               />
 
-              <div className="filters" style={{ flexShrink: 0 }}>
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="📊"
                   value=""
@@ -841,7 +844,7 @@ export default function NounsPage({
                 </div>
                 <div className="actions">
                   <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                  <button onClick={() => openEditModal(item)} className="icon-btn">✏️️</button>
+                  <button onClick={() => openEditModal(item)} className="icon-btn">✏</button>
                   <button
                     onClick={() =>
                       onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>

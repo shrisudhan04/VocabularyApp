@@ -225,7 +225,7 @@ function RealCalendarPicker({ selectedDate, onSelectDate }) {
 
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
+    "July", "August", "September", "October", "November", "December",
   ];
   const dayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
@@ -536,10 +536,14 @@ export default function NounsPage({
   // Shuffle seed for quiz ordering
   const [quizShuffleKey, setQuizShuffleKey] = useState(0);
 
-  // Quiz Progress
+  // Quiz Progress & Auto-Advance Transition State
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
+  const [quizAnswerState, setQuizAnswerState] = useState("idle"); // 'idle' | 'correct' | 'wrong'
+
+  // Timeout reference for auto-progression
+  const autoNextTimeoutRef = useRef(null);
 
   // Quiz Completion & Score Modal
   const [scoreModal, setScoreModal] = useState({
@@ -577,6 +581,15 @@ export default function NounsPage({
 
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoNextTimeoutRef.current) {
+        clearTimeout(autoNextTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Date Filtering Evaluator
   const matchesDateFilter = (isoDate, mode, specificDate) => {
@@ -616,7 +629,6 @@ export default function NounsPage({
       return matchesStatus && matchesDate;
     });
 
-    // If shuffled, randomize order
     return quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
   }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey]);
 
@@ -664,9 +676,13 @@ export default function NounsPage({
   };
 
   const resetQuizProgress = () => {
+    if (autoNextTimeoutRef.current) {
+      clearTimeout(autoNextTimeoutRef.current);
+    }
     setQuizIndex(0);
     setQuizScore(0);
     setQuizFeedback(null);
+    setQuizAnswerState("idle");
     setQuizTextInput("");
   };
 
@@ -1144,18 +1160,69 @@ export default function NounsPage({
       )
     );
 
+  // 1-Second Auto Advance Engine
+  const triggerAutoAdvance = (isCorrect) => {
+    setQuizAnswerState(isCorrect ? "correct" : "wrong");
+
+    if (isCorrect) {
+      playSuccessSound();
+    } else {
+      playDangerSound();
+    }
+
+    if (autoNextTimeoutRef.current) {
+      clearTimeout(autoNextTimeoutRef.current);
+    }
+
+    autoNextTimeoutRef.current = setTimeout(() => {
+      setQuizAnswerState("idle");
+      setQuizFeedback(null);
+      setQuizTextInput("");
+
+      if (quizIndex < quizList.length - 1) {
+        setQuizIndex((prev) => prev + 1);
+      } else {
+        setTimerRunning(false);
+        setTimeLeft(null);
+        setScoreModal({
+          isOpen: true,
+          reason: "finish",
+          score: isCorrect ? quizScore + 1 : quizScore,
+          total: quizList.length,
+        });
+      }
+    }, 1000);
+  };
+
+  // Article selection handler
+  const handleArticleOptionSelect = (selectedArticle) => {
+    if (quizAnswerState !== "idle" || !nounQuizWord) return;
+
+    const ok = selectedArticle === nounQuizWord.article;
+    if (ok) {
+      setQuizScore((prev) => prev + 1);
+      setQuizFeedback("Correct! 🎉");
+    } else {
+      setQuizFeedback(`Wrong! Correct article is "${nounQuizWord.article}".`);
+    }
+
+    triggerAutoAdvance(ok);
+  };
+
+  // Text submit handler for English / Plural modes
   const handleQuizTextSubmit = (e) => {
     e?.preventDefault();
-    if (quizFeedback !== null || !nounQuizWord) return;
+    if (quizAnswerState !== "idle" || !nounQuizWord || !quizTextInput.trim()) return;
 
     const entered = normalize(quizTextInput);
+    let ok = false;
 
     if (quizMode === "english") {
       const targetNoun = normalize(nounQuizWord.noun);
-      const isCorrect = entered === targetNoun;
-      if (isCorrect) setQuizScore((prev) => prev + 1);
+      ok = entered === targetNoun;
+      if (ok) setQuizScore((prev) => prev + 1);
       setQuizFeedback(
-        isCorrect
+        ok
           ? "Correct! 🎉"
           : `Incorrect. The correct word is "${nounQuizWord.article} ${nounQuizWord.noun}".`
       );
@@ -1164,18 +1231,47 @@ export default function NounsPage({
       const targetPlural = normalize(expectedPlural.replace(/^die\s+/i, ""));
       const enteredPluralClean = entered.replace(/^die\s+/i, "");
 
-      const isCorrect = Boolean(targetPlural) && enteredPluralClean === targetPlural;
-      if (isCorrect) setQuizScore((prev) => prev + 1);
+      ok = Boolean(targetPlural) && enteredPluralClean === targetPlural;
+      if (ok) setQuizScore((prev) => prev + 1);
       setQuizFeedback(
-        isCorrect
+        ok
           ? "Correct! 🎉"
           : `Incorrect. The correct plural is "${expectedPlural || "—"}".`
       );
     }
+
+    triggerAutoAdvance(ok);
   };
 
   const nounCard = list[cardIndex];
   const nounQuizWord = quizList[quizIndex];
+
+  // Dynamic panel styling for quiz answering feedback
+  const getQuizPanelStyle = () => {
+    const baseStyle = {
+      marginTop: "-6px",
+      paddingTop: "14px",
+      transition: "background-color 0.25s ease, border-color 0.25s ease",
+    };
+
+    if (quizAnswerState === "correct") {
+      return {
+        ...baseStyle,
+        backgroundColor: "#f0fdf4", // Pale green
+        borderColor: "#86efac",
+      };
+    }
+
+    if (quizAnswerState === "wrong") {
+      return {
+        ...baseStyle,
+        backgroundColor: "#fef2f2", // Pale red
+        borderColor: "#fca5a5",
+      };
+    }
+
+    return baseStyle;
+  };
 
   return (
     <>
@@ -1286,7 +1382,6 @@ export default function NounsPage({
                 />
               </div>
 
-              {/* 🔀 List Shuffle Button */}
               <button
                 type="button"
                 onClick={handleShuffleList}
@@ -1522,8 +1617,9 @@ export default function NounsPage({
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>
                   🔊 Pronounce
                 </button>
-                {/* 🔀 Flashcard Shuffle Button */}
-                
+                <button className="btn btn-secondary" onClick={handleShuffleFlashcards} title="Shuffle Flashcards">
+                  🔀 Shuffle
+                </button>
                 <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
                   Next ▶
                 </button>
@@ -1534,9 +1630,9 @@ export default function NounsPage({
         </div>
       )}
 
+      {/* 🎯 QUIZ VIEW WITH AUTO ADVANCE AND COLOR TRANSITIONS */}
       {viewMode === "quiz" && (
-        <div className="panel" style={{ marginTop: "-6px", paddingTop: "14px" }}>
-          {/* 🎛️ QUIZ TOOLBAR: When timer is running, ONLY the timer is visible */}
+        <div className="panel" style={getQuizPanelStyle()}>
           <div
             className="quiz-controls-row"
             style={{
@@ -1558,7 +1654,6 @@ export default function NounsPage({
           >
             {!timerRunning ? (
               <>
-                {/* 1. Quiz Mode Dropdown (Article, English, Plural) */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
                     icon="🎯"
@@ -1571,7 +1666,6 @@ export default function NounsPage({
                   />
                 </div>
 
-                {/* 2. Status Dropdown */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
                     icon="📌"
@@ -1581,7 +1675,6 @@ export default function NounsPage({
                   />
                 </div>
 
-                {/* 3. Date Filter Custom Dropdown */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
                     icon="📅"
@@ -1591,7 +1684,6 @@ export default function NounsPage({
                   />
                 </div>
 
-                {/* 4. Real Calendar Picker: Appears ONLY when 'Specific Date...' is chosen */}
                 {quizDateMode === "specific" && (
                   <RealCalendarPicker
                     selectedDate={quizSpecificDate}
@@ -1599,7 +1691,6 @@ export default function NounsPage({
                   />
                 )}
 
-                {/* 5. Words Count Limit Pill */}
                 <div
                   style={{
                     flexShrink: 0,
@@ -1645,7 +1736,6 @@ export default function NounsPage({
                   />
                 </div>
 
-                {/* 6. Set Timer Setup Pill */}
                 <div
                   style={{
                     flexShrink: 0,
@@ -1714,7 +1804,6 @@ export default function NounsPage({
                   </button>
                 </div>
 
-                {/* 🔀 7. Quiz Shuffle Button */}
                 <button
                   type="button"
                   onClick={handleShuffleQuiz}
@@ -1731,7 +1820,6 @@ export default function NounsPage({
                   🔀 Shuffle
                 </button>
 
-                {/* Words Pool Count */}
                 <div
                   style={{
                     flexShrink: 0,
@@ -1744,7 +1832,6 @@ export default function NounsPage({
                   Words: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong>
                 </div>
 
-                {/* Clear Filters */}
                 {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
                   <button
                     type="button"
@@ -1911,18 +1998,9 @@ export default function NounsPage({
                   {["der", "die", "das"].map((opt) => (
                     <button
                       key={opt}
-                      disabled={quizFeedback !== null}
+                      disabled={quizAnswerState !== "idle"}
                       className={`quiz-opt ${opt}`}
-                      onClick={() => {
-                        const ok = opt === nounQuizWord.article;
-                        const nextScore = ok ? quizScore + 1 : quizScore;
-                        if (ok) setQuizScore(nextScore);
-                        setQuizFeedback(
-                          ok
-                            ? "Correct! 🎉"
-                            : `Wrong! Correct article is "${nounQuizWord.article}".`
-                        );
-                      }}
+                      onClick={() => handleArticleOptionSelect(opt)}
                     >
                       {opt}
                     </button>
@@ -1946,7 +2024,7 @@ export default function NounsPage({
                     <input
                       type="text"
                       autoFocus
-                      disabled={quizFeedback !== null}
+                      disabled={quizAnswerState !== "idle"}
                       placeholder={
                         quizMode === "english"
                           ? "Type German word (e.g. Apfel)..."
@@ -1968,7 +2046,7 @@ export default function NounsPage({
                     />
                     <button
                       type="submit"
-                      disabled={quizFeedback !== null || !quizTextInput.trim()}
+                      disabled={quizAnswerState !== "idle" || !quizTextInput.trim()}
                       className="btn btn-primary"
                       style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop: 7 }}
                     >
@@ -1979,29 +2057,19 @@ export default function NounsPage({
               )}
 
               {quizFeedback && (
-                <div style={{ marginTop: 24, textAlign: "center" }}>
-                  <p style={{ fontSize: 16, fontWeight: 700 }}>{quizFeedback}</p>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setQuizFeedback(null);
-                      setQuizTextInput("");
-                      if (quizIndex < quizList.length - 1) {
-                        setQuizIndex((i) => i + 1);
-                      } else {
-                        setTimerRunning(false);
-                        setTimeLeft(null);
-                        setScoreModal({
-                          isOpen: true,
-                          reason: "finish",
-                          score: quizScore,
-                          total: quizList.length,
-                        });
-                      }
+                <div style={{ marginTop: 20, textAlign: "center", animation: "fadeIn 0.15s ease-in" }}>
+                  <p
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: quizAnswerState === "correct" ? "#15803d" : "#dc2626",
                     }}
                   >
-                    {quizIndex < quizList.length - 1 ? "Next Word" : "Complete Quiz"}
-                  </button>
+                    {quizFeedback}
+                  </p>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                    Moving to next word in 1 second...
+                  </span>
                 </div>
               )}
             </div>

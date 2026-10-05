@@ -28,6 +28,16 @@ const normalize = (s = "") =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
+// Fisher-Yates array shuffle helper
+const shuffleArray = (array) => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
 const getActiveAudioContext = async () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
@@ -455,6 +465,16 @@ export default function PrepositionsPage({
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
+  const [quizAnswerState, setQuizAnswerState] = useState("idle"); // 'idle' | 'correct' | 'wrong'
+  const [quizShuffleKey, setQuizShuffleKey] = useState(0);
+  const autoNextTimeoutRef = useRef(null);
+
+  // Clear auto-advance timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
+    };
+  }, []);
 
   const [scoreModal, setScoreModal] = useState({
     isOpen: false,
@@ -519,13 +539,14 @@ export default function PrepositionsPage({
   };
 
   const availableQuizPool = useMemo(() => {
-    return list.filter((item) => {
+    const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
       return matchesStatus && matchesDate;
     });
-  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate]);
+    return quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
+  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
@@ -570,9 +591,11 @@ export default function PrepositionsPage({
   };
 
   const resetQuizProgress = () => {
+    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
     setQuizIndex(0);
     setQuizScore(0);
     setQuizFeedback(null);
+    setQuizAnswerState("idle");
   };
 
   // Hourly notifier
@@ -931,6 +954,86 @@ export default function PrepositionsPage({
   };
 
   const prepCard = list[cardIndex];
+  // Moves to the next question (or finishes the quiz)
+  const goToNextQuestion = (finalScore) => {
+    setQuizAnswerState("idle");
+    setQuizFeedback(null);
+
+    if (quizIndex < quizList.length - 1) {
+      setQuizIndex((prev) => prev + 1);
+    } else {
+      setTimerRunning(false);
+      setTimeLeft(null);
+      setScoreModal({
+        isOpen: true,
+        reason: "finish",
+        score: finalScore,
+        total: quizList.length,
+      });
+    }
+  };
+
+  // Correct -> auto advance after 1s | Wrong -> stay and wait for Next button
+  const triggerAutoAdvance = (isCorrect) => {
+    setQuizAnswerState(isCorrect ? "correct" : "wrong");
+
+    if (isCorrect) {
+      playSuccessSound();
+    } else {
+      playDangerSound();
+    }
+
+    if (autoNextTimeoutRef.current) {
+      clearTimeout(autoNextTimeoutRef.current);
+    }
+
+    if (!isCorrect) return; // wait for the user to click Next
+
+    autoNextTimeoutRef.current = setTimeout(() => {
+      goToNextQuestion(quizScore + 1);
+    }, 1000);
+  };
+
+  // Manual forward button (only used after a wrong answer)
+  const handleForwardClick = () => {
+    if (quizAnswerState !== "wrong") return;
+    goToNextQuestion(quizScore);
+  };
+
+  // Shuffle handlers
+  const handleShuffleList = () => {
+    if (list.length <= 1) return;
+    onCommitPreps?.(shuffleArray(list));
+  };
+
+  const handleShuffleQuiz = () => {
+    setQuizShuffleKey((k) => k + 1);
+    resetQuizProgress();
+  };
+
+  const handleShuffleFlashcards = () => {
+    if (list.length <= 1) return;
+    onCommitPreps?.(shuffleArray(list));
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  // Pale green / red panel tint while answering
+  const getQuizPanelStyle = () => {
+    const baseStyle = {
+      marginTop: "-6px",
+      paddingTop: "14px",
+      transition: "background-color 0.25s ease, border-color 0.25s ease",
+    };
+    if (quizAnswerState === "correct") {
+      return { ...baseStyle, backgroundColor: "#f0fdf4", borderColor: "#86efac" };
+    }
+    if (quizAnswerState === "wrong") {
+      return { ...baseStyle, backgroundColor: "#fef2f2", borderColor: "#fca5a5" };
+    }
+    return baseStyle;
+  };
+
   const prepQuizWord = quizList[quizIndex];
 
   return (
@@ -1041,6 +1144,16 @@ export default function PrepositionsPage({
                   }}
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={handleShuffleList}
+                className="btn btn-secondary"
+                title="Shuffle list order"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                🔀 Shuffle
+              </button>
 
               <button
                 type="button"
@@ -1244,7 +1357,7 @@ export default function PrepositionsPage({
 
       {/* 🎯 QUIZ MODE: Article ONLY (der / die / das) */}
       {viewMode === "quiz" && (
-        <div className="panel" style={{ marginTop: "-6px", paddingTop: "14px" }}>
+        <div className="panel" style={getQuizPanelStyle()}>
           <div
             className="quiz-controls-row"
             style={{
@@ -1399,6 +1512,22 @@ export default function PrepositionsPage({
                   Items: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong>
                 </div>
 
+                <button
+                  type="button"
+                  onClick={handleShuffleQuiz}
+                  className="btn btn-secondary"
+                  title="Shuffle quiz questions order"
+                  style={{
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                    height: "40px",
+                    borderRadius: "12px",
+                    padding: "0 12px",
+                  }}
+                >
+                  🔀 Shuffle
+                </button>
+
                 {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
                   <button
                     type="button"
@@ -1498,6 +1627,7 @@ export default function PrepositionsPage({
                           ? "Correct! 🎉"
                           : `Wrong! The correct article is "${expected}".`
                       );
+                      triggerAutoAdvance(ok);
                     }}
                   >
                     {opt}
@@ -1506,28 +1636,40 @@ export default function PrepositionsPage({
               </div>
 
               {quizFeedback && (
-                <div style={{ marginTop: 24, textAlign: "center" }}>
-                  <p style={{ fontSize: 16, fontWeight: 700 }}>{quizFeedback}</p>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setQuizFeedback(null);
-                      if (quizIndex < quizList.length - 1) {
-                        setQuizIndex((i) => i + 1);
-                      } else {
-                        setTimerRunning(false);
-                        setTimeLeft(null);
-                        setScoreModal({
-                          isOpen: true,
-                          reason: "finish",
-                          score: quizScore,
-                          total: quizList.length,
-                        });
-                      }
+                <div style={{ marginTop: 24, textAlign: "center", animation: "fadeIn 0.15s ease-in" }}>
+                  <p
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: quizAnswerState === "correct" ? "#15803d" : "#dc2626",
                     }}
                   >
-                    {quizIndex < quizList.length - 1 ? "Next Word" : "Complete Quiz"}
-                  </button>
+                    {quizFeedback}
+                  </p>
+
+                  {quizAnswerState === "correct" && (
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                      Moving to next word in 1 second...
+                    </span>
+                  )}
+
+                  {quizAnswerState === "wrong" && (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      autoFocus
+                      onClick={handleForwardClick}
+                      style={{
+                        marginTop: 10,
+                        height: 44,
+                        padding: "0 22px",
+                        borderRadius: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {quizIndex < quizList.length - 1 ? "Next ▶" : "Finish 🏁"}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1567,7 +1709,7 @@ export default function PrepositionsPage({
                 style={{ flex: 1, justifyContent: "center" }}
                 onClick={() => {
                   setScoreModal((p) => ({ ...p, isOpen: false }));
-                  resetQuizProgress();
+                  handleShuffleQuiz();
                   const parsed = parseInt(timerInput, 10);
                   if (!isNaN(parsed) && parsed > 0) {
                     setTimeLeft(parsed);

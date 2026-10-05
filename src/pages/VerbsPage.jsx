@@ -1,8 +1,13 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import {
+  requestMobileNotificationPermission,
+  startHourlyNounNotifier,
+  sendNounNotification,
+} from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
 import GoalModal from "../components/GoalModal";
-import { VERB_CASE_CLASS, DATE_OPTIONS, STATUS_OPTIONS } from "../constants/seedData";
+import { VERB_CASE_CLASS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
@@ -10,9 +15,11 @@ import successGif from "../assets/Success.gif";
 import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
 import congratsAudio from "../assets/celebration.mp3";
+import noDataImg from "../assets/nodata.svg";
 import "../App.css";
 
-// 🔍 Search helper: lowercase, strip accents, trim
+const GEMINI_MODEL = "gemini-2.5-flash";
+
 const normalize = (s = "") =>
   String(s ?? "")
     .toLowerCase()
@@ -20,7 +27,6 @@ const normalize = (s = "") =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
-// 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
 const getActiveAudioContext = async () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
@@ -31,13 +37,12 @@ const getActiveAudioContext = async () => {
   return ctx;
 };
 
-// 1. Success chime for adding new verbs
 const playSuccessSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
     if (!ctx) return;
 
-    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    const notes = [523.25, 659.25, 783.99];
     notes.forEach((freq, index) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -60,7 +65,6 @@ const playSuccessSound = async () => {
   }
 };
 
-// 2. Goal Celebration MP3
 let goalAudioInstance = null;
 
 const playGoalAchievedMusic = () => {
@@ -86,7 +90,6 @@ const stopGoalAchievedMusic = () => {
   }
 };
 
-// 3. Duplicate warning buzzer
 const playDuplicateSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -115,7 +118,6 @@ const playDuplicateSound = async () => {
   }
 };
 
-// 4. Danger warning for reset
 const playDangerSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -154,8 +156,24 @@ const STATUS_FILTER_OPTIONS = [
   { label: "Mastered", value: "Mastered" },
 ];
 
+const QUIZ_DATE_DROPDOWN_OPTIONS = [
+  { label: "All Dates", value: "all" },
+  { label: "Today", value: "today" },
+  { label: "Yesterday", value: "yesterday" },
+  { label: "Last Week", value: "last_week" },
+  { label: "Last Month", value: "last_month" },
+  { label: "Specific Date...", value: "specific" },
+];
+
+const QUIZ_MODE_OPTIONS = [
+  { label: "Case (Dativ/Akkusativ)", value: "case" },
+  { label: "Präteritum", value: "preterite" },
+  { label: "Partizip II", value: "participle" },
+  { label: "Infinitive", value: "infinitive" },
+];
+
 const EXCEL_ACTIONS = [
-  { label: "Excel Actions ▾", value: "" },
+  { label: "Excel Actions", value: "" },
   { label: "📥 Import", value: "import" },
   { label: "📤 Export", value: "export" },
 ];
@@ -170,17 +188,356 @@ const EMPTY_VERB_FORM = {
   status: "In Progress",
 };
 
+// 🗓️ Interactive Real Calendar Picker Popover
+function RealCalendarPicker({ selectedDate, onSelectDate }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const initialDate = useMemo(() => {
+    if (selectedDate) {
+      const [year, month, day] = selectedDate.split("-").map(Number);
+      return new Date(year, month - 1, day);
+    }
+    return new Date();
+  }, [selectedDate]);
+
+  const [viewYear, setViewYear] = useState(initialDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isOpen]);
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const dayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+  const handlePrevMonth = (e) => {
+    e.stopPropagation();
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = (e) => {
+    e.stopPropagation();
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+
+  const calendarCells = useMemo(() => {
+    const firstDayIndex = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInCurrentMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
+
+    const cells = [];
+
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      cells.push({
+        day: daysInPrevMonth - i,
+        month: viewMonth - 1,
+        year: viewMonth === 0 ? viewYear - 1 : viewYear,
+        isOtherMonth: true,
+      });
+    }
+
+    for (let d = 1; d <= daysInCurrentMonth; d++) {
+      cells.push({
+        day: d,
+        month: viewMonth,
+        year: viewYear,
+        isOtherMonth: false,
+      });
+    }
+
+    const remaining = 42 - cells.length;
+    for (let d = 1; d <= remaining; d++) {
+      cells.push({
+        day: d,
+        month: viewMonth + 1,
+        year: viewMonth === 11 ? viewYear + 1 : viewYear,
+        isOtherMonth: true,
+      });
+    }
+
+    return cells;
+  }, [viewYear, viewMonth]);
+
+  const handleDayClick = (cell, e) => {
+    e.stopPropagation();
+    const formattedDate = `${cell.year}-${String(cell.month + 1).padStart(2, "0")}-${String(cell.day).padStart(2, "0")}`;
+    onSelectDate(formattedDate);
+    setIsOpen(false);
+  };
+
+  const handleSelectToday = (e) => {
+    e.stopPropagation();
+    const now = new Date();
+    const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    setViewYear(now.getFullYear());
+    setViewMonth(now.getMonth());
+    onSelectDate(formattedDate);
+    setIsOpen(false);
+  };
+
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "0 14px",
+          borderRadius: "12px",
+          border: selectedDate ? "1.5px solid #d97706" : "1px solid var(--line-2, #ebdccb)",
+          backgroundColor: selectedDate ? "#fffbeb" : "#ffffff",
+          color: selectedDate ? "#92400e" : "var(--ink, #1f2937)",
+          fontSize: "13.5px",
+          fontWeight: 600,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+          height: "40px",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+        }}
+      >
+        <span>🗓</span>
+        <span>
+          {selectedDate
+            ? new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })
+            : "Pick Date"}
+        </span>
+        <span style={{ fontSize: "10px", opacity: 0.6 }}>▼</span>
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 1150,
+            width: "285px",
+            backgroundColor: "#ffffff",
+            borderRadius: "16px",
+            boxShadow: "0 14px 32px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.06)",
+            border: "1px solid #ebdccb",
+            padding: "14px",
+            userSelect: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "12px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={handlePrevMonth}
+              style={{
+                background: "#f7f2ed",
+                border: "none",
+                borderRadius: "8px",
+                width: "30px",
+                height: "30px",
+                cursor: "pointer",
+                fontWeight: 700,
+                color: "#4b5563",
+              }}
+            >
+              ‹
+            </button>
+            <div style={{ fontWeight: 700, fontSize: "14.5px", color: "#111827" }}>
+              {monthNames[viewMonth]} {viewYear}
+            </div>
+            <button
+              type="button"
+              onClick={handleNextMonth}
+              style={{
+                background: "#f7f2ed",
+                border: "none",
+                borderRadius: "8px",
+                width: "30px",
+                height: "30px",
+                cursor: "pointer",
+                fontWeight: 700,
+                color: "#4b5563",
+              }}
+            >
+              ›
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              textAlign: "center",
+              marginBottom: "6px",
+            }}
+          >
+            {dayLabels.map((lbl, idx) => (
+              <span
+                key={lbl}
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: idx === 0 || idx === 6 ? "#ef4444" : "#9ca3af",
+                  padding: "4px 0",
+                }}
+              >
+                {lbl}
+              </span>
+            ))}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              gap: "2px",
+              textAlign: "center",
+            }}
+          >
+            {calendarCells.map((cell, index) => {
+              const cellDateStr = `${cell.year}-${String(cell.month + 1).padStart(2, "0")}-${String(cell.day).padStart(2, "0")}`;
+              const isSelected = selectedDate === cellDateStr;
+              const isToday = todayStr === cellDateStr;
+
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={(e) => handleDayClick(cell, e)}
+                  style={{
+                    background: isSelected
+                      ? "var(--brand, #b85c19)"
+                      : isToday
+                      ? "#fef3c7"
+                      : "transparent",
+                    color: isSelected
+                      ? "#ffffff"
+                      : cell.isOtherMonth
+                      ? "#d1d5db"
+                      : isToday
+                      ? "#b85c19"
+                      : "#1f2937",
+                    border: isToday && !isSelected ? "1px solid #fde68a" : "none",
+                    borderRadius: "8px",
+                    height: "32px",
+                    width: "100%",
+                    fontSize: "12.5px",
+                    fontWeight: isSelected || isToday ? 700 : 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  {cell.day}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              marginTop: "12px",
+              paddingTop: "10px",
+              borderTop: "1px solid #f3f4f6",
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleSelectToday}
+              style={{
+                background: "#fef3c7",
+                border: "1px solid #fde68a",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "#b85c19",
+                cursor: "pointer",
+                padding: "5px 12px",
+              }}
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function VerbsPage({
-  viewMode,
-  verbsList,
+  viewMode = "list",
+  verbsList = [],
   onCommitVerbs,
   onRequestConfirm,
 }) {
+  const list = Array.isArray(verbsList) ? verbsList : [];
+
   const [search, setSearch] = useState("");
   const [verbFilter, setVerbFilter] = useState("all");
   const [verbStatusFilter, setVerbStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
+
+  // Quiz Filters & Mode
+  const [quizStatusFilter, setQuizStatusFilter] = useState("all");
+  const [quizDateMode, setQuizDateMode] = useState("all");
+  const [quizSpecificDate, setQuizSpecificDate] = useState("");
+  const [quizMode, setQuizMode] = useState("case");
+  const [quizTextInput, setQuizTextInput] = useState("");
+
+  // Quiz Controls: Limit & Timer
+  const [wordCountInput, setWordCountInput] = useState("");
+  const [timerInput, setTimerInput] = useState("30");
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [timerRunning, setTimerRunning] = useState(false);
+
+  // Quiz Progress
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizFeedback, setQuizFeedback] = useState(null);
+
+  // Quiz Completion Modal
+  const [scoreModal, setScoreModal] = useState({
+    isOpen: false,
+    reason: "finish",
+    score: 0,
+    total: 0,
+  });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVerbId, setEditingVerbId] = useState(null);
@@ -192,7 +549,6 @@ export default function VerbsPage({
   const [successWordInfo, setSuccessWordInfo] = useState({ verb: "", caseType: "", isEdit: false });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
-  // 🎯 Study Goals Modal & Milestone State
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalCelebration, setGoalCelebration] = useState({
     isOpen: false,
@@ -208,13 +564,169 @@ export default function VerbsPage({
 
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
-  const [quizIndex, setQuizIndex] = useState(0);
-  const [quizScore, setQuizScore] = useState(0);
-  const [quizFeedback, setQuizFeedback] = useState(null);
 
+  const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
 
-  const getGoalCounts = (list = []) => {
+  const matchesDateFilter = (isoDate, mode, specificDate) => {
+    if (!isoDate || mode === "all") return true;
+    const itemDate = new Date(isoDate);
+    const now = new Date();
+
+    if (mode === "today") {
+      return itemDate.toDateString() === now.toDateString();
+    }
+    if (mode === "yesterday") {
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      return itemDate.toDateString() === yesterday.toDateString();
+    }
+    if (mode === "last_week") {
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return itemDate >= oneWeekAgo && itemDate <= now;
+    }
+    if (mode === "last_month") {
+      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return itemDate >= oneMonthAgo && itemDate <= now;
+    }
+    if (mode === "specific" || mode === "custom") {
+      if (!specificDate) return true;
+      return isoDate.slice(0, 10) === specificDate;
+    }
+    return true;
+  };
+
+  const availableQuizPool = useMemo(() => {
+    return list.filter((item) => {
+      const itemStatus = item.status || "In Progress";
+      const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
+      const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
+      return matchesStatus && matchesDate;
+    });
+  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate]);
+
+  const quizList = useMemo(() => {
+    const count = parseInt(wordCountInput, 10);
+    if (!isNaN(count) && count > 0) {
+      return availableQuizPool.slice(0, count);
+    }
+    return availableQuizPool;
+  }, [availableQuizPool, wordCountInput]);
+
+  useEffect(() => {
+    let interval = null;
+    if (timerRunning && timeLeft !== null && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    } else if (timerRunning && timeLeft === 0) {
+      setTimerRunning(false);
+      playDangerSound();
+      setScoreModal({
+        isOpen: true,
+        reason: "timeup",
+        score: quizScore,
+        total: quizList.length,
+      });
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [timerRunning, timeLeft, quizScore, quizList.length]);
+
+  const handleStartTimer = () => {
+    const parsed = parseInt(timerInput, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      setTimeLeft(parsed);
+      setTimerRunning(true);
+    }
+  };
+
+  const handleStopTimer = () => {
+    setTimerRunning(false);
+    setTimeLeft(null);
+  };
+
+  const resetQuizProgress = () => {
+    setQuizIndex(0);
+    setQuizScore(0);
+    setQuizFeedback(null);
+    setQuizTextInput("");
+  };
+
+  const handleQuizStatusChange = (val) => {
+    setQuizStatusFilter(val);
+    resetQuizProgress();
+  };
+
+  const handleQuizDateModeChange = (val) => {
+    setQuizDateMode(val);
+    if (val !== "specific") {
+      setQuizSpecificDate("");
+    }
+    resetQuizProgress();
+  };
+
+  const handleQuizCalendarDateSelect = (dateStr) => {
+    setQuizSpecificDate(dateStr);
+    resetQuizProgress();
+  };
+
+  useEffect(() => {
+    let timerId = null;
+    if (hourlyAlertsActive && list.length > 0) {
+      const formattedForNotifier = list.map((v) => ({
+        article: v.caseType,
+        noun: v.verb,
+        plural: `${v.preterite || "—"} / ${v.participle || "—"}`,
+        meaning: v.meaning,
+      }));
+      timerId = startHourlyNounNotifier(formattedForNotifier);
+    }
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [hourlyAlertsActive, list]);
+
+  const handleToggleHourlyNotifications = async () => {
+    if (!hourlyAlertsActive) {
+      const granted = await requestMobileNotificationPermission();
+      if (granted) {
+        setHourlyAlertsActive(true);
+      }
+    } else {
+      setHourlyAlertsActive(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      alert("System notifications are not supported in this browser.");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      alert("Notifications are blocked. Enable them in your browser's site settings.");
+      return;
+    }
+    if (Notification.permission !== "granted") {
+      const granted = await requestMobileNotificationPermission();
+      if (!granted) return;
+    }
+    const sampleVerb =
+      list.length > 0
+        ? list[Math.floor(Math.random() * list.length)]
+        : { caseType: "Dativ", verb: "helfen", preterite: "half", participle: "geholfen", meaning: "to help" };
+
+    await sendNounNotification({
+      article: sampleVerb.caseType,
+      noun: sampleVerb.verb,
+      plural: `${sampleVerb.preterite || ""} / ${sampleVerb.participle || ""}`,
+      meaning: sampleVerb.meaning,
+    });
+  };
+
+  const getGoalCounts = (items = []) => {
+    const safeItems = Array.isArray(items) ? items : [];
     const now = new Date();
 
     const startOfToday = new Date(
@@ -250,7 +762,7 @@ export default function VerbsPage({
     let daily = 0;
     let weekly = 0;
 
-    list.forEach((item) => {
+    safeItems.forEach((item) => {
       if (!item?.createdAt) return;
       const itemTime = new Date(item.createdAt).getTime();
 
@@ -317,27 +829,25 @@ export default function VerbsPage({
     return false;
   };
 
-  const { daily: verbDailyCount, weekly: verbWeeklyCount } = getGoalCounts(verbsList);
+  const { daily: verbDailyCount, weekly: verbWeeklyCount } = getGoalCounts(list);
   const { daily: verbDailyTarget, weekly: verbWeeklyTarget } = getSavedTargets();
 
   const handleConfirmReset = () => {
     playDangerSound();
-    onCommitVerbs([]);
+    onCommitVerbs?.([]);
     setCardIndex(0);
     setCardFlipped(false);
-    setQuizIndex(0);
-    setQuizScore(0);
-    setQuizFeedback(null);
+    resetQuizProgress();
     setResetModalOpen(false);
   };
 
   const exportToExcel = () => {
-    if (!verbsList || verbsList.length === 0) {
+    if (list.length === 0) {
       alert("No verbs to export.");
       return;
     }
 
-    const exportData = verbsList.map((item, index) => ({
+    const exportData = list.map((item, index) => ({
       "#": index + 1,
       Verb: item.verb,
       Case: item.caseType || "Dativ",
@@ -382,7 +892,7 @@ export default function VerbsPage({
         }
 
         const existingVerbSet = new Set(
-          verbsList.map((v) => v.verb?.trim().toLowerCase())
+          list.map((v) => v.verb?.trim().toLowerCase())
         );
 
         const newEntries = [];
@@ -431,12 +941,12 @@ export default function VerbsPage({
         });
 
         if (newEntries.length > 0) {
-          const updatedList = [...verbsList, ...newEntries];
-          const reachedGoal = verifyGoalMilestone(verbsList, updatedList, `${newEntries.length} new verbs`);
+          const updatedList = [...list, ...newEntries];
+          const reachedGoal = verifyGoalMilestone(list, updatedList, `${newEntries.length} new verbs`);
           if (!reachedGoal) {
             playSuccessSound();
           }
-          onCommitVerbs(updatedList);
+          onCommitVerbs?.(updatedList);
         } else if (duplicateWords.length > 0) {
           playDuplicateSound();
         }
@@ -509,28 +1019,10 @@ export default function VerbsPage({
         },
       };
 
-      const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
-      let response;
-
-      for (const modelName of candidateModels) {
-        try {
-          response = await ai.models.generateContent({
-            model: modelName,
-            ...promptConfig,
-          });
-          break;
-        } catch (err) {
-          const isOverloadedOrNotFound =
-            err?.status === "UNAVAILABLE" ||
-            err?.message?.includes("503") ||
-            err?.message?.includes("404");
-          if (isOverloadedOrNotFound && modelName !== candidateModels[candidateModels.length - 1]) {
-            await new Promise((res) => setTimeout(res, 800));
-            continue;
-          }
-          throw err;
-        }
-      }
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        ...promptConfig,
+      });
 
       const parsed = JSON.parse(response.text);
 
@@ -543,29 +1035,13 @@ export default function VerbsPage({
         example: parsed.example,
       }));
     } catch (err) {
-      if (err?.message?.includes("503") || err?.status === "UNAVAILABLE") {
-        setAiError("Servers are currently experiencing high demand. Please tap 'Generate' again shortly.");
-      } else {
-        setAiError(err.message || "Failed to generate verb.");
-      }
+      setAiError(err.message || "Failed to generate verb.");
     } finally {
       setAiLoading(false);
     }
   };
 
-  const matchesDateFilter = (isoDate) => {
-    if (!isoDate || dateFilter === "all") return true;
-    const itemDate = new Date(isoDate);
-    const now = new Date();
-
-    if (dateFilter === "today") return itemDate.toDateString() === now.toDateString();
-    if (dateFilter === "week") return itemDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    if (dateFilter === "month") return itemDate >= new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    if (dateFilter === "custom" && customDate) return isoDate.slice(0, 10) === customDate;
-    return true;
-  };
-
-  const filteredVerbs = verbsList.filter((item) => {
+  const filteredVerbs = list.filter((item) => {
     const q = normalize(search);
     const matchesSearch =
       !q ||
@@ -575,17 +1051,33 @@ export default function VerbsPage({
       normalize(item.meaning).includes(q) ||
       normalize(item.example).includes(q);
     const matchesCase = verbFilter === "all" || item.caseType === verbFilter;
-    const matchesStatus = verbStatusFilter === "all" || item.status === verbStatusFilter;
-    return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt);
+    const itemStatus = item.status || "In Progress";
+    const matchesStatus = verbStatusFilter === "all" || itemStatus === verbStatusFilter;
+    return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt, dateFilter, customDate);
   });
 
-  const verbsMastered = verbsList.filter((i) => i.status === "Mastered").length;
-  const countVerb = (c) => verbsList.filter((i) => i.caseType === c).length;
+  const verbsMastered = list.filter((i) => i.status === "Mastered").length;
+  const countVerb = (c) => list.filter((i) => i.caseType === c).length;
 
   const openAddModal = () => {
     setEditingVerbId(null);
     setAiError("");
     setVerbFormData(EMPTY_VERB_FORM);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (item) => {
+    setEditingVerbId(item.id);
+    setAiError("");
+    setVerbFormData({
+      verb: item.verb,
+      preterite: item.preterite || "",
+      participle: item.participle || "",
+      caseType: item.caseType || "Dativ",
+      meaning: item.meaning,
+      example: item.example || "",
+      status: item.status || "In Progress",
+    });
     setModalOpen(true);
   };
 
@@ -597,7 +1089,7 @@ export default function VerbsPage({
       return;
     }
 
-    const isDuplicate = verbsList.some(
+    const isDuplicate = list.some(
       (item) =>
         item.verb.trim().toLowerCase() === cleanVerb.toLowerCase() &&
         item.id !== editingVerbId
@@ -614,27 +1106,28 @@ export default function VerbsPage({
     const isEditing = Boolean(editingVerbId);
 
     if (isEditing) {
-      updated = verbsList.map((item) =>
-        item.id === editingVerbId ? { ...item, ...verbFormData } : item
+      updated = list.map((item) =>
+        item.id === editingVerbId ? { ...item, ...verbFormData, verb: cleanVerb } : item
       );
     } else {
       updated = [
-        ...verbsList,
+        ...list,
         {
           id: Date.now(),
           ...verbFormData,
+          verb: cleanVerb,
           createdAt: new Date().toISOString(),
         },
       ];
     }
 
-    const reachedGoal = !isEditing && verifyGoalMilestone(verbsList, updated, cleanVerb);
+    const reachedGoal = !isEditing && verifyGoalMilestone(list, updated, cleanVerb);
 
     if (!reachedGoal && !isEditing) {
       playSuccessSound();
     }
 
-    onCommitVerbs(updated);
+    onCommitVerbs?.(updated);
     setModalOpen(false);
 
     if (!reachedGoal) {
@@ -647,8 +1140,68 @@ export default function VerbsPage({
     }
   };
 
-  const verbCard = verbsList[cardIndex];
-  const verbQuizWord = verbsList[quizIndex];
+  const toggleStatus = (id) =>
+    onCommitVerbs?.(
+      list.map((i) =>
+        i.id === id
+          ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" }
+          : i
+      )
+    );
+
+  const handleQuizCaseSelect = (selectedCase) => {
+    if (quizFeedback !== null || !verbQuizWord) return;
+
+    const actual = verbQuizWord.caseType;
+    const isCorrect = selectedCase === actual;
+
+    if (isCorrect) setQuizScore((prev) => prev + 1);
+
+    setQuizFeedback(
+      isCorrect
+        ? "Correct! 🎉"
+        : `Wrong! "${verbQuizWord.verb}" governs "${actual}".`
+    );
+  };
+
+  const handleQuizTextSubmit = (e) => {
+    e?.preventDefault();
+    if (quizFeedback !== null || !verbQuizWord) return;
+
+    const entered = normalize(quizTextInput);
+
+    if (quizMode === "preterite") {
+      const target = normalize(verbQuizWord.preterite);
+      const isCorrect = Boolean(target) && entered === target;
+      if (isCorrect) setQuizScore((prev) => prev + 1);
+      setQuizFeedback(
+        isCorrect
+          ? "Correct! 🎉"
+          : `Incorrect. The Präteritum form is "${verbQuizWord.preterite || "—"}".`
+      );
+    } else if (quizMode === "participle") {
+      const target = normalize(verbQuizWord.participle);
+      const isCorrect = Boolean(target) && entered === target;
+      if (isCorrect) setQuizScore((prev) => prev + 1);
+      setQuizFeedback(
+        isCorrect
+          ? "Correct! 🎉"
+          : `Incorrect. The Partizip II form is "${verbQuizWord.participle || "—"}".`
+      );
+    } else if (quizMode === "infinitive") {
+      const target = normalize(verbQuizWord.verb);
+      const isCorrect = Boolean(target) && entered === target;
+      if (isCorrect) setQuizScore((prev) => prev + 1);
+      setQuizFeedback(
+        isCorrect
+          ? "Correct! 🎉"
+          : `Incorrect. The infinitive verb is "${verbQuizWord.verb}".`
+      );
+    }
+  };
+
+  const verbCard = list[cardIndex];
+  const verbQuizWord = quizList[quizIndex];
 
   return (
     <>
@@ -661,7 +1214,7 @@ export default function VerbsPage({
                 <span className="stat-pill dark">{verbsMastered} mastered</span>
               </div>
               <div className="stat-foot">
-                <span className="stat-value">{verbsList.length}</span>
+                <span className="stat-value">{list.length}</span>
                 <span className="stat-note" style={{ color: "#a8a29e" }}>all cases</span>
               </div>
             </div>
@@ -682,7 +1235,7 @@ export default function VerbsPage({
 
           <div className="toolbar">
             <div className="search">
-              <span role="img" aria-label="search">🔍</span>
+              <span>🔍</span>
               <input
                 type="search"
                 placeholder="Search verb, past forms, meaning..."
@@ -691,8 +1244,23 @@ export default function VerbsPage({
               />
             </div>
 
-            <div className="filters-cluster">
-              <div className="filters">
+            <div
+              className="filters-cluster"
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "nowrap",
+                alignItems: "center",
+                gap: "8px",
+                width: "100%",
+                maxWidth: "100%",
+                overflowX: "auto",
+                overflowY: "hidden",
+                WebkitOverflowScrolling: "touch",
+                padding: "4px 2px 8px 2px",
+              }}
+            >
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="🏷"
                   value={verbFilter}
@@ -701,7 +1269,7 @@ export default function VerbsPage({
                 />
               </div>
 
-              <div className="filters">
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="📌"
                   value={verbStatusFilter}
@@ -710,19 +1278,17 @@ export default function VerbsPage({
                 />
               </div>
 
-              <div className="filters">
+              <div style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="📅"
                   value={dateFilter}
-                  options={DATE_OPTIONS}
+                  options={QUIZ_DATE_DROPDOWN_OPTIONS}
                   onChange={(val) => setDateFilter(val)}
                 />
-                {dateFilter === "custom" && (
-                  <input
-                    type="date"
-                    className="date-select"
-                    value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
+                {dateFilter === "specific" && (
+                  <RealCalendarPicker
+                    selectedDate={customDate}
+                    onSelectDate={(date) => setCustomDate(date)}
                   />
                 )}
               </div>
@@ -735,7 +1301,7 @@ export default function VerbsPage({
                 onChange={importFromExcel}
               />
 
-              <div className="filters">
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="📊"
                   value=""
@@ -749,9 +1315,30 @@ export default function VerbsPage({
 
               <button
                 type="button"
+                onClick={handleToggleHourlyNotifications}
+                className="btn btn-secondary"
+                title="Toggle Hourly Verb Notification"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTestNotification}
+                className="btn btn-secondary"
+                title="Send a verb notification now"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                📨 Notify Now
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setGoalModalOpen(true)}
                 className="btn btn-secondary"
                 title="Configure Daily & Weekly Goals"
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
               >
                 🎯 Goals
               </button>
@@ -764,6 +1351,8 @@ export default function VerbsPage({
                 }}
                 className="btn btn-secondary"
                 style={{
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
                   color: "#dc2626",
                   borderColor: "#fca5a5",
                   backgroundColor: "#fef2f2",
@@ -775,78 +1364,121 @@ export default function VerbsPage({
             </div>
           </div>
 
-          <div className="list">
-            <div className="list-head verbs-head">
-              <span style={{ textAlign: "center" }}>#</span>
-              <span>CASE</span>
-              <span>INFINITIVE</span>
-              <span>PAST (PRÄT / PART II)</span>
-              <span>MEANING</span>
-              <span>EXAMPLE SENTENCE</span>
-              <span>STATUS</span>
-              <span style={{ textAlign: "right" }}>ACTIONS</span>
+          {filteredVerbs.length === 0 ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "48px 20px",
+                background: "var(--card)",
+                borderRadius: "14px",
+                border: "1px dashed var(--line-2)",
+                textAlign: "center",
+                marginTop: "8px",
+              }}
+            >
+              <img
+                src={noDataImg}
+                alt="No Data Found"
+                style={{
+                  width: "200px",
+                  maxWidth: "80%",
+                  height: "auto",
+                  objectFit: "contain",
+                  marginBottom: "16px",
+                  opacity: 0.9,
+                }}
+              />
+              <h3 style={{ margin: "0 0 8px", fontSize: "19px", fontWeight: 700, color: "var(--ink)" }}>
+                No Verbs Found
+              </h3>
+              <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)", maxWidth: "340px", lineHeight: 1.5 }}>
+                {search || verbFilter !== "all" || verbStatusFilter !== "all" || dateFilter !== "all"
+                  ? "We couldn't find any verbs matching your current filters. Try changing or clearing them."
+                  : "You haven't added any verbs yet. Add your first German verb to get started!"}
+              </p>
+              {search || verbFilter !== "all" || verbStatusFilter !== "all" || dateFilter !== "all" ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginTop: "16px" }}
+                  onClick={() => {
+                    setSearch("");
+                    setVerbFilter("all");
+                    setVerbStatusFilter("all");
+                    setDateFilter("all");
+                    setCustomDate("");
+                  }}
+                >
+                  Clear Filters
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ marginTop: "16px" }}
+                  onClick={openAddModal}
+                >
+                  + Add First Verb
+                </button>
+              )}
             </div>
-            {filteredVerbs.map((item, index) => (
-              <div className={`row verb-row ${item.caseType === "Both / Common" ? "Both" : item.caseType}`} key={item.id}>
-                <div className="c-idx">{index + 1}</div>
-                <div className="c-case">
-                  <span className={`pill ${VERB_CASE_CLASS[item.caseType] || "bg-both"}`}>
-                    {item.caseType}
-                  </span>
-                </div>
-                <div className="c-verb" style={{ fontWeight: 700 }}>{item.verb}</div>
-                <div className="c-past">{item.preterite || "—"} / {item.participle || "—"}</div>
-                <div className="c-mean">{item.meaning}</div>
-                <div className="c-eg">{item.example || "—"}</div>
-                <div className="c-status">
-                  <button
-                    onClick={() =>
-                      onCommitVerbs(verbsList.map((i) => (i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i)))
-                    }
-                    className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
-                  >
-                    {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
-                  </button>
-                </div>
-                <div className="actions">
-                  <button onClick={() => speakGerman(`${item.verb}. ${item.preterite || ""}. ${item.participle || ""}. ${item.example || ""}`)} className="icon-btn">🔊</button>
-                  <button
-                    onClick={() => {
-                      setEditingVerbId(item.id);
-                      setAiError("");
-                      setVerbFormData({
-                        verb: item.verb,
-                        preterite: item.preterite || "",
-                        participle: item.participle || "",
-                        caseType: item.caseType,
-                        meaning: item.meaning,
-                        example: item.example || "",
-                        status: item.status,
-                      });
-                      setModalOpen(true);
-                    }}
-                    className="icon-btn"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() =>
-                      onRequestConfirm("Delete Verb", `Are you sure you want to delete the verb "${item.verb}"?`, () =>
-                        onCommitVerbs(verbsList.filter((i) => i.id !== item.id))
-                      )
-                    }
-                    className="icon-btn"
-                  >
-                    🗑
-                  </button>
-                </div>
+          ) : (
+            <div className="list">
+              <div className="list-head verbs-head">
+                <span style={{ textAlign: "center" }}>#</span>
+                <span>CASE</span>
+                <span>INFINITIVE</span>
+                <span>PAST (PRÄT / PART II)</span>
+                <span>MEANING</span>
+                <span>EXAMPLE SENTENCE</span>
+                <span>STATUS</span>
+                <span style={{ textAlign: "right" }}>ACTIONS</span>
               </div>
-            ))}
-          </div>
+              {filteredVerbs.map((item, index) => (
+                <div className={`row verb-row ${item.caseType === "Both / Common" ? "Both" : item.caseType}`} key={item.id}>
+                  <div className="c-idx">{index + 1}</div>
+                  <div className="c-case">
+                    <span className={`pill ${VERB_CASE_CLASS[item.caseType] || "bg-both"}`}>
+                      {item.caseType}
+                    </span>
+                  </div>
+                  <div className="c-verb" style={{ fontWeight: 700 }}>{item.verb}</div>
+                  <div className="c-past">{item.preterite || "—"} / {item.participle || "—"}</div>
+                  <div className="c-mean">{item.meaning}</div>
+                  <div className="c-eg">{item.example || "—"}</div>
+                  <div className="c-status">
+                    <button
+                      onClick={() => toggleStatus(item.id)}
+                      className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
+                    >
+                      {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
+                    </button>
+                  </div>
+                  <div className="actions">
+                    <button onClick={() => speakGerman(`${item.verb}. ${item.preterite || ""}. ${item.participle || ""}. ${item.example || ""}`)} className="icon-btn">🔊</button>
+                    <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
+                    <button
+                      onClick={() =>
+                        onRequestConfirm?.("Delete Verb", `Are you sure you want to delete the verb "${item.verb}"?`, () =>
+                          onCommitVerbs?.(list.filter((i) => i.id !== item.id))
+                        )
+                      }
+                      className="icon-btn"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Floating Action Button */}
+      {/* Floating Add Button */}
       {viewMode === "list" && (
         <button
           onClick={openAddModal}
@@ -861,7 +1493,22 @@ export default function VerbsPage({
       {viewMode === "flashcards" && (
         <div className="panel">
           {!verbCard ? (
-            <p>No verbs available.</p>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "24px 16px",
+              }}
+            >
+              <img
+                src={noDataImg}
+                alt="No Data"
+                style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }}
+              />
+              <p style={{ color: "var(--muted)", margin: 0 }}>No verbs available for flashcards.</p>
+            </div>
           ) : (
             <div className="flash-wrap">
               <div className="flash" onClick={() => setCardFlipped(!cardFlipped)}>
@@ -887,72 +1534,631 @@ export default function VerbsPage({
               <div className="flash-controls">
                 <button className="btn btn-secondary" disabled={cardIndex === 0} onClick={() => { setCardIndex(cardIndex - 1); setCardFlipped(false); }}>◀ Previous</button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.preterite || ""}. ${verbCard.participle || ""}.`)}>🔊 Pronounce</button>
-                <button className="btn btn-secondary" disabled={cardIndex >= verbsList.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>Next ▶</button>
+                <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>Next ▶</button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>Verb {cardIndex + 1} of {verbsList.length}</span>
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>Verb {cardIndex + 1} of {list.length}</span>
             </div>
           )}
         </div>
       )}
 
       {viewMode === "quiz" && (
-        <div className="panel">
+        <div className="panel" style={{ marginTop: "-6px", paddingTop: "14px" }}>
+          {/* QUIZ TOOLBAR */}
+          <div
+            className="quiz-controls-row"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "center",
+              justifyContent: timerRunning ? "center" : "flex-start",
+              gap: "10px",
+              width: "100%",
+              maxWidth: "100%",
+              overflowX: "auto",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+              padding: "4px 2px 14px 2px",
+              marginBottom: "16px",
+              borderBottom: "1px solid var(--line-2, #ebdccb)",
+            }}
+          >
+            {!timerRunning ? (
+              <>
+                {/* 1. Quiz Mode Dropdown (Case, Präteritum, Partizip II, Infinitive) */}
+                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <CustomDropdown
+                    icon="🎯"
+                    value={quizMode}
+                    options={QUIZ_MODE_OPTIONS}
+                    onChange={(val) => {
+                      setQuizMode(val);
+                      resetQuizProgress();
+                    }}
+                  />
+                </div>
+
+                {/* 2. Status Dropdown */}
+                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <CustomDropdown
+                    icon="📌"
+                    value={quizStatusFilter}
+                    options={STATUS_FILTER_OPTIONS}
+                    onChange={handleQuizStatusChange}
+                  />
+                </div>
+
+                {/* 3. Date Filter Dropdown */}
+                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <CustomDropdown
+                    icon="📅"
+                    value={quizDateMode}
+                    options={QUIZ_DATE_DROPDOWN_OPTIONS}
+                    onChange={handleQuizDateModeChange}
+                  />
+                </div>
+
+                {/* 4. Real Calendar Picker */}
+                {quizDateMode === "specific" && (
+                  <RealCalendarPicker
+                    selectedDate={quizSpecificDate}
+                    onSelectDate={handleQuizCalendarDateSelect}
+                  />
+                )}
+
+                {/* 5. Count Limit Pill */}
+                <div
+                  style={{
+                    flexShrink: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid var(--line-2, #ebdccb)",
+                    padding: "0 12px",
+                    borderRadius: "12px",
+                    height: "40px",
+                    boxSizing: "border-box",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span style={{ fontSize: "14px" }}>🔢</span>
+                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>Count:</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder={availableQuizPool.length ? `${availableQuizPool.length}` : "All"}
+                    value={wordCountInput}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, "");
+                      setWordCountInput(val);
+                      resetQuizProgress();
+                    }}
+                    style={{
+                      width: "48px",
+                      height: "28px",
+                      borderRadius: "8px",
+                      border: "1px solid #ebdccb",
+                      backgroundColor: "#faf7f2",
+                      padding: "0 6px",
+                      fontSize: "13.5px",
+                      fontWeight: 700,
+                      color: "#1f2937",
+                      textAlign: "center",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                {/* 6. Set Timer Setup Pill */}
+                <div
+                  style={{
+                    flexShrink: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid var(--line-2, #ebdccb)",
+                    padding: "0 6px 0 12px",
+                    borderRadius: "12px",
+                    height: "40px",
+                    boxSizing: "border-box",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span style={{ fontSize: "14px" }}>⏱️️</span>
+                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>Timer:</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="30"
+                    value={timerInput}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, "");
+                      setTimerInput(val);
+                    }}
+                    style={{
+                      width: "48px",
+                      height: "28px",
+                      borderRadius: "8px",
+                      border: "1px solid #ebdccb",
+                      backgroundColor: "#faf7f2",
+                      padding: "0 6px",
+                      fontSize: "13.5px",
+                      fontWeight: 700,
+                      color: "#1f2937",
+                      textAlign: "center",
+                      outline: "none",
+                    }}
+                  />
+                  <span style={{ fontSize: "12px", color: "var(--muted)", marginRight: 2 }}>s</span>
+
+                  <button
+                    type="button"
+                    onClick={handleStartTimer}
+                    title="Start Timer"
+                    style={{
+                      width: "30px",
+                      height: "30px",
+                      borderRadius: "8px",
+                      backgroundColor: "var(--brand, #b85c19)",
+                      border: "none",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                    }}
+                  >
+                    ▶
+                  </button>
+                </div>
+
+                {/* Verbs Pool Count */}
+                <div
+                  style={{
+                    flexShrink: 0,
+                    fontSize: "13.5px",
+                    color: "var(--muted)",
+                    whiteSpace: "nowrap",
+                    paddingLeft: "4px",
+                  }}
+                >
+                  Verbs: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong>
+                </div>
+
+                {/* Clear Filters */}
+                {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{
+                      flexShrink: 0,
+                      padding: "0 12px",
+                      fontSize: "12.5px",
+                      whiteSpace: "nowrap",
+                      height: "40px",
+                      borderRadius: "12px",
+                    }}
+                    onClick={() => {
+                      setQuizStatusFilter("all");
+                      setQuizDateMode("all");
+                      setQuizSpecificDate("");
+                      setWordCountInput("");
+                      resetQuizProgress();
+                    }}
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </>
+            ) : (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  backgroundColor: timeLeft <= 5 ? "#fef2f2" : "#f0fdf4",
+                  border: `1.5px solid ${timeLeft <= 5 ? "#f87171" : "#86efac"}`,
+                  padding: "0 12px 0 16px",
+                  borderRadius: "14px",
+                  height: "44px",
+                  boxSizing: "border-box",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+                }}
+              >
+                <span style={{ fontSize: "16px" }}>{timeLeft <= 5 ? "🔥" : "⏳"}</span>
+                <span
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 800,
+                    color: timeLeft <= 5 ? "#dc2626" : "#15803d",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {timeLeft}s remaining
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleStopTimer}
+                  title="Stop Timer"
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "8px",
+                    border: "1px solid #fca5a5",
+                    backgroundColor: "#ffffff",
+                    color: "#dc2626",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    marginLeft: "4px",
+                  }}
+                >
+                  ⏸
+                </button>
+              </div>
+            )}
+          </div>
+
           {!verbQuizWord ? (
-            <p>Add verbs to start quiz.</p>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "36px 16px",
+                textAlign: "center",
+              }}
+            >
+              <img
+                src={noDataImg}
+                alt="No Data"
+                style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }}
+              />
+              <p style={{ color: "var(--muted)", margin: "0 0 12px 0", fontSize: 15 }}>
+                {list.length === 0
+                  ? "Add verbs to start quiz."
+                  : "No verbs match the selected status, date, or count filters."}
+              </p>
+              {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setQuizStatusFilter("all");
+                    setQuizDateMode("all");
+                    setQuizSpecificDate("");
+                    setWordCountInput("");
+                    resetQuizProgress();
+                  }}
+                >
+                  Reset Quiz Filters
+                </button>
+              )}
+            </div>
           ) : (
             <div className="quiz">
               <div className="quiz-head">
-                <span>Question {quizIndex + 1} of {verbsList.length}</span>
+                <span>Question {quizIndex + 1} of {quizList.length}</span>
                 <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
               </div>
+
               <div className="quiz-card">
-                <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Which case is required by this verb?</span>
-                <h1>{verbQuizWord.verb}</h1>
-                <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
-                  Past: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong>
-                </p>
-                <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
-                  Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
-                </p>
+                {quizMode === "case" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                      Which grammatical case is governed by this verb?
+                    </span>
+                    <h1>{verbQuizWord.verb}</h1>
+                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
+                      Past: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong>
+                    </p>
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
+                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
+                    </p>
+                  </>
+                )}
+
+                {quizMode === "preterite" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                      Type the Präteritum (Simple Past) form for:
+                    </span>
+                    <h1>{verbQuizWord.verb}</h1>
+                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
+                      Partizip II: <strong>{verbQuizWord.participle || "—"}</strong>
+                    </p>
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
+                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
+                    </p>
+                  </>
+                )}
+
+                {quizMode === "participle" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                      Type the Partizip II (Past Participle) form for:
+                    </span>
+                    <h1>{verbQuizWord.verb}</h1>
+                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
+                      Präteritum: <strong>{verbQuizWord.preterite || "—"}</strong>
+                    </p>
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
+                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
+                    </p>
+                  </>
+                )}
+
+                {quizMode === "infinitive" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                      Type the Infinitive German verb for:
+                    </span>
+                    <h1 style={{ color: "var(--brand, #b85c19)" }}>{verbQuizWord.meaning}</h1>
+                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
+                      Past forms: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong>
+                    </p>
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>
+                      Governs: <span className={`pill ${VERB_CASE_CLASS[verbQuizWord.caseType] || "bg-both"}`}>{verbQuizWord.caseType}</span>
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="quiz-opts">
-                {[{ l: "Dativ", v: "Dativ" }, { l: "Akkusativ", v: "Akkusativ" }, { l: "Both", v: "Both / Common" }].map((opt) => (
-                  <button
-                    key={opt.v}
-                    disabled={quizFeedback !== null}
-                    className={`quiz-opt ${opt.l}`}
-                    onClick={() => {
-                      const ok = opt.v === verbQuizWord.caseType;
-                      if (ok) setQuizScore((s) => s + 1);
-                      setQuizFeedback(ok ? "Correct! 🎉" : `Wrong! "${verbQuizWord.verb}" governs "${verbQuizWord.caseType}".`);
-                    }}
-                  >
-                    {opt.l}
-                  </button>
-                ))}
-              </div>
+
+              {quizMode === "case" ? (
+                <div className="quiz-opts">
+                  {[
+                    { label: "Dativ", val: "Dativ", bg: "#ede9fe", text: "#6d28d9", border: "#ddd6fe" },
+                    { label: "Akkusativ", val: "Akkusativ", bg: "#ffedd5", text: "#c2410c", border: "#fed7aa" },
+                    { label: "Both / Common", val: "Both / Common", bg: "#cffafe", text: "#0e7490", border: "#a5f3fc" },
+                  ].map((btn) => (
+                    <button
+                      key={btn.val}
+                      type="button"
+                      disabled={quizFeedback !== null}
+                      onClick={() => handleQuizCaseSelect(btn.val)}
+                      style={{
+                        backgroundColor: btn.bg,
+                        color: btn.text,
+                        border: `1.5px solid ${btn.border}`,
+                        borderRadius: "16px",
+                        padding: "10px 22px",
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        cursor: "pointer",
+                        transition: "transform 0.15s ease, opacity 0.15s ease",
+                      }}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <form
+                  onSubmit={handleQuizTextSubmit}
+                  style={{
+                    marginTop: 18,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 12,
+                    width: "100%",
+                    maxWidth: 420,
+                    marginInline: "auto",
+                  }}
+                >
+                  <div style={{ display: "flex", width: "100%", gap: 8 }}>
+                    <input
+                      type="text"
+                      autoFocus
+                      disabled={quizFeedback !== null}
+                      placeholder={
+                        quizMode === "preterite"
+                          ? "Type Präteritum form (e.g. ging, half)..."
+                          : quizMode === "participle"
+                          ? "Type Partizip II form (e.g. gegangen, geholfen)..."
+                          : "Type Infinitive verb (e.g. gehen, helfen)..."
+                      }
+                      value={quizTextInput}
+                      onChange={(e) => setQuizTextInput(e.target.value)}
+                      className="modal-input"
+                      style={{
+                        flex: 1,
+                        height: "46px",
+                        fontSize: "16px",
+                        fontWeight: 600,
+                        borderRadius: "12px",
+                        border: "1.5px solid var(--line-2, #ebdccb)",
+                        padding: "0 14px",
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={quizFeedback !== null || !quizTextInput.trim()}
+                      className="btn btn-primary"
+                      style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop: 7 }}
+                    >
+                      Check
+                    </button>
+                  </div>
+                </form>
+              )}
+
               {quizFeedback && (
-                <div style={{ marginTop: 24 }}>
-                  <p style={{ fontSize: 15, fontWeight: 600 }}>{quizFeedback}</p>
+                <div style={{ marginTop: 24, textAlign: "center" }}>
+                  <p style={{ fontSize: 16, fontWeight: 700 }}>{quizFeedback}</p>
                   <button
                     className="btn btn-primary"
                     onClick={() => {
                       setQuizFeedback(null);
-                      if (quizIndex < verbsList.length - 1) {
+                      setQuizTextInput("");
+                      if (quizIndex < quizList.length - 1) {
                         setQuizIndex((i) => i + 1);
                       } else {
-                        alert(`Verb Quiz finished! Score: ${quizScore}/${verbsList.length}`);
-                        setQuizIndex(0);
-                        setQuizScore(0);
+                        setTimerRunning(false);
+                        setTimeLeft(null);
+                        setScoreModal({
+                          isOpen: true,
+                          reason: "finish",
+                          score: quizScore,
+                          total: quizList.length,
+                        });
                       }
                     }}
                   >
-                    {quizIndex < verbsList.length - 1 ? "Next Verb" : "Restart"}
+                    {quizIndex < quizList.length - 1 ? "Next Verb" : "Complete Quiz"}
                   </button>
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 🏆 Quiz Results & Time-Up Modal */}
+      {scoreModal.isOpen && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1300 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setScoreModal((p) => ({ ...p, isOpen: false }));
+            }
+          }}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center",
+              maxWidth: 360,
+              padding: "26px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              borderRadius: "20px",
+              animation: "fadeIn 0.2s ease-in-out",
+            }}
+          >
+            <img
+              src={scoreModal.reason === "timeup" ? alertGif : (scoreModal.score > 0 ? congratsGif : alertGif)}
+              alt="Quiz Results"
+              style={{ width: 95, height: 95, objectFit: "contain", marginBottom: 12 }}
+            />
+
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                color: scoreModal.reason === "timeup" ? "#b91c1c" : "#b85c19",
+                backgroundColor: scoreModal.reason === "timeup" ? "#fee2e2" : "#fef3c7",
+                border: `1px solid ${scoreModal.reason === "timeup" ? "#fca5a5" : "#fde68a"}`,
+                padding: "4px 12px",
+                borderRadius: 20,
+                marginBottom: 8,
+                textTransform: "uppercase",
+              }}
+            >
+              {scoreModal.reason === "timeup" ? "⏰ Time Is Up!" : "🎉 Quiz Completed!"}
+            </span>
+
+            <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>
+              {scoreModal.reason === "timeup" ? "Time's Expired!" : "Great Effort!"}
+            </h3>
+
+            <p style={{ color: "var(--muted)", margin: "0 0 16px", fontSize: 14 }}>
+              {scoreModal.reason === "timeup"
+                ? "The countdown clock reached zero. Here is how you did:"
+                : "You have reviewed all the questions in your pool!"}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                width: "100%",
+                marginBottom: "18px",
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  padding: "12px 6px",
+                  borderRadius: "12px",
+                  backgroundColor: "#f7f2ed",
+                  border: "1px solid #ebdccb",
+                }}
+              >
+                <div style={{ fontSize: "26px", fontWeight: 800, color: "var(--brand, #b85c19)" }}>
+                  {scoreModal.score} / {scoreModal.total}
+                </div>
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted)", marginTop: 2, textTransform: "uppercase" }}>
+                  Score
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  padding: "12px 6px",
+                  borderRadius: "12px",
+                  backgroundColor: "#f7f2ed",
+                  border: "1px solid #ebdccb",
+                }}
+              >
+                <div style={{ fontSize: "26px", fontWeight: 800, color: "#166534" }}>
+                  {scoreModal.total > 0 ? Math.round((scoreModal.score / scoreModal.total) * 100) : 0}%
+                </div>
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted)", marginTop: 2, textTransform: "uppercase" }}>
+                  Accuracy
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", width: "100%" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => setScoreModal((p) => ({ ...p, isOpen: false }))}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => {
+                  setScoreModal((p) => ({ ...p, isOpen: false }));
+                  resetQuizProgress();
+                  const parsed = parseInt(timerInput, 10);
+                  if (!isNaN(parsed) && parsed > 0) {
+                    setTimeLeft(parsed);
+                    setTimerRunning(true);
+                  }
+                }}
+              >
+                Try Again 🚀
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

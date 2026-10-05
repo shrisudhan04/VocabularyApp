@@ -1824,9 +1824,9 @@ export default function NounsPage({
                       Type the German singular noun for:
                     </span>
                     <h1 style={{ color: "var(--brand, #b85c19)" }}>{nounQuizWord.meaning}</h1>
-                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
+                    {/* <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
                       Article hint: <span className={`pill ${ARTICLE_CLASS[nounQuizWord.article]}`}>{nounQuizWord.article}</span>
-                    </p>
+                    </p> */}
                   </>
                 )}
 
@@ -1907,7 +1907,7 @@ export default function NounsPage({
                       type="submit"
                       disabled={quizFeedback !== null || !quizTextInput.trim()}
                       className="btn btn-primary"
-                      style={{ height: "46px", padding: "0 18px", borderRadius: "12px" }}
+                      style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop:7 }}
                     >
                       Check
                     </button>

@@ -127,7 +127,6 @@ export async function sendNounNotification(nounItem) {
   const imageBanner = createPoppinsNotificationImage(nounItem);
 
   const options = {
-    body: `Plural: ${nounItem.plural || "—"} | Meaning: ${nounItem.meaning || "—"}`,
     image: imageBanner, // Displays Poppins text in notification body
     icon: "/icons.svg",
     badge: "/apple-touch-icon.png",

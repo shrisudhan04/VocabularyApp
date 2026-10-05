@@ -17,7 +17,7 @@ export async function sendNounNotification(nounItem) {
   const title = `Word : ${nounItem.article || ""} ${nounItem.noun || ""}`.trim();
   const options = {
     body: `Plural: ${nounItem.plural || "—"} | Meaning: ${nounItem.meaning || "—"}`,
-    icon: "/icons.svg",
+    icon: "/1.svg",
     badge: "/icons.svg",
     vibrate: [150, 80, 150],
     tag: `hourly-german-noun-${Date.now()}`,

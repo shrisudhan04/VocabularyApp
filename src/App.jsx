@@ -46,44 +46,6 @@ import PatternsPage from "./pages/PatternsPage";
 import PrepositionsPage from "./pages/PrepositionsPage";
 import TimePage from "./pages/TimePage";
 import GrammarPage from "./pages/GrammarPage";
-import VocabularyPage from "./pages/VocabularyPage"; // 👈 Oñemoinge VocabularyPage
-
-// DB keys pyahu Vocabulary-pe g̃uarã
-const VOCABULARY_STORE_NAME = "vocabulary";
-const VOCABULARY_BACKUP_KEY = "vocab_vault_vocabulary_backup";
-
-const SEED_VOCABULARY = [
-  {
-    id: 1,
-    category: "connectors",
-    german: "weil",
-    english: "because",
-    ruleOrType: "Subordinating (Verb End)",
-    example: "Ich lerne Deutsch, weil ich in Deutschland arbeiten möchte.",
-    status: "In Progress",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    category: "connectors",
-    german: "deshalb",
-    english: "therefore / that's why",
-    ruleOrType: "Adverbial Conjunction (Position 1)",
-    example: "Es regnet, deshalb nehme ich einen Regenschirm mit.",
-    status: "In Progress",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 3,
-    category: "words",
-    german: "die Herausforderung",
-    english: "challenge",
-    ruleOrType: "Noun (Feminine, -ung)",
-    example: "Das neue Projekt ist eine große Herausforderung.",
-    status: "In Progress",
-    createdAt: new Date().toISOString(),
-  },
-];
 
 export default function App() {
   const [vocabList, setVocabList] = useState([]);
@@ -91,7 +53,6 @@ export default function App() {
   const [patternsList, setPatternsList] = useState([]);
   const [prepsList, setPrepsList] = useState([]);
   const [timeList, setTimeList] = useState([]);
-  const [vocabularyList, setVocabularyList] = useState([]); // 👈 Vocabulary state
   const [isReady, setIsReady] = useState(false);
 
   const [theme] = useState(() => localStorage.getItem("vocab_vault_theme") || "light");
@@ -99,12 +60,10 @@ export default function App() {
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
 
-  // 🌐 EN térã DE mbohapypegua
   const [languageMode, setLanguageMode] = useState("EN");
-  const [mainCategory, setMainCategory] = useState("Vocabulary");
+  const [mainCategory, setMainCategory] = useState("Nouns");
 
   const [subViews, setSubViews] = useState({
-    Vocabulary: "list",
     Nouns: "list",
     Patterns: "list",
     Verbs: "list",
@@ -120,7 +79,6 @@ export default function App() {
     onConfirm: () => {},
   });
 
-  // Jepapa ojejapóva ára ha arapokindýpe
   const categoryStats = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -144,14 +102,13 @@ export default function App() {
     };
 
     return {
-      Vocabulary: getStats(vocabularyList),
       Nouns: getStats(vocabList),
       Verbs: getStats(verbsList),
       Patterns: getStats(patternsList),
       Prepositions: getStats(prepsList),
       Time: getStats(timeList),
     };
-  }, [vocabularyList, vocabList, verbsList, patternsList, prepsList, timeList]);
+  }, [vocabList, verbsList, patternsList, prepsList, timeList]);
 
   const requestConfirmation = (title, message, onConfirm) => {
     setConfirmModal({
@@ -263,15 +220,6 @@ export default function App() {
         } else {
           setTimeList(storedTimes);
         }
-
-        // 6. Vocabulary (Connectors / Words)
-        let storedVocabulary = await loadFromVaultDB(VOCABULARY_STORE_NAME, VOCABULARY_BACKUP_KEY);
-        if (!storedVocabulary || storedVocabulary.length === 0) {
-          await writeToVaultDB(VOCABULARY_STORE_NAME, VOCABULARY_BACKUP_KEY, SEED_VOCABULARY);
-          setVocabularyList(SEED_VOCABULARY);
-        } else {
-          setVocabularyList(storedVocabulary);
-        }
       } catch (err) {
         console.error("IndexedDB initialization error:", err);
         setVerbsList(SEED_VERBS);
@@ -279,7 +227,6 @@ export default function App() {
         setPatternsList(SEED_PATTERNS);
         setPrepsList(SEED_PREPOSITIONS);
         setTimeList(SEED_TIME);
-        setVocabularyList(SEED_VOCABULARY);
       } finally {
         setIsReady(true);
       }
@@ -341,11 +288,6 @@ export default function App() {
     await writeToVaultDB(TIME_STORE_NAME, TIME_BACKUP_KEY, newList);
   };
 
-  const commitVocabulary = async (newList) => {
-    setVocabularyList(newList);
-    await writeToVaultDB(VOCABULARY_STORE_NAME, VOCABULARY_BACKUP_KEY, newList);
-  };
-
   if (!isReady) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
@@ -354,9 +296,7 @@ export default function App() {
     );
   }
 
-  // Tembiporã opaite categoria-pe g̃uarã
   const allCategoryItems = [
-    { id: "Vocabulary", icon: "💬", label: "Vocabulary", count: vocabularyList.length },
     { id: "Nouns", icon: "📑", label: "Nouns", count: vocabList.length },
     { id: "Patterns", icon: "📐", label: "Patterns", count: patternsList.length },
     { id: "Verbs", icon: "⚡", label: "Verbs", count: verbsList.length },
@@ -381,11 +321,7 @@ export default function App() {
         languageMode={languageMode}
         onToggleLanguage={(newMode) => {
           setLanguageMode(newMode);
-          if (newMode === "EN") {
-            setMainCategory("Vocabulary");
-          } else {
-            setMainCategory("Nouns");
-          }
+          setMainCategory("Nouns");
         }}
         onOpenGoals={() => setGoalModalOpen(true)}
         onOpenReport={() => setReportOpen(true)}
@@ -402,7 +338,6 @@ export default function App() {
         isOpen={reportOpen}
         onClose={() => setReportOpen(false)}
         lists={{
-          Vocabulary: vocabularyList,
           Nouns: vocabList,
           Verbs: verbsList,
           Patterns: patternsList,
@@ -425,15 +360,6 @@ export default function App() {
               setSubViews((prev) => ({ ...prev, [mainCategory]: view }))
             }
           />
-
-          {mainCategory === "Vocabulary" && (
-            <VocabularyPage
-              viewMode={subViews.Vocabulary}
-              vocabList={vocabularyList}
-              onCommitVocab={commitVocabulary}
-              onRequestConfirm={requestConfirmation}
-            />
-          )}
 
           {mainCategory === "Nouns" && (
             <NounsPage
@@ -495,4 +421,4 @@ export default function App() {
       />
     </div>
   );
-} 
+}

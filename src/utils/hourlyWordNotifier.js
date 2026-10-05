@@ -14,11 +14,9 @@ export async function sendNounNotification(nounItem) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
 
-  const title = `🇩🇪 Word of the Hour: ${nounItem.article || ""} ${nounItem.noun || ""}`.trim();
+  const title = `Word : ${nounItem.article || ""} ${nounItem.noun || ""}`.trim();
   const options = {
     body: `Plural: ${nounItem.plural || "—"} | Meaning: ${nounItem.meaning || "—"}`,
-    icon: "/favicon.svg",
-    badge: "/favicon.svg",
     vibrate: [150, 80, 150],
     tag: `hourly-german-noun-${Date.now()}`,
     renotify: true,

@@ -6,7 +6,7 @@ export default function ConfirmModal({ isOpen, title, message, onConfirm, onClos
       <div className="modal" style={{ maxWidth: 380 }}>
         <div className="confirm-box">
           <span className="confirm-icon">⚠️</span>
-          <h3 style={{ margin: 0 }}>{title}</h3>
+          <h3 style={{ marginTop: 30 }}>{title}</h3>
           <p>{message}</p>
           <div className="modal-actions" style={{ justifyContent: "center" }}>
             <button type="button" onClick={onClose} className="btn btn-secondary">

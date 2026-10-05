@@ -1328,7 +1328,8 @@ textarea:focus-visible {
 }
 
 .confirm-icon {
-  font-size: 38px;
+  margin-top: 10px;
+  font-size: 60px;
 }
 
 .confirm-box p {

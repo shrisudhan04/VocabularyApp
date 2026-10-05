@@ -1,14 +1,24 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
-import GoalModal from "../components/GoalModal"; // Adjust path if located in ./GoalModal
+import GoalModal from "../components/GoalModal";
 import { VERB_CASE_CLASS, DATE_OPTIONS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
+import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
+import congratsAudio from "../assets/celebration.mp3";
 import "../App.css";
+
+// 🔍 Search helper: lowercase, strip accents, trim
+const normalize = (s = "") =>
+  String(s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
 
 // 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
 const getActiveAudioContext = async () => {
@@ -21,7 +31,7 @@ const getActiveAudioContext = async () => {
   return ctx;
 };
 
-// 1. Success chime for adding new verbs & goal milestones
+// 1. Success chime for adding new verbs
 const playSuccessSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -50,7 +60,33 @@ const playSuccessSound = async () => {
   }
 };
 
-// 2. Duplicate warning buzzer
+// 2. Goal Celebration MP3
+let goalAudioInstance = null;
+
+const playGoalAchievedMusic = () => {
+  try {
+    if (goalAudioInstance) {
+      goalAudioInstance.pause();
+      goalAudioInstance.currentTime = 0;
+    }
+    goalAudioInstance = new Audio(congratsAudio);
+    goalAudioInstance.volume = 0.7;
+    goalAudioInstance.play().catch((err) => {
+      console.warn("Celebration audio playback error:", err);
+    });
+  } catch (err) {
+    console.warn("Failed to play goal music:", err);
+  }
+};
+
+const stopGoalAchievedMusic = () => {
+  if (goalAudioInstance) {
+    goalAudioInstance.pause();
+    goalAudioInstance.currentTime = 0;
+  }
+};
+
+// 3. Duplicate warning buzzer
 const playDuplicateSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -79,7 +115,7 @@ const playDuplicateSound = async () => {
   }
 };
 
-// 3. Danger warning for reset
+// 4. Danger warning for reset
 const playDangerSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -124,6 +160,16 @@ const EXCEL_ACTIONS = [
   { label: "📤 Export", value: "export" },
 ];
 
+const EMPTY_VERB_FORM = {
+  verb: "",
+  preterite: "",
+  participle: "",
+  caseType: "Dativ",
+  meaning: "",
+  example: "",
+  status: "In Progress",
+};
+
 export default function VerbsPage({
   viewMode,
   verbsList,
@@ -138,15 +184,7 @@ export default function VerbsPage({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVerbId, setEditingVerbId] = useState(null);
-  const [verbFormData, setVerbFormData] = useState({
-    verb: "",
-    preterite: "",
-    participle: "",
-    caseType: "Dativ",
-    meaning: "",
-    example: "",
-    status: "In Progress",
-  });
+  const [verbFormData, setVerbFormData] = useState(EMPTY_VERB_FORM);
 
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateWordName, setDuplicateWordName] = useState("");
@@ -176,63 +214,57 @@ export default function VerbsPage({
 
   const fileInputRef = useRef(null);
 
-  // Helper calculating live counts
-   const getGoalCounts = (list = []) => {
-  const now = new Date();
+  const getGoalCounts = (list = []) => {
+    const now = new Date();
 
-  // 1. Daily: Today 00:00:00.000 to 23:59:59.999
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    0, 0, 0, 0
-  ).getTime();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    23, 59, 59, 999
-  ).getTime();
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23, 59, 59, 999
+    ).getTime();
 
-  // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
-  // In JavaScript: Sunday is day 0, Saturday is day 6
-  const currentDayOfWeek = now.getDay(); 
+    const currentDayOfWeek = now.getDay();
 
-  const startOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek,
-    0, 0, 0, 0
-  ).getTime();
+    const startOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek,
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek + 6,
-    23, 59, 59, 999
-  ).getTime();
+    const endOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek + 6,
+      23, 59, 59, 999
+    ).getTime();
 
-  let daily = 0;
-  let weekly = 0;
+    let daily = 0;
+    let weekly = 0;
 
-  list.forEach((item) => {
-    if (!item?.createdAt) return;
-    const itemTime = new Date(item.createdAt).getTime();
+    list.forEach((item) => {
+      if (!item?.createdAt) return;
+      const itemTime = new Date(item.createdAt).getTime();
 
-    // Check strict Daily window (00:00 to 23:59 today)
-    if (itemTime >= startOfToday && itemTime <= endOfToday) {
-      daily += 1;
-    }
+      if (itemTime >= startOfToday && itemTime <= endOfToday) {
+        daily += 1;
+      }
 
-    // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
-    if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
-      weekly += 1;
-    }
-  });
+      if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
+        weekly += 1;
+      }
+    });
 
-  return { daily, weekly };
-};
+    return { daily, weekly };
+  };
 
   const getSavedTargets = () => {
     try {
@@ -259,7 +291,7 @@ export default function VerbsPage({
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
-      playSuccessSound();
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -271,7 +303,7 @@ export default function VerbsPage({
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
-      playSuccessSound();
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -284,6 +316,9 @@ export default function VerbsPage({
 
     return false;
   };
+
+  const { daily: verbDailyCount, weekly: verbWeeklyCount } = getGoalCounts(verbsList);
+  const { daily: verbDailyTarget, weekly: verbWeeklyTarget } = getSavedTargets();
 
   const handleConfirmReset = () => {
     playDangerSound();
@@ -396,9 +431,11 @@ export default function VerbsPage({
         });
 
         if (newEntries.length > 0) {
-          playSuccessSound();
           const updatedList = [...verbsList, ...newEntries];
-          verifyGoalMilestone(verbsList, updatedList, `${newEntries.length} new verbs`);
+          const reachedGoal = verifyGoalMilestone(verbsList, updatedList, `${newEntries.length} new verbs`);
+          if (!reachedGoal) {
+            playSuccessSound();
+          }
           onCommitVerbs(updatedList);
         } else if (duplicateWords.length > 0) {
           playDuplicateSound();
@@ -529,13 +566,14 @@ export default function VerbsPage({
   };
 
   const filteredVerbs = verbsList.filter((item) => {
-    const q = search.toLowerCase();
+    const q = normalize(search);
     const matchesSearch =
-      item.verb.toLowerCase().includes(q) ||
-      (item.preterite && item.preterite.toLowerCase().includes(q)) ||
-      (item.participle && item.participle.toLowerCase().includes(q)) ||
-      item.meaning.toLowerCase().includes(q) ||
-      item.example.toLowerCase().includes(q);
+      !q ||
+      normalize(item.verb).includes(q) ||
+      normalize(item.preterite).includes(q) ||
+      normalize(item.participle).includes(q) ||
+      normalize(item.meaning).includes(q) ||
+      normalize(item.example).includes(q);
     const matchesCase = verbFilter === "all" || item.caseType === verbFilter;
     const matchesStatus = verbStatusFilter === "all" || item.status === verbStatusFilter;
     return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt);
@@ -544,9 +582,12 @@ export default function VerbsPage({
   const verbsMastered = verbsList.filter((i) => i.status === "Mastered").length;
   const countVerb = (c) => verbsList.filter((i) => i.caseType === c).length;
 
-  // Live Goal Progress calculations
-  const { daily: verbDailyCount, weekly: verbWeeklyCount } = getGoalCounts(verbsList);
-  const { daily: verbDailyTarget, weekly: verbWeeklyTarget } = getSavedTargets();
+  const openAddModal = () => {
+    setEditingVerbId(null);
+    setAiError("");
+    setVerbFormData(EMPTY_VERB_FORM);
+    setModalOpen(true);
+  };
 
   const handleSaveModal = (e) => {
     e.preventDefault();
@@ -577,7 +618,6 @@ export default function VerbsPage({
         item.id === editingVerbId ? { ...item, ...verbFormData } : item
       );
     } else {
-      playSuccessSound();
       updated = [
         ...verbsList,
         {
@@ -589,6 +629,10 @@ export default function VerbsPage({
     }
 
     const reachedGoal = !isEditing && verifyGoalMilestone(verbsList, updated, cleanVerb);
+
+    if (!reachedGoal && !isEditing) {
+      playSuccessSound();
+    }
 
     onCommitVerbs(updated);
     setModalOpen(false);
@@ -622,29 +666,6 @@ export default function VerbsPage({
               </div>
             </div>
 
-            {/* 🎯 Verb Daily Goals Stat Card */}
-            <div 
-              className="stat" 
-              style={{ cursor: "pointer", border: "1px solid #fed7aa" }} 
-              onClick={() => setGoalModalOpen(true)}
-              title="Click to manage verb study targets"
-            >
-              <div className="stat-head">
-                <span className="stat-label">TODAY'S GOAL</span>
-                <span className="stat-pill" style={{ backgroundColor: "#ffedd5", color: "#c2410c", fontWeight: 700 }}>
-                  🎯 {verbDailyCount >= verbDailyTarget ? "Achieved!" : "In Progress"}
-                </span>
-              </div>
-              <div className="stat-foot">
-                <span className="stat-value" style={{ color: "#c2410c" }}>
-                  {verbDailyCount} <span style={{ fontSize: 16, color: "var(--muted)" }}>/ {verbDailyTarget}</span>
-                </span>
-                <span className="stat-note" style={{ color: "#9a3412" }}>
-                  Week: {verbWeeklyCount}/{verbWeeklyTarget}
-                </span>
-              </div>
-            </div>
-
             <div className="stat">
               <div className="stat-head"><span className="stat-label">DATIV</span><span className="stat-pill bg-dativ">Dativ</span></div>
               <div className="stat-foot"><span className="stat-value c-dativ">{countVerb("Dativ")}</span></div>
@@ -671,25 +692,6 @@ export default function VerbsPage({
             </div>
 
             <div className="filters-cluster">
-              {/* 🎯 Goals Launcher Button */}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setGoalModalOpen(true)}
-                title="Set and track verb study goals"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  borderColor: "#fed7aa",
-                  backgroundColor: "#fff7ed",
-                  color: "#9a3412",
-                  fontWeight: 600,
-                }}
-              >
-                <span>🎯</span> Goals ({verbDailyCount}/{verbDailyTarget})
-              </button>
-
               <div className="filters">
                 <CustomDropdown
                   icon="🏷"
@@ -747,6 +749,15 @@ export default function VerbsPage({
 
               <button
                 type="button"
+                onClick={() => setGoalModalOpen(true)}
+                className="btn btn-secondary"
+                title="Configure Daily & Weekly Goals"
+              >
+                🎯 Goals
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   playDangerSound();
                   setResetModalOpen(true);
@@ -760,26 +771,6 @@ export default function VerbsPage({
                 title="Reset all verbs"
               >
                 🔄 Reset
-              </button>
-
-              <button
-                onClick={() => {
-                  setEditingVerbId(null);
-                  setAiError("");
-                  setVerbFormData({
-                    verb: "",
-                    preterite: "",
-                    participle: "",
-                    caseType: "Dativ",
-                    meaning: "",
-                    example: "",
-                    status: "In Progress",
-                  });
-                  setModalOpen(true);
-                }}
-                className="btn btn-primary"
-              >
-                + Add Verb
               </button>
             </div>
           </div>
@@ -853,6 +844,18 @@ export default function VerbsPage({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Floating Action Button */}
+      {viewMode === "list" && (
+        <button
+          onClick={openAddModal}
+          className="fab-btn"
+          title="Add Verb"
+          aria-label="Add Verb"
+        >
+          +
+        </button>
       )}
 
       {viewMode === "flashcards" && (
@@ -1195,7 +1198,12 @@ export default function VerbsPage({
         <div
           className="overlay"
           style={{ zIndex: 1300 }}
-          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              stopGoalAchievedMusic();
+              setGoalCelebration((p) => ({ ...p, isOpen: false }));
+            }
+          }}
         >
           <div
             className="modal"
@@ -1213,8 +1221,8 @@ export default function VerbsPage({
             }}
           >
             <img
-              src={successGif}
-              alt="Celebration Success"
+              src={congratsGif}
+              alt="Celebration Congrats"
               style={{
                 width: 105,
                 height: 105,
@@ -1287,7 +1295,10 @@ export default function VerbsPage({
                 backgroundColor: "#b85c19",
                 borderColor: "#b85c19",
               }}
-              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+              onClick={() => {
+                stopGoalAchievedMusic();
+                setGoalCelebration((p) => ({ ...p, isOpen: false }));
+              }}
             >
               Awesome, Keep Going! 🚀
             </button>

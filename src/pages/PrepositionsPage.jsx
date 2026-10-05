@@ -1,20 +1,28 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
-import GoalModal from "../components/GoalModal"; // Adjust path if located elsewhere
+import GoalModal from "../components/GoalModal";
 import { PREP_CASE_CLASS, DATE_OPTIONS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
+import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
+import congratsAudio from "../assets/celebration.mp3";
 import "../App.css";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
-
 const CASES = ["Akkusativ", "Dativ", "Wechsel"];
 
-// 🔊 Web Audio Synthesizer
+const normalize = (s = "") =>
+  String(s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+
+// 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
 const getActiveAudioContext = async () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
@@ -25,7 +33,7 @@ const getActiveAudioContext = async () => {
   return ctx;
 };
 
-// 1. Success chime for adding new prepositions & milestones
+// 1. Success chime for adding new prepositions
 const playSuccessSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -54,7 +62,33 @@ const playSuccessSound = async () => {
   }
 };
 
-// 2. Duplicate warning buzzer
+// 2. Goal Celebration MP3
+let goalAudioInstance = null;
+
+const playGoalAchievedMusic = () => {
+  try {
+    if (goalAudioInstance) {
+      goalAudioInstance.pause();
+      goalAudioInstance.currentTime = 0;
+    }
+    goalAudioInstance = new Audio(congratsAudio);
+    goalAudioInstance.volume = 0.7;
+    goalAudioInstance.play().catch((err) => {
+      console.warn("Celebration audio playback error:", err);
+    });
+  } catch (err) {
+    console.warn("Failed to play goal music:", err);
+  }
+};
+
+const stopGoalAchievedMusic = () => {
+  if (goalAudioInstance) {
+    goalAudioInstance.pause();
+    goalAudioInstance.currentTime = 0;
+  }
+};
+
+// 3. Duplicate warning buzzer
 const playDuplicateSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -83,7 +117,7 @@ const playDuplicateSound = async () => {
   }
 };
 
-// 3. Danger warning for reset
+// 4. Danger warning for reset
 const playDangerSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -109,6 +143,19 @@ const playDangerSound = async () => {
   }
 };
 
+const CASE_FILTER_OPTIONS = [
+  { label: "All Cases", value: "all" },
+  { label: "Akkusativ", value: "Akkusativ" },
+  { label: "Dativ", value: "Dativ" },
+  { label: "Wechsel", value: "Wechsel" },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { label: "All Status", value: "all" },
+  { label: "In Progress", value: "In Progress" },
+  { label: "Mastered", value: "Mastered" },
+];
+
 const EXCEL_ACTIONS = [
   { label: "Excel Actions ▾", value: "" },
   { label: "📥 Import", value: "import" },
@@ -132,11 +179,14 @@ const normalizeCase = (raw) => {
 };
 
 export default function PrepositionsPage({
-  viewMode,
-  prepsList,
+  viewMode = "list",
+  prepsList = [], // default guards against undefined
   onCommitPreps,
   onRequestConfirm,
 }) {
+  // Extra guard: also covers null or non-array values
+  const list = Array.isArray(prepsList) ? prepsList : [];
+
   const [search, setSearch] = useState("");
   const [prepFilter, setPrepFilter] = useState("all");
   const [prepStatusFilter, setPrepStatusFilter] = useState("all");
@@ -148,12 +198,12 @@ export default function PrepositionsPage({
   const [prepFormData, setPrepFormData] = useState(EMPTY_FORM);
 
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
-  const [duplicateName, setDuplicateName] = useState("");
+  const [duplicateWordName, setDuplicateWordName] = useState("");
   const [successModalOpen, setSuccessModalOpen] = useState(false);
-  const [successInfo, setSuccessInfo] = useState({ prep: "", isEdit: false });
+  const [successWordInfo, setSuccessWordInfo] = useState({ prep: "", caseType: "", isEdit: false });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
-  // 🎯 Study Goals Modal & Milestone Celebration
+  // 🎯 Study Goals Modal & Milestone State
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalCelebration, setGoalCelebration] = useState({
     isOpen: false,
@@ -175,69 +225,64 @@ export default function PrepositionsPage({
 
   const fileInputRef = useRef(null);
 
-  // ---------- Goal helpers ----------
- const getGoalCounts = (list = []) => {
-  const now = new Date();
+  const getGoalCounts = (items = []) => {
+    const safeItems = Array.isArray(items) ? items : [];
+    const now = new Date();
 
-  // 1. Daily: Today 00:00:00.000 to 23:59:59.999
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    0, 0, 0, 0
-  ).getTime();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    23, 59, 59, 999
-  ).getTime();
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23, 59, 59, 999
+    ).getTime();
 
-  // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
-  // In JavaScript: Sunday is day 0, Saturday is day 6
-  const currentDayOfWeek = now.getDay(); 
+    const currentDayOfWeek = now.getDay();
 
-  const startOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek,
-    0, 0, 0, 0
-  ).getTime();
+    const startOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek,
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek + 6,
-    23, 59, 59, 999
-  ).getTime();
+    const endOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek + 6,
+      23, 59, 59, 999
+    ).getTime();
 
-  let daily = 0;
-  let weekly = 0;
+    let daily = 0;
+    let weekly = 0;
 
-  list.forEach((item) => {
-    if (!item?.createdAt) return;
-    const itemTime = new Date(item.createdAt).getTime();
+    safeItems.forEach((item) => {
+      if (!item?.createdAt) return;
+      const itemTime = new Date(item.createdAt).getTime();
 
-    // Check strict Daily window (00:00 to 23:59 today)
-    if (itemTime >= startOfToday && itemTime <= endOfToday) {
-      daily += 1;
-    }
+      if (itemTime >= startOfToday && itemTime <= endOfToday) {
+        daily += 1;
+      }
 
-    // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
-    if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
-      weekly += 1;
-    }
-  });
+      if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
+        weekly += 1;
+      }
+    });
 
-  return { daily, weekly };
-};
+    return { daily, weekly };
+  };
 
   const getSavedTargets = () => {
     try {
-      const saved = localStorage.getItem("study_goals_targets");
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      const savedCategoryTargets = localStorage.getItem("study_goals_targets");
+      if (savedCategoryTargets) {
+        const parsed = JSON.parse(savedCategoryTargets);
         return {
           daily: Number(parsed.Prepositions?.daily) || 10,
           weekly: Number(parsed.Prepositions?.weekly) || 50,
@@ -258,7 +303,7 @@ export default function PrepositionsPage({
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
-      playSuccessSound();
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -270,7 +315,7 @@ export default function PrepositionsPage({
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
-      playSuccessSound();
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -284,14 +329,12 @@ export default function PrepositionsPage({
     return false;
   };
 
-  // Live Goal Progress calculations
-  const { daily: prepDailyCount, weekly: prepWeeklyCount } = getGoalCounts(prepsList);
+  const { daily: prepDailyCount, weekly: prepWeeklyCount } = getGoalCounts(list);
   const { daily: prepDailyTarget, weekly: prepWeeklyTarget } = getSavedTargets();
 
-  // ---------- Reset ----------
   const handleConfirmReset = () => {
     playDangerSound();
-    onCommitPreps([]);
+    onCommitPreps?.([]);
     setCardIndex(0);
     setCardFlipped(false);
     setQuizIndex(0);
@@ -300,14 +343,13 @@ export default function PrepositionsPage({
     setResetModalOpen(false);
   };
 
-  // ---------- Excel export / import ----------
   const exportToExcel = () => {
-    if (!prepsList || prepsList.length === 0) {
+    if (list.length === 0) {
       alert("No prepositions to export.");
       return;
     }
 
-    const exportData = prepsList.map((item, index) => ({
+    const exportData = list.map((item, index) => ({
       "#": index + 1,
       Case: item.caseType,
       Preposition: item.prep,
@@ -348,8 +390,7 @@ export default function PrepositionsPage({
           return;
         }
 
-        const existingSet = new Set(prepsList.map((p) => p.prep?.trim().toLowerCase()));
-
+        const existingSet = new Set(list.map((p) => p.prep?.trim().toLowerCase()));
         const newEntries = [];
         const duplicateWords = [];
 
@@ -385,10 +426,12 @@ export default function PrepositionsPage({
         });
 
         if (newEntries.length > 0) {
-          playSuccessSound();
-          const updatedList = [...prepsList, ...newEntries];
-          verifyGoalMilestone(prepsList, updatedList, `${newEntries.length} new prepositions`);
-          onCommitPreps(updatedList);
+          const updatedList = [...list, ...newEntries];
+          const reachedGoal = verifyGoalMilestone(list, updatedList, `${newEntries.length} new prepositions`);
+          if (!reachedGoal) {
+            playSuccessSound();
+          }
+          onCommitPreps?.(updatedList);
         } else if (duplicateWords.length > 0) {
           playDuplicateSound();
         }
@@ -408,7 +451,6 @@ export default function PrepositionsPage({
     reader.readAsArrayBuffer(file);
   };
 
-  // ---------- AI generate ----------
   const generateGermanPrep = async () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -460,7 +502,6 @@ export default function PrepositionsPage({
     }
   };
 
-  // ---------- Filtering ----------
   const matchesDateFilter = (isoDate) => {
     if (!isoDate || dateFilter === "all") return true;
     const itemDate = new Date(isoDate);
@@ -473,28 +514,36 @@ export default function PrepositionsPage({
     return true;
   };
 
-  const filteredPreps = prepsList.filter((item) => {
-    const q = search.toLowerCase();
+  const filteredPreps = list.filter((item) => {
+    const q = normalize(search);
     const matchesSearch =
-      item.prep.toLowerCase().includes(q) ||
-      (item.meaning || "").toLowerCase().includes(q) ||
-      (item.example || "").toLowerCase().includes(q);
+      !q ||
+      normalize(item.prep).includes(q) ||
+      normalize(item.meaning).includes(q) ||
+      normalize(item.example).includes(q) ||
+      normalize(item.caseType).includes(q);
     const matchesCase = prepFilter === "all" || item.caseType === prepFilter;
     const matchesStatus = prepStatusFilter === "all" || item.status === prepStatusFilter;
     return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt);
   });
 
-  const prepsMastered = prepsList.filter((i) => i.status === "Mastered").length;
-  const countPrep = (c) => prepsList.filter((i) => i.caseType === c).length;
+  const prepsMastered = list.filter((i) => i.status === "Mastered").length;
+  const countPrep = (c) => list.filter((i) => i.caseType === c).length;
 
-  // ---------- Add / Edit ----------
+  const openAddModal = () => {
+    setEditingPrepId(null);
+    setAiError("");
+    setPrepFormData(EMPTY_FORM);
+    setModalOpen(true);
+  };
+
   const handleSaveModal = (e) => {
     e.preventDefault();
 
     const cleanPrep = prepFormData.prep.trim();
     if (!cleanPrep || !prepFormData.meaning.trim()) return;
 
-    const isDuplicate = prepsList.some(
+    const isDuplicate = list.some(
       (item) =>
         item.prep.trim().toLowerCase() === cleanPrep.toLowerCase() &&
         item.id !== editingPrepId
@@ -502,7 +551,7 @@ export default function PrepositionsPage({
 
     if (isDuplicate) {
       playDuplicateSound();
-      setDuplicateName(cleanPrep);
+      setDuplicateWordName(cleanPrep);
       setDuplicateModalOpen(true);
       return;
     }
@@ -511,13 +560,12 @@ export default function PrepositionsPage({
     let updated;
 
     if (isEditing) {
-      updated = prepsList.map((item) =>
+      updated = list.map((item) =>
         item.id === editingPrepId ? { ...item, ...prepFormData, prep: cleanPrep } : item
       );
     } else {
-      playSuccessSound();
       updated = [
-        ...prepsList,
+        ...list,
         {
           id: Date.now(),
           ...prepFormData,
@@ -527,19 +575,23 @@ export default function PrepositionsPage({
       ];
     }
 
-    const reachedGoal = !isEditing && verifyGoalMilestone(prepsList, updated, cleanPrep);
+    const reachedGoal = !isEditing && verifyGoalMilestone(list, updated, cleanPrep);
 
-    onCommitPreps(updated);
+    if (!reachedGoal && !isEditing) {
+      playSuccessSound();
+    }
+
+    onCommitPreps?.(updated);
     setModalOpen(false);
 
     if (!reachedGoal) {
-      setSuccessInfo({ prep: cleanPrep, isEdit: isEditing });
+      setSuccessWordInfo({ prep: cleanPrep, caseType: prepFormData.caseType, isEdit: isEditing });
       setSuccessModalOpen(true);
     }
   };
 
-  const prepCard = prepsList[cardIndex];
-  const prepQuizWord = prepsList[quizIndex];
+  const prepCard = list[cardIndex];
+  const prepQuizWord = list[quizIndex];
 
   return (
     <>
@@ -547,30 +599,13 @@ export default function PrepositionsPage({
         <div className="section">
           <div className="stats-grid">
             <div className="stat dark">
-              <div className="stat-head"><span className="stat-label">TOTAL PREPOSITIONS</span><span className="stat-pill dark">{prepsMastered} mastered</span></div>
-              <div className="stat-foot"><span className="stat-value">{prepsList.length}</span></div>
-            </div>
-
-            {/* 🎯 Preposition Daily Goal Card */}
-            <div 
-              className="stat" 
-              style={{ cursor: "pointer", border: "1px solid #fed7aa" }} 
-              onClick={() => setGoalModalOpen(true)}
-              title="Click to manage preposition study targets"
-            >
               <div className="stat-head">
-                <span className="stat-label">TODAY'S GOAL</span>
-                <span className="stat-pill" style={{ backgroundColor: "#ffedd5", color: "#c2410c", fontWeight: 700 }}>
-                  🎯 {prepDailyCount >= prepDailyTarget ? "Achieved!" : "In Progress"}
-                </span>
+                <span className="stat-label">TOTAL PREPOSITIONS</span>
+                <span className="stat-pill dark">{prepsMastered} mastered</span>
               </div>
               <div className="stat-foot">
-                <span className="stat-value" style={{ color: "#c2410c" }}>
-                  {prepDailyCount} <span style={{ fontSize: 16, color: "var(--muted)" }}>/ {prepDailyTarget}</span>
-                </span>
-                <span className="stat-note" style={{ color: "#9a3412" }}>
-                  Week: {prepWeeklyCount}/{prepWeeklyTarget}
-                </span>
+                <span className="stat-value">{list.length}</span>
+                <span className="stat-note" style={{ color: "#a8a29e" }}>all cases</span>
               </div>
             </div>
 
@@ -590,7 +625,7 @@ export default function PrepositionsPage({
 
           <div className="toolbar">
             <div className="search">
-              <span role="img" aria-label="search">🔍</span>
+              <span>🔍</span>
               <input
                 type="search"
                 placeholder="Search preposition, meaning, or sentence..."
@@ -600,42 +635,25 @@ export default function PrepositionsPage({
             </div>
 
             <div className="filters-cluster">
-              {/* 🎯 Goals Launcher Button */}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setGoalModalOpen(true)}
-                title="Set and track preposition study goals"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  borderColor: "#fed7aa",
-                  backgroundColor: "#fff7ed",
-                  color: "#9a3412",
-                  fontWeight: 600,
-                }}
-              >
-                <span>🎯</span> Goals ({prepDailyCount}/{prepDailyTarget})
-              </button>
-
               <div className="filters">
-                <span className="filters-label">Case:</span>
-                <button onClick={() => setPrepFilter("all")} className={`chip all ${prepFilter === "all" ? "on" : ""}`}>All</button>
-                <button onClick={() => setPrepFilter("Akkusativ")} className={`chip akku ${prepFilter === "Akkusativ" ? "on" : ""}`}>Akkusativ</button>
-                <button onClick={() => setPrepFilter("Dativ")} className={`chip dativ ${prepFilter === "Dativ" ? "on" : ""}`}>Dativ</button>
-                <button onClick={() => setPrepFilter("Wechsel")} className={`chip wechsel ${prepFilter === "Wechsel" ? "on" : ""}`}>Wechsel</button>
+                <CustomDropdown
+                  icon="🏷"
+                  value={prepFilter}
+                  options={CASE_FILTER_OPTIONS}
+                  onChange={(val) => setPrepFilter(val)}
+                />
               </div>
 
               <div className="filters">
-                <span className="filters-label">Status:</span>
-                <button onClick={() => setPrepStatusFilter("all")} className={`chip all ${prepStatusFilter === "all" ? "on" : ""}`}>All</button>
-                <button onClick={() => setPrepStatusFilter("In Progress")} className={`chip all ${prepStatusFilter === "In Progress" ? "on" : ""}`}>In Progress</button>
-                <button onClick={() => setPrepStatusFilter("Mastered")} className={`chip das ${prepStatusFilter === "Mastered" ? "on" : ""}`}>Mastered</button>
+                <CustomDropdown
+                  icon="📌"
+                  value={prepStatusFilter}
+                  options={STATUS_FILTER_OPTIONS}
+                  onChange={(val) => setPrepStatusFilter(val)}
+                />
               </div>
 
               <div className="filters">
-                <span className="filters-label">Created:</span>
                 <CustomDropdown
                   icon="📅"
                   value={dateFilter}
@@ -643,7 +661,12 @@ export default function PrepositionsPage({
                   onChange={(val) => setDateFilter(val)}
                 />
                 {dateFilter === "custom" && (
-                  <input type="date" className="date-select" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                  <input
+                    type="date"
+                    className="date-select"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                  />
                 )}
               </div>
 
@@ -669,6 +692,15 @@ export default function PrepositionsPage({
 
               <button
                 type="button"
+                onClick={() => setGoalModalOpen(true)}
+                className="btn btn-secondary"
+                title="Configure Daily & Weekly Goals"
+              >
+                🎯 Goals
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   playDangerSound();
                   setResetModalOpen(true);
@@ -682,18 +714,6 @@ export default function PrepositionsPage({
                 title="Reset all prepositions"
               >
                 🔄 Reset
-              </button>
-
-              <button
-                onClick={() => {
-                  setEditingPrepId(null);
-                  setAiError("");
-                  setPrepFormData(EMPTY_FORM);
-                  setModalOpen(true);
-                }}
-                className="btn btn-primary"
-              >
-                + Add Preposition
               </button>
             </div>
           </div>
@@ -718,7 +738,13 @@ export default function PrepositionsPage({
                 <div className="c-status">
                   <button
                     onClick={() =>
-                      onCommitPreps(prepsList.map((i) => i.id === item.id ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" } : i))
+                      onCommitPreps?.(
+                        list.map((i) =>
+                          i.id === item.id
+                            ? { ...i, status: i.status === "Mastered" ? "In Progress" : "Mastered" }
+                            : i
+                        )
+                      )
                     }
                     className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
                   >
@@ -746,8 +772,8 @@ export default function PrepositionsPage({
                   </button>
                   <button
                     onClick={() =>
-                      onRequestConfirm("Delete Preposition", `Are you sure you want to delete "${item.prep}"?`, () =>
-                        onCommitPreps(prepsList.filter((i) => i.id !== item.id))
+                      onRequestConfirm?.("Delete Preposition", `Are you sure you want to delete "${item.prep}"?`, () =>
+                        onCommitPreps?.(list.filter((i) => i.id !== item.id))
                       )
                     }
                     className="icon-btn"
@@ -759,6 +785,18 @@ export default function PrepositionsPage({
             ))}
           </div>
         </div>
+      )}
+
+      {/* ➕ Sticky Floating Bottom-Right Add Button */}
+      {viewMode === "list" && (
+        <button
+          onClick={openAddModal}
+          className="fab-btn"
+          title="Add Preposition"
+          aria-label="Add Preposition"
+        >
+          +
+        </button>
       )}
 
       {viewMode === "flashcards" && (
@@ -787,9 +825,9 @@ export default function PrepositionsPage({
               <div className="flash-controls">
                 <button className="btn btn-secondary" disabled={cardIndex === 0} onClick={() => { setCardIndex(cardIndex - 1); setCardFlipped(false); }}>◀ Previous</button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${prepCard.prep}. ${prepCard.example || ""}`)}>🔊 Pronounce</button>
-                <button className="btn btn-secondary" disabled={cardIndex >= prepsList.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>Next ▶</button>
+                <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>Next ▶</button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>Preposition {cardIndex + 1} of {prepsList.length}</span>
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>Preposition {cardIndex + 1} of {list.length}</span>
             </div>
           )}
         </div>
@@ -802,7 +840,7 @@ export default function PrepositionsPage({
           ) : (
             <div className="quiz">
               <div className="quiz-head">
-                <span>Question {quizIndex + 1} of {prepsList.length}</span>
+                <span>Question {quizIndex + 1} of {list.length}</span>
                 <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
               </div>
               <div className="quiz-card">
@@ -833,16 +871,16 @@ export default function PrepositionsPage({
                     className="btn btn-primary"
                     onClick={() => {
                       setQuizFeedback(null);
-                      if (quizIndex < prepsList.length - 1) {
+                      if (quizIndex < list.length - 1) {
                         setQuizIndex((i) => i + 1);
                       } else {
-                        alert(`Preposition Quiz finished! Score: ${quizScore}/${prepsList.length}`);
+                        alert(`Preposition Quiz finished! Score: ${quizScore}/${list.length}`);
                         setQuizIndex(0);
                         setQuizScore(0);
                       }
                     }}
                   >
-                    {quizIndex < prepsList.length - 1 ? "Next Preposition" : "Restart"}
+                    {quizIndex < list.length - 1 ? "Next Preposition" : "Restart"}
                   </button>
                 </div>
               )}
@@ -1035,7 +1073,7 @@ export default function PrepositionsPage({
             />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--ink)" }}>Preposition Already Exists!</h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
-              <strong>"{duplicateName}"</strong> is already in your preposition list.
+              <strong>"{duplicateWordName}"</strong> is already in your preposition list.
             </p>
             <button
               type="button"
@@ -1054,7 +1092,12 @@ export default function PrepositionsPage({
         <div
           className="overlay"
           style={{ zIndex: 1300 }}
-          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              stopGoalAchievedMusic();
+              setGoalCelebration((p) => ({ ...p, isOpen: false }));
+            }
+          }}
         >
           <div
             className="modal"
@@ -1072,8 +1115,8 @@ export default function PrepositionsPage({
             }}
           >
             <img
-              src={successGif}
-              alt="Celebration Success"
+              src={congratsGif}
+              alt="Celebration Congrats"
               style={{ width: 105, height: 105, objectFit: "contain", marginBottom: 12 }}
             />
 
@@ -1141,7 +1184,10 @@ export default function PrepositionsPage({
                 backgroundColor: "#b85c19",
                 borderColor: "#b85c19",
               }}
-              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+              onClick={() => {
+                stopGoalAchievedMusic();
+                setGoalCelebration((p) => ({ ...p, isOpen: false }));
+              }}
             >
               Awesome, Keep Going! 🚀
             </button>
@@ -1174,10 +1220,10 @@ export default function PrepositionsPage({
               style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }}
             />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--brand, #16a34a)" }}>
-              {successInfo.isEdit ? "Preposition Updated!" : "Preposition Added Successfully!"}
+              {successWordInfo.isEdit ? "Preposition Updated!" : "Preposition Added Successfully!"}
             </h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
-              <strong>"{successInfo.prep}"</strong> has been saved to your prepositions.
+              <strong>"{successWordInfo.prep}"</strong> ({successWordInfo.caseType}) has been saved to your vocabulary.
             </p>
             <button
               type="button"

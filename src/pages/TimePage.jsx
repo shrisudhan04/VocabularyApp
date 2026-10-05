@@ -1,14 +1,146 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import GoalModal from "../components/GoalModal";
 import { TIME_RULES, TIME_FLASHCARDS, TIME_QUIZ } from "../constants/grammarData";
 import { DATE_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
+import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
+import congratsAudio from "../assets/celebration.mp3";
 import "../App.css";
+
+// 🔍 Search helper: lowercase, strip accents, trim
+const normalize = (s = "") =>
+  String(s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+
+// 🔊 Robust Web Audio Synthesizer with automatic AudioContext resumption
+const getActiveAudioContext = async () => {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  const ctx = new AudioCtx();
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+  return ctx;
+};
+
+// 1. Success chime for adding new expressions
+const playSuccessSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      const startAt = ctx.currentTime + index * 0.08;
+      osc.frequency.setValueAtTime(freq, startAt);
+
+      gain.gain.setValueAtTime(0.15, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.3);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 2. Goal Celebration MP3
+let goalAudioInstance = null;
+
+const playGoalAchievedMusic = () => {
+  try {
+    if (goalAudioInstance) {
+      goalAudioInstance.pause();
+      goalAudioInstance.currentTime = 0;
+    }
+    goalAudioInstance = new Audio(congratsAudio);
+    goalAudioInstance.volume = 0.7;
+    goalAudioInstance.play().catch((err) => {
+      console.warn("Celebration audio playback error:", err);
+    });
+  } catch (err) {
+    console.warn("Failed to play goal music:", err);
+  }
+};
+
+const stopGoalAchievedMusic = () => {
+  if (goalAudioInstance) {
+    goalAudioInstance.pause();
+    goalAudioInstance.currentTime = 0;
+  }
+};
+
+// 3. Duplicate warning buzzer
+const playDuplicateSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    [0, 0.16].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sawtooth";
+      const startAt = ctx.currentTime + delay;
+      osc.frequency.setValueAtTime(260, startAt);
+      osc.frequency.linearRampToValueAtTime(160, startAt + 0.14);
+
+      gain.gain.setValueAtTime(0.2, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.14);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startAt);
+      osc.stop(startAt + 0.14);
+    });
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
+
+// 4. Danger warning for reset
+const playDangerSound = async () => {
+  try {
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.35);
+
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (err) {
+    console.warn("Audio playback failed:", err);
+  }
+};
 
 const VIEW_FORMAT_OPTIONS = [
   { label: "⚖️ Compare Both", value: "all" },
@@ -48,6 +180,8 @@ export default function TimePage({
   const [successWordInfo, setSuccessWordInfo] = useState({ digital: "", formal: "", isEdit: false });
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
+  // 🎯 Study Goals Modal & Milestone State
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [goalCelebration, setGoalCelebration] = useState({
     isOpen: false,
     goalType: "daily",
@@ -68,62 +202,57 @@ export default function TimePage({
 
   const fileInputRef = useRef(null);
 
-const getGoalCounts = (list = []) => {
-  const now = new Date();
+  const getGoalCounts = (list = []) => {
+    const now = new Date();
 
-  // 1. Daily: Today 00:00:00.000 to 23:59:59.999
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    0, 0, 0, 0
-  ).getTime();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    23, 59, 59, 999
-  ).getTime();
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23, 59, 59, 999
+    ).getTime();
 
-  // 2. Weekly: Sunday 12:00 AM (00:00:00.000) to Saturday 11:59 PM (23:59:59.999)
-  // In JavaScript: Sunday is day 0, Saturday is day 6
-  const currentDayOfWeek = now.getDay(); 
+    const currentDayOfWeek = now.getDay();
 
-  const startOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek,
-    0, 0, 0, 0
-  ).getTime();
+    const startOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek,
+      0, 0, 0, 0
+    ).getTime();
 
-  const endOfWeek = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - currentDayOfWeek + 6,
-    23, 59, 59, 999
-  ).getTime();
+    const endOfWeek = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - currentDayOfWeek + 6,
+      23, 59, 59, 999
+    ).getTime();
 
-  let daily = 0;
-  let weekly = 0;
+    let daily = 0;
+    let weekly = 0;
 
-  list.forEach((item) => {
-    if (!item?.createdAt) return;
-    const itemTime = new Date(item.createdAt).getTime();
+    list.forEach((item) => {
+      if (!item?.createdAt) return;
+      const itemTime = new Date(item.createdAt).getTime();
 
-    // Check strict Daily window (00:00 to 23:59 today)
-    if (itemTime >= startOfToday && itemTime <= endOfToday) {
-      daily += 1;
-    }
+      if (itemTime >= startOfToday && itemTime <= endOfToday) {
+        daily += 1;
+      }
 
-    // Check strict Weekly window (Sunday 00:00 to Saturday 23:59)
-    if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
-      weekly += 1;
-    }
-  });
+      if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
+        weekly += 1;
+      }
+    });
 
-  return { daily, weekly };
-};
+    return { daily, weekly };
+  };
 
   const getSavedTargets = () => {
     try {
@@ -150,6 +279,7 @@ const getGoalCounts = (list = []) => {
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -161,6 +291,7 @@ const getGoalCounts = (list = []) => {
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -174,7 +305,11 @@ const getGoalCounts = (list = []) => {
     return false;
   };
 
+  const { daily: timeDailyCount, weekly: timeWeeklyCount } = getGoalCounts(timeList);
+  const { daily: timeDailyTarget, weekly: timeWeeklyTarget } = getSavedTargets();
+
   const handleConfirmReset = () => {
+    playDangerSound();
     onCommitTimes([]);
     setCardIndex(0);
     setCardFlipped(false);
@@ -269,8 +404,13 @@ const getGoalCounts = (list = []) => {
 
         if (newEntries.length > 0) {
           const updatedList = [...timeList, ...newEntries];
-          verifyGoalMilestone(timeList, updatedList, `${newEntries.length} new time expressions`);
+          const reachedGoal = verifyGoalMilestone(timeList, updatedList, `${newEntries.length} new time expressions`);
+          if (!reachedGoal) {
+            playSuccessSound();
+          }
           onCommitTimes(updatedList);
+        } else if (duplicateWords.length > 0) {
+          playDuplicateSound();
         }
 
         setImportSummary({
@@ -335,7 +475,7 @@ const getGoalCounts = (list = []) => {
         },
       };
 
-      const candidateModels = ["gemini-3.8-flash", "gemini-2.0-flash"];
+      const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
       let response;
 
       for (const modelName of candidateModels) {
@@ -390,15 +530,23 @@ const getGoalCounts = (list = []) => {
   };
 
   const filteredTimes = timeList.filter((item) => {
-    const q = search.toLowerCase();
+    const q = normalize(search);
     const matchesSearch =
-      item.digital.toLowerCase().includes(q) ||
-      item.formal.toLowerCase().includes(q) ||
-      (item.informal && item.informal.toLowerCase().includes(q)) ||
-      (item.rule && item.rule.toLowerCase().includes(q));
+      !q ||
+      normalize(item.digital).includes(q) ||
+      normalize(item.formal).includes(q) ||
+      normalize(item.informal).includes(q) ||
+      normalize(item.rule).includes(q);
 
     return matchesSearch && matchesDateFilter(item.createdAt);
   });
+
+  const openAddModal = () => {
+    setEditingTimeId(null);
+    setAiError("");
+    setTimeFormData({ digital: "", formal: "", informal: "", rule: "" });
+    setModalOpen(true);
+  };
 
   const handleSaveModal = (e) => {
     e.preventDefault();
@@ -415,6 +563,7 @@ const getGoalCounts = (list = []) => {
     );
 
     if (isDuplicate) {
+      playDuplicateSound();
       setDuplicateWordName(cleanDigital);
       setDuplicateModalOpen(true);
       return;
@@ -439,6 +588,10 @@ const getGoalCounts = (list = []) => {
     }
 
     const reachedGoal = !isEditing && verifyGoalMilestone(timeList, updated, cleanDigital);
+
+    if (!reachedGoal && !isEditing) {
+      playSuccessSound();
+    }
 
     onCommitTimes(updated);
     setModalOpen(false);
@@ -560,7 +713,19 @@ const getGoalCounts = (list = []) => {
 
               <button
                 type="button"
-                onClick={() => setResetModalOpen(true)}
+                onClick={() => setGoalModalOpen(true)}
+                className="btn btn-secondary"
+                title="Configure Daily & Weekly Goals"
+              >
+                🎯 Goals
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playDangerSound();
+                  setResetModalOpen(true);
+                }}
                 className="btn btn-secondary"
                 style={{
                   color: "#dc2626",
@@ -570,19 +735,6 @@ const getGoalCounts = (list = []) => {
                 title="Reset all time expressions"
               >
                 🔄 Reset
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingTimeId(null);
-                  setAiError("");
-                  setTimeFormData({ digital: "", formal: "", informal: "", rule: "" });
-                  setModalOpen(true);
-                }}
-                className="btn btn-primary"
-              >
-                + Add Time
               </button>
             </div>
           </div>
@@ -671,6 +823,18 @@ const getGoalCounts = (list = []) => {
         </div>
       )}
 
+      {/* Floating Action Button */}
+      {viewMode === "list" && (
+        <button
+          onClick={openAddModal}
+          className="fab-btn"
+          title="Add Time"
+          aria-label="Add Time"
+        >
+          +
+        </button>
+      )}
+
       {viewMode === "flashcards" && (
         <div className="panel">
           <div className="flash-wrap">
@@ -748,6 +912,21 @@ const getGoalCounts = (list = []) => {
           </div>
         </div>
       )}
+
+      {/* 🎯 Study Goals Modal */}
+      <GoalModal
+        isOpen={goalModalOpen}
+        onClose={() => setGoalModalOpen(false)}
+        defaultCategory="Time"
+        categoryStats={{
+          Time: {
+            dailyCurrent: timeDailyCount,
+            weeklyCurrent: timeWeeklyCount,
+          },
+        }}
+        initialDailyTarget={timeDailyTarget}
+        initialWeeklyTarget={timeWeeklyTarget}
+      />
 
       {/* Add / Edit Time Modal */}
       {modalOpen && (
@@ -936,7 +1115,12 @@ const getGoalCounts = (list = []) => {
         <div
           className="overlay"
           style={{ zIndex: 1300 }}
-          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              stopGoalAchievedMusic();
+              setGoalCelebration((p) => ({ ...p, isOpen: false }));
+            }
+          }}
         >
           <div
             className="modal"
@@ -954,8 +1138,8 @@ const getGoalCounts = (list = []) => {
             }}
           >
             <img
-              src={successGif}
-              alt="Celebration Success"
+              src={congratsGif}
+              alt="Celebration Congrats"
               style={{
                 width: 105,
                 height: 105,
@@ -1028,7 +1212,10 @@ const getGoalCounts = (list = []) => {
                 backgroundColor: "#b85c19",
                 borderColor: "#b85c19",
               }}
-              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+              onClick={() => {
+                stopGoalAchievedMusic();
+                setGoalCelebration((p) => ({ ...p, isOpen: false }));
+              }}
             >
               Awesome, Keep Going! 🚀
             </button>

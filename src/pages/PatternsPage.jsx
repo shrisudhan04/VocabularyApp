@@ -1,4 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import {
+  requestMobileNotificationPermission,
+  startHourlyNounNotifier,
+} from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
 import GoalModal from "../components/GoalModal";
@@ -7,7 +11,9 @@ import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
+import congratsGif from "../assets/Congrats.gif";
 import warningRedGif from "../assets/WarningRed.gif";
+import congratsAudio from "../assets/celebration.mp3";
 import "../App.css";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
@@ -60,7 +66,33 @@ const playSuccessSound = async () => {
   }
 };
 
-// 2. Duplicate warning buzzer
+// 2. Goal Celebration MP3
+let goalAudioInstance = null;
+
+const playGoalAchievedMusic = () => {
+  try {
+    if (goalAudioInstance) {
+      goalAudioInstance.pause();
+      goalAudioInstance.currentTime = 0;
+    }
+    goalAudioInstance = new Audio(congratsAudio);
+    goalAudioInstance.volume = 0.7;
+    goalAudioInstance.play().catch((err) => {
+      console.warn("Celebration audio playback error:", err);
+    });
+  } catch (err) {
+    console.warn("Failed to play goal music:", err);
+  }
+};
+
+const stopGoalAchievedMusic = () => {
+  if (goalAudioInstance) {
+    goalAudioInstance.pause();
+    goalAudioInstance.currentTime = 0;
+  }
+};
+
+// 3. Duplicate warning buzzer
 const playDuplicateSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -89,7 +121,7 @@ const playDuplicateSound = async () => {
   }
 };
 
-// 3. Danger warning for reset
+// 4. Danger warning for reset
 const playDangerSound = async () => {
   try {
     const ctx = await getActiveAudioContext();
@@ -184,7 +216,35 @@ export default function PatternsPage({
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
 
+  const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Hourly notifier for patterns
+  useEffect(() => {
+    let timerId = null;
+    if (hourlyAlertsActive && patternsList?.length > 0) {
+      const formattedForNotifier = patternsList.map((p) => ({
+        article: p.article,
+        noun: p.ending,
+        meaning: p.rule,
+      }));
+      timerId = startHourlyNounNotifier(formattedForNotifier);
+    }
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [hourlyAlertsActive, patternsList]);
+
+  const handleToggleHourlyNotifications = async () => {
+    if (!hourlyAlertsActive) {
+      const granted = await requestMobileNotificationPermission();
+      if (granted) {
+        setHourlyAlertsActive(true);
+      }
+    } else {
+      setHourlyAlertsActive(false);
+    }
+  };
 
   // ---------- Goal helpers ----------
   const getGoalCounts = (list = []) => {
@@ -264,7 +324,7 @@ export default function PatternsPage({
     const nextCounts = getGoalCounts(nextList);
 
     if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
-      playSuccessSound();
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "daily",
@@ -276,7 +336,7 @@ export default function PatternsPage({
     }
 
     if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
-      playSuccessSound();
+      playGoalAchievedMusic();
       setGoalCelebration({
         isOpen: true,
         goalType: "weekly",
@@ -397,9 +457,11 @@ export default function PatternsPage({
         });
 
         if (newEntries.length > 0) {
-          playSuccessSound();
           const updatedList = [...patternsList, ...newEntries];
-          verifyGoalMilestone(patternsList, updatedList, `${newEntries.length} new patterns`);
+          const reachedGoal = verifyGoalMilestone(patternsList, updatedList, `${newEntries.length} new patterns`);
+          if (!reachedGoal) {
+            playSuccessSound();
+          }
           onCommitPatterns(updatedList);
         } else if (duplicateWords.length > 0) {
           playDuplicateSound();
@@ -551,7 +613,6 @@ export default function PatternsPage({
         item.id === editingPatternId ? { ...item, ...patternFormData, ending: cleanEnding } : item
       );
     } else {
-      playSuccessSound();
       updated = [
         ...patternsList,
         {
@@ -566,6 +627,10 @@ export default function PatternsPage({
     const reachedGoal =
       !isEditing &&
       verifyGoalMilestone(patternsList, updated, `${patternFormData.article} ${cleanEnding}`);
+
+    if (!reachedGoal && !isEditing) {
+      playSuccessSound();
+    }
 
     onCommitPatterns(updated);
     setModalOpen(false);
@@ -693,6 +758,24 @@ export default function PatternsPage({
 
               <button
                 type="button"
+                onClick={handleToggleHourlyNotifications}
+                className="btn btn-secondary"
+                title="Toggle Hourly Word Notification"
+              >
+                {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setGoalModalOpen(true)}
+                className="btn btn-secondary"
+                title="Configure Daily & Weekly Goals"
+              >
+                🎯 Goals
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   playDangerSound();
                   setResetModalOpen(true);
@@ -706,6 +789,10 @@ export default function PatternsPage({
                 title="Reset all patterns"
               >
                 🔄 Reset
+              </button>
+
+              <button onClick={openAddModal} className="btn btn-primary">
+                + Add Pattern
               </button>
             </div>
           </div>
@@ -1085,7 +1172,12 @@ export default function PatternsPage({
         <div
           className="overlay"
           style={{ zIndex: 1300 }}
-          onClick={(e) => e.target === e.currentTarget && setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              stopGoalAchievedMusic();
+              setGoalCelebration((p) => ({ ...p, isOpen: false }));
+            }
+          }}
         >
           <div
             className="modal"
@@ -1103,8 +1195,8 @@ export default function PatternsPage({
             }}
           >
             <img
-              src={successGif}
-              alt="Celebration Success"
+              src={congratsGif}
+              alt="Celebration Congrats"
               style={{ width: 105, height: 105, objectFit: "contain", marginBottom: 12 }}
             />
 
@@ -1172,7 +1264,10 @@ export default function PatternsPage({
                 backgroundColor: "#b85c19",
                 borderColor: "#b85c19",
               }}
-              onClick={() => setGoalCelebration((p) => ({ ...p, isOpen: false }))}
+              onClick={() => {
+                stopGoalAchievedMusic();
+                setGoalCelebration((p) => ({ ...p, isOpen: false }));
+              }}
             >
               Awesome, Keep Going! 🚀
             </button>

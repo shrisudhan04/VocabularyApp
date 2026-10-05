@@ -599,11 +599,11 @@ textarea:focus-visible {
 }
 
 .filters-cluster::-webkit-scrollbar {
-  height: 4px;
+  height: 0px;
 }
 
 .filters-cluster::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: #ffffff;
   border-radius: 4px;
 }
 

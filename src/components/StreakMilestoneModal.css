@@ -1733,7 +1733,7 @@ textarea:focus-visible {
 /* Removes empty top/bottom space around the flame */
 .milestone-video-container {
   width: 100%;
-  height: 120px;
+  height: 170px;
   background: transparent;
   overflow: hidden;
   display: flex;

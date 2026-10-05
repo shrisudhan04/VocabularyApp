@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import "./App.css";
 
 // Utilities & Database
@@ -16,6 +16,10 @@ import {
   loadFromVaultDB,
   writeToVaultDB,
 } from "./utils/db";
+import {
+  requestMobileNotificationPermission,
+  startHourlyNounNotifier,
+} from "./utils/hourlyWordNotifier";
 
 // Constants
 import {
@@ -223,6 +227,34 @@ export default function App() {
     initVault();
   }, []);
 
+  // ---------------------------------------------------------------
+  // Hourly noun notifier (hooks must stay above the early return below)
+  // ---------------------------------------------------------------
+  const vocabRef = useRef(vocabList);
+  useEffect(() => {
+    vocabRef.current = vocabList;
+  }, [vocabList]);
+
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
+  );
+
+  useEffect(() => {
+    const id = startHourlyNounNotifier(() => vocabRef.current);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestMobileNotificationPermission();
+    setNotifPermission(
+      granted
+        ? "granted"
+        : typeof Notification !== "undefined"
+        ? Notification.permission
+        : "unsupported"
+    );
+  };
+
   const commitNouns = async (newList) => {
     setVocabList(newList);
     await writeToVaultDB(STORE_NAME, BACKUP_KEY, newList);
@@ -290,6 +322,12 @@ export default function App() {
 
       <main className="page">
         <div className="container">
+          {notifPermission === "default" && (
+            <button onClick={handleEnableNotifications}>
+              🔔 Enable hourly word notifications
+            </button>
+          )}
+
           <SubTabs
             currentView={subViews[mainCategory]}
             onChangeView={(view) =>

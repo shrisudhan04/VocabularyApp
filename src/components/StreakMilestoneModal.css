@@ -1,4 +1,20 @@
 /* src/components/StreakMilestoneModal.css */
+/* --- Mobile Adjustments --- */
+@media (max-width: 480px) {
+  /* 1. Reduce the container height so it doesn't take unnecessary vertical space */
+  .milestone-video-container {
+    height: 140px;
+  }
+
+  /* 2. Cut down the top padding right below the video */
+  .milestone-content {
+    padding-top: 10px;
+    padding-bottom: 20px;
+    padding-left: 16px;
+    padding-right: 16px;
+    gap: 8px;
+  }
+}
 .milestone-backdrop {
   position: fixed;
   inset: 0;

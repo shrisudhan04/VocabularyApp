@@ -1160,7 +1160,27 @@ export default function NounsPage({
       )
     );
 
-  // 1-Second Auto Advance Engine
+  // Moves to the next question (or finishes the quiz)
+  const goToNextQuestion = (finalScore) => {
+    setQuizAnswerState("idle");
+    setQuizFeedback(null);
+    setQuizTextInput("");
+
+    if (quizIndex < quizList.length - 1) {
+      setQuizIndex((prev) => prev + 1);
+    } else {
+      setTimerRunning(false);
+      setTimeLeft(null);
+      setScoreModal({
+        isOpen: true,
+        reason: "finish",
+        score: finalScore,
+        total: quizList.length,
+      });
+    }
+  };
+
+  // Correct -> auto advance after 1s | Wrong -> stay and wait for Next button
   const triggerAutoAdvance = (isCorrect) => {
     setQuizAnswerState(isCorrect ? "correct" : "wrong");
 
@@ -1174,24 +1194,17 @@ export default function NounsPage({
       clearTimeout(autoNextTimeoutRef.current);
     }
 
-    autoNextTimeoutRef.current = setTimeout(() => {
-      setQuizAnswerState("idle");
-      setQuizFeedback(null);
-      setQuizTextInput("");
+    if (!isCorrect) return; // wait for the user to click Next
 
-      if (quizIndex < quizList.length - 1) {
-        setQuizIndex((prev) => prev + 1);
-      } else {
-        setTimerRunning(false);
-        setTimeLeft(null);
-        setScoreModal({
-          isOpen: true,
-          reason: "finish",
-          score: isCorrect ? quizScore + 1 : quizScore,
-          total: quizList.length,
-        });
-      }
+    autoNextTimeoutRef.current = setTimeout(() => {
+      goToNextQuestion(quizScore + 1);
     }, 1000);
+  };
+
+  // Manual forward button (only used after a wrong answer)
+  const handleForwardClick = () => {
+    if (quizAnswerState !== "wrong") return;
+    goToNextQuestion(quizScore);
   };
 
   // Article selection handler
@@ -1630,7 +1643,7 @@ export default function NounsPage({
         </div>
       )}
 
-      {/* 🎯 QUIZ VIEW WITH AUTO ADVANCE AND COLOR TRANSITIONS */}
+      {/* 🎯 QUIZ VIEW: correct = auto advance, wrong = stay + Next button */}
       {viewMode === "quiz" && (
         <div className="panel" style={getQuizPanelStyle()}>
           <div
@@ -2067,9 +2080,30 @@ export default function NounsPage({
                   >
                     {quizFeedback}
                   </p>
-                  <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                    Moving to next word in 1 second...
-                  </span>
+
+                  {quizAnswerState === "correct" && (
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                      Moving to next word in 1 second...
+                    </span>
+                  )}
+
+                  {quizAnswerState === "wrong" && (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      autoFocus
+                      onClick={handleForwardClick}
+                      style={{
+                        marginTop: 10,
+                        height: 44,
+                        padding: "0 22px",
+                        borderRadius: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {quizIndex < quizList.length - 1 ? "Next ▶" : "Finish 🏁"}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

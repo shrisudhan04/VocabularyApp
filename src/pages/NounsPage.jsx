@@ -526,6 +526,7 @@ export default function NounsPage({
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
   const [quizMode, setQuizMode] = useState("article");
   const [quizTextInput, setQuizTextInput] = useState("");
+  const [quizSelectedArticle, setQuizSelectedArticle] = useState(""); // for English -> Noun mode
 
   // Quiz Controls: Question Count Limit & Timer
   const [wordCountInput, setWordCountInput] = useState("");
@@ -684,6 +685,7 @@ export default function NounsPage({
     setQuizFeedback(null);
     setQuizAnswerState("idle");
     setQuizTextInput("");
+    setQuizSelectedArticle("");
   };
 
   const handleQuizStatusChange = (val) => {
@@ -1165,6 +1167,7 @@ export default function NounsPage({
     setQuizAnswerState("idle");
     setQuizFeedback(null);
     setQuizTextInput("");
+    setQuizSelectedArticle("");
 
     if (quizIndex < quizList.length - 1) {
       setQuizIndex((prev) => prev + 1);
@@ -1231,13 +1234,24 @@ export default function NounsPage({
     let ok = false;
 
     if (quizMode === "english") {
-      const targetNoun = normalize(nounQuizWord.noun);
-      ok = entered === targetNoun;
+      if (!quizSelectedArticle) return; // article must be chosen first
+
+      const articleOk = quizSelectedArticle === nounQuizWord.article;
+      const nounOk = entered === normalize(nounQuizWord.noun);
+      ok = articleOk && nounOk;
       if (ok) setQuizScore((prev) => prev + 1);
+
+      let detail = "";
+      if (!ok) {
+        if (!articleOk && !nounOk) detail = "Both the article and the noun are wrong.";
+        else if (!articleOk) detail = "The noun is right, but the article is wrong.";
+        else detail = "The article is right, but the noun is wrong.";
+      }
+
       setQuizFeedback(
         ok
           ? "Correct! 🎉"
-          : `Incorrect. The correct word is "${nounQuizWord.article} ${nounQuizWord.noun}".`
+          : `Incorrect. ${detail} The correct answer is "${nounQuizWord.article} ${nounQuizWord.noun}".`
       );
     } else if (quizMode === "plural") {
       const expectedPlural = nounQuizWord.plural || "";
@@ -2033,6 +2047,49 @@ export default function NounsPage({
                     marginInline: "auto",
                   }}
                 >
+                  {quizMode === "english" && (
+                    <div style={{ width: "100%" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)", marginBottom: 6, textAlign: "center" }}>
+                        1. Choose the article
+                      </div>
+                      <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                        {[
+                          { art: "der", color: "#2563eb", bg: "#eff6ff" },
+                          { art: "die", color: "#dc2626", bg: "#fef2f2" },
+                          { art: "das", color: "#16a34a", bg: "#f0fdf4" },
+                        ].map(({ art, color, bg }) => {
+                          const selected = quizSelectedArticle === art;
+                          return (
+                            <button
+                              key={art}
+                              type="button"
+                              disabled={quizAnswerState !== "idle"}
+                              onClick={() => setQuizSelectedArticle(art)}
+                              style={{
+                                flex: 1,
+                                height: 46,
+                                borderRadius: 12,
+                                fontSize: 16,
+                                fontWeight: 800,
+                                cursor: quizAnswerState !== "idle" ? "default" : "pointer",
+                                color: selected ? "#ffffff" : color,
+                                backgroundColor: selected ? color : bg,
+                                border: `2px solid ${color}`,
+                                boxShadow: selected ? `0 0 0 3px ${bg}` : "none",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              {art}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)", margin: "12px 0 6px", textAlign: "center" }}>
+                        2. Type the noun
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", width: "100%", gap: 8 }}>
                     <input
                       type="text"
@@ -2059,7 +2116,11 @@ export default function NounsPage({
                     />
                     <button
                       type="submit"
-                      disabled={quizAnswerState !== "idle" || !quizTextInput.trim()}
+                      disabled={
+                        quizAnswerState !== "idle" ||
+                        !quizTextInput.trim() ||
+                        (quizMode === "english" && !quizSelectedArticle)
+                      }
                       className="btn btn-primary"
                       style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop: 7 }}
                     >

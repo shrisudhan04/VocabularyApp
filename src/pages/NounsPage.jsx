@@ -2237,9 +2237,9 @@ export default function NounsPage({
                   display: inline-flex;
                   align-items: center;
                   justify-content: center;
-                  gap: 8px;
-                  height: 62px;
-                  padding: 0 28px;
+                  gap: 6px;
+                  height: 45px;
+                  padding: 0 12px;
                   border: none;
                   border-radius: 999px;
                   background: var(--brand, #b45309);
@@ -2268,8 +2268,8 @@ export default function NounsPage({
                   display: inline-flex;
                   align-items: center;
                   justify-content: center;
-                  width: 20px;
-                  height: 20px;
+                  width: 10px;
+                  height: 10px;
                   border-radius: 50%;
                   background: rgba(255, 255, 255, 0.25);
                   font-size: 12px;
@@ -2547,7 +2547,7 @@ export default function NounsPage({
                     autoFocus
                     onClick={handleForwardClick}
                     title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
-                    style={{ width: 62, height: 62, padding: 0, borderRadius: 14, fontSize: 30, fontWeight: 800 }}
+                    style={{ width: 45, height: 45, padding: 0, borderRadius: 14, fontSize: 30, fontWeight: 800 }}
                   >
                     &gt;
                   </button>

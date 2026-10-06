@@ -164,7 +164,6 @@ const STATUS_FILTER_OPTIONS = [
   { label: "All Status", value: "all" },
   { label: "In Progress", value: "In Progress" },
   { label: "Mastered", value: "Mastered" },
-  { label: "Forgot", value: "Forgot" },
 ];
 
 const QUIZ_DATE_DROPDOWN_OPTIONS = [
@@ -176,18 +175,12 @@ const QUIZ_DATE_DROPDOWN_OPTIONS = [
   { label: "Specific Date...", value: "specific" },
 ];
 
-const FLASHREV_ROTATION = ["case", "preterite", "participle", "infinitive"];
-const FLASHREV_STEPS = 4;
-
-const getFlashRevMode = (_word, subIndex) =>
-  FLASHREV_ROTATION[subIndex % FLASHREV_ROTATION.length];
-
 const QUIZ_MODE_OPTIONS = [
-  { label: "FlashRev", value: "flashrev" },
   { label: "Case (Dativ/Akkusativ)", value: "case" },
   { label: "Präteritum", value: "preterite" },
   { label: "Partizip II", value: "participle" },
   { label: "Infinitive", value: "infinitive" },
+  { label: "FlashRev", value: "flashrev" },
 ];
 
 const EXCEL_ACTIONS = [
@@ -550,6 +543,7 @@ export default function VerbsPage({
   const [quizFeedback, setQuizFeedback] = useState(null);
   const [quizAnswerState, setQuizAnswerState] = useState("idle"); // 'idle' | 'correct' | 'wrong'
   const [quizShuffleKey, setQuizShuffleKey] = useState(0);
+  const [quizSessionKey, setQuizSessionKey] = useState(0);
   const autoNextTimeoutRef = useRef(null);
 
   // Clear auto-advance timeout on unmount
@@ -572,15 +566,6 @@ export default function VerbsPage({
   const [verbFormData, setVerbFormData] = useState(EMPTY_VERB_FORM);
 
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
-  const duplicateEntry = useMemo(() => {
-    const current = (verbFormData.verb || "").trim().toLowerCase();
-    if (!current) return false;
-    return list.some((item) =>
-      (item.verb || "").trim().toLowerCase() === current &&
-      (item.id || item.verb) !== editingVerbId
-    );
-  }, [verbFormData.verb, list, editingVerbId]);
-
   const [duplicateWordName, setDuplicateWordName] = useState("");
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [successWordInfo, setSuccessWordInfo] = useState({ verb: "", caseType: "", isEdit: false });
@@ -640,23 +625,29 @@ export default function VerbsPage({
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      const matchesFlashRev = quizMode !== "flashrev" || Boolean(item.flashRev);
-      return matchesStatus && matchesDate && matchesFlashRev;
+      const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
+      return matchesStatus && matchesDate && matchesMode;
     });
-    return quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
-  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode]);
+    const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
+    return quizMode === "flashrev"
+      ? ordered.flatMap((item) => Array(VERB_FLASHREV_STEPS).fill(item.id))
+      : ordered.map((item) => item.id);
+  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
+
+  const availableQuizWords = useMemo(() => {
+    const byId = new Map(list.map((item) => [item.id, item]));
+    return availableQuizPool.map((id) => byId.get(id)).filter(Boolean);
+  }, [list, availableQuizPool]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
-    const pool = !isNaN(count) && count > 0
-      ? availableQuizPool.slice(0, count)
-      : availableQuizPool;
-
     if (quizMode === "flashrev") {
-      return pool.flatMap((item) => Array(FLASHREV_STEPS).fill(item));
+      if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count * VERB_FLASHREV_STEPS);
+      return availableQuizWords;
     }
-    return pool;
-  }, [availableQuizPool, wordCountInput, quizMode]);
+    if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count);
+    return availableQuizWords;
+  }, [availableQuizWords, wordCountInput, quizMode]);
 
   useEffect(() => {
     let interval = null;
@@ -699,6 +690,7 @@ export default function VerbsPage({
     setQuizFeedback(null);
     setQuizAnswerState("idle");
     setQuizTextInput("");
+    setQuizSessionKey((k) => k + 1);
   };
 
   const handleQuizStatusChange = (val) => {
@@ -1196,51 +1188,6 @@ export default function VerbsPage({
       )
     );
 
-  const recordAnswerResult = (word, ok) => {
-    if (!word) return;
-
-    const isLastSubQuestion =
-      quizMode !== "flashrev" || (quizIndex % FLASHREV_STEPS === FLASHREV_STEPS - 1);
-
-    let changed = false;
-    const updated = list.map((item) => {
-      if ((item.id || item.verb) !== (word.id || word.verb)) return item;
-
-      const next = { ...item };
-      if (ok) {
-        if (quizMode === "flashrev" && item.flashRev && isLastSubQuestion) {
-          next.flashRev = false;
-          changed = true;
-        }
-      } else {
-        if (!item.flashRev) {
-          next.flashRev = true;
-          changed = true;
-        }
-        if (item.status === "Mastered") {
-          next.status = "Forgot";
-          changed = true;
-        }
-      }
-      return next;
-    });
-
-    if (changed) onCommitVerbs?.(updated);
-  };
-
-  const handleFlipCard = () => {
-    if (!cardFlipped && verbCard && !verbCard.flashRev) {
-      onCommitVerbs?.(
-        list.map((item) =>
-          (item.id || item.verb) === (verbCard.id || verbCard.verb)
-            ? { ...item, flashRev: true }
-            : item
-        )
-      );
-    }
-    setCardFlipped((flipped) => !flipped);
-  };
-
   const handleQuizCaseSelect = (selectedCase) => {
     if (quizFeedback !== null || !verbQuizWord) return;
 
@@ -1264,41 +1211,28 @@ export default function VerbsPage({
     if (quizFeedback !== null || !verbQuizWord) return;
 
     const entered = normalize(quizTextInput);
+    let target = "";
+    let label = "";
 
-    if (effectiveMode === "preterite") {
-      const target = normalize(verbQuizWord.preterite);
-      const isCorrect = Boolean(target) && entered === target;
-      if (isCorrect) setQuizScore((prev) => prev + 1);
-      setQuizFeedback(
-        isCorrect
-          ? "Correct! 🎉"
-          : `Incorrect. The Präteritum form is "${verbQuizWord.preterite || "—"}".`
-      );
-      recordAnswerResult(verbQuizWord, isCorrect);
-      triggerAutoAdvance(isCorrect);
-    } else if (effectiveMode === "participle") {
-      const target = normalize(verbQuizWord.participle);
-      const isCorrect = Boolean(target) && entered === target;
-      if (isCorrect) setQuizScore((prev) => prev + 1);
-      setQuizFeedback(
-        isCorrect
-          ? "Correct! 🎉"
-          : `Incorrect. The Partizip II form is "${verbQuizWord.participle || "—"}".`
-      );
-      recordAnswerResult(verbQuizWord, isCorrect);
-      triggerAutoAdvance(isCorrect);
-    } else if (effectiveMode === "infinitive") {
-      const target = normalize(verbQuizWord.verb);
-      const isCorrect = Boolean(target) && entered === target;
-      if (isCorrect) setQuizScore((prev) => prev + 1);
-      setQuizFeedback(
-        isCorrect
-          ? "Correct! 🎉"
-          : `Incorrect. The infinitive verb is "${verbQuizWord.verb}".`
-      );
-      recordAnswerResult(verbQuizWord, isCorrect);
-      triggerAutoAdvance(isCorrect);
+    if (effectiveVerbMode === "preterite") {
+      target = normalize(verbQuizWord.preterite);
+      label = `The Präteritum form is "${verbQuizWord.preterite || "—"}".`;
+    } else if (effectiveVerbMode === "participle") {
+      target = normalize(verbQuizWord.participle);
+      label = `The Partizip II form is "${verbQuizWord.participle || "—"}".`;
+    } else if (effectiveVerbMode === "infinitive") {
+      target = normalize(verbQuizWord.verb);
+      label = `The infinitive verb is "${verbQuizWord.verb}".`;
+    } else if (effectiveVerbMode === "meaning") {
+      target = normalize(verbQuizWord.meaning);
+      label = `The meaning is "${verbQuizWord.meaning || "—"}".`;
     }
+
+    const isCorrect = Boolean(target) && entered === target;
+    if (isCorrect) setQuizScore((prev) => prev + 1);
+    setQuizFeedback(isCorrect ? "Correct! 🎉" : `Incorrect. ${label}`);
+    recordAnswerResult(verbQuizWord, isCorrect);
+    triggerAutoAdvance(isCorrect);
   };
 
   const flashList = useMemo(() => {
@@ -1310,10 +1244,74 @@ export default function VerbsPage({
   }, [list, flashOrder]);
 
   const verbCard = flashList[cardIndex];
+
+  const handleFlashPrevious = () => {
+    if (cardIndex <= 0) return;
+    setCardIndex((prev) => prev - 1);
+    setCardFlipped(false);
+  };
+  const handleFlashNext = () => {
+    if (cardIndex >= flashList.length - 1) return;
+    setCardIndex((prev) => prev + 1);
+    setCardFlipped(false);
+  };
+  const handleFlashTouchStart = (e) => setTouchStartX(e.touches?.[0]?.clientX ?? null);
+  const handleFlashTouchEnd = (e) => {
+    if (touchStartX === null) return;
+    const endX = e.changedTouches?.[0]?.clientX;
+    if (typeof endX === "number" && Math.abs(endX - touchStartX) >= 60) {
+      if (endX < touchStartX) handleFlashNext();
+      else handleFlashPrevious();
+    }
+    setTouchStartX(null);
+  };
+  const handleFlipCard = () => {
+    if (!cardFlipped && verbCard && !verbCard.flashRev) {
+      onCommitVerbs?.(list.map((item) => item.id === verbCard.id ? { ...item, flashRev: true } : item));
+    }
+    setCardFlipped((f) => !f);
+  };
+  const handleSubmitQuiz = () => {
+    if (!quizList.length) return;
+    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
+    setTimerRunning(false);
+    setTimeLeft(null);
+    setScoreModal({ isOpen: true, reason: "submit", score: quizScore, total: quizList.length });
+  };
+
+  const recordAnswerResult = (word, ok) => {
+    if (!word) return;
+    const isLastSubQuestion =
+      quizMode !== "flashrev" || (quizIndex % VERB_FLASHREV_STEPS === VERB_FLASHREV_STEPS - 1);
+    let changed = false;
+    const updated = list.map((item) => {
+      if (item.id !== word.id) return item;
+      const next = { ...item };
+      if (ok) {
+        if (quizMode === "flashrev" && item.flashRev && isLastSubQuestion) {
+          next.flashRev = false;
+          changed = true;
+        }
+      } else {
+        if (!item.flashRev) {
+          next.flashRev = true;
+          changed = true;
+        }
+        if (item.status === "Mastered") {
+          next.status = "Forgot";
+          changed = true;
+        }
+      }
+      return next;
+    });
+    if (changed) onCommitVerbs?.(updated);
+  };
+
   // Moves to the next question (or finishes the quiz)
   const goToNextQuestion = (finalScore) => {
     setQuizAnswerState("idle");
     setQuizFeedback(null);
+    setQuizSessionKey((k) => k + 1);
     setQuizTextInput("");
 
     if (quizIndex < quizList.length - 1) {
@@ -1352,19 +1350,6 @@ export default function VerbsPage({
   };
 
   // Manual forward button (only used after a wrong answer)
-  const handleSubmitQuiz = () => {
-    if (!quizList.length) return;
-    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
-    setTimerRunning(false);
-    setTimeLeft(null);
-    setScoreModal({
-      isOpen: true,
-      reason: "finish",
-      score: quizScore,
-      total: quizList.length,
-    });
-  };
-
   const handleForwardClick = () => {
     if (quizAnswerState !== "wrong") return;
     goToNextQuestion(quizScore);
@@ -1388,34 +1373,6 @@ export default function VerbsPage({
     setCardFlipped(false);
   };
 
-  const handleFlashPrevious = () => {
-    if (cardIndex <= 0) return;
-    setCardIndex((prev) => prev - 1);
-    setCardFlipped(false);
-  };
-
-  const handleFlashNext = () => {
-    if (cardIndex >= flashList.length - 1) return;
-    setCardIndex((prev) => prev + 1);
-    setCardFlipped(false);
-  };
-
-  const handleFlashTouchStart = (e) => {
-    setTouchStartX(e.touches?.[0]?.clientX ?? null);
-  };
-
-  const handleFlashTouchEnd = (e) => {
-    if (touchStartX === null) return;
-    const endX = e.changedTouches?.[0]?.clientX;
-    if (typeof endX !== "number") return;
-    const deltaX = endX - touchStartX;
-    if (Math.abs(deltaX) >= 60) {
-      if (deltaX < 0) handleFlashNext();
-      else handleFlashPrevious();
-    }
-    setTouchStartX(null);
-  };
-
   // Pale green / red panel tint while answering
   const getQuizPanelStyle = () => {
     const baseStyle = {
@@ -1433,23 +1390,14 @@ export default function VerbsPage({
   };
 
   const verbQuizWord = quizList[quizIndex];
-  const effectiveMode =
-    quizMode === "flashrev"
-      ? getFlashRevMode(verbQuizWord, quizIndex % FLASHREV_STEPS)
-      : quizMode;
-  const flashRevCount = list.filter((item) => item.flashRev).length;
-  const flashRevUniqueWords =
-    quizMode === "flashrev" ? Math.ceil(quizList.length / FLASHREV_STEPS) : quizList.length;
+  const effectiveVerbMode = quizMode === "flashrev"
+    ? getVerbFlashRevMode(verbQuizWord, quizIndex % VERB_FLASHREV_STEPS)
+    : quizMode;
+  const flashRevCount = list.filter((v) => v.flashRev).length;
+  const flashRevUniqueWords = quizMode === "flashrev" ? quizList.length / VERB_FLASHREV_STEPS : quizList.length;
 
   return (
     <>
-
-      <style>{`
-        .quiz-submit-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:45px; padding:0 12px; border:none; border-radius:999px; background:var(--brand,#b45309); color:#fff; font-size:14px; font-weight:800; cursor:pointer; }
-        .quiz-submit-tick { display:inline-flex; align-items:center; justify-content:center; width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.25); font-size:12px; }
-        @media (max-width:768px) { .flash-controls .flash-nav-btn { display:none !important; } }
-      `}</style>
-
       {viewMode === "list" && (
         <div className="section">
           <div className="stats-grid">
@@ -1766,7 +1714,7 @@ export default function VerbsPage({
             </div>
           ) : (
             <div className="flash-wrap">
-              <div className="flash" onClick={handleFlipCard} onTouchStart={handleFlashTouchStart} onTouchEnd={handleFlashTouchEnd}>
+              <div className="flash" onClick={handleFlipCard}>
                 {!cardFlipped ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>RECALL CASE &amp; PAST TENSE FORMS</span>
@@ -1786,11 +1734,15 @@ export default function VerbsPage({
                   </>
                 )}
               </div>
-              <div className="flash-controls">
-                <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex === 0} onClick={() => { setCardIndex(cardIndex - 1); setCardFlipped(false); }}>◀ Previous</button>
+              <div className="flash-controls" onTouchStart={handleFlashTouchStart} onTouchEnd={handleFlashTouchEnd} style={{touchAction:"pan-y"}}>
+                <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex === 0} onClick={handleFlashPrevious}>◀ Previous</button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.preterite || ""}. ${verbCard.participle || ""}.`)}>🔊 Pronounce</button>
+                <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex >= flashList.length - 1} onClick={handleFlashNext}>Next ▶</button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>Verb {cardIndex + 1} of {list.length} · {flashRevCount} queued for FlashRev</span>
+              <span style={{color:"var(--muted)",fontSize:13}}>Verb {cardIndex + 1} of {flashList.length} · {Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}% · {flashRevCount} queued for FlashRev</span>
+              <div style={{width:"100%",maxWidth:520,height:6,background:"#eee7df",borderRadius:999,overflow:"hidden",marginTop:8}}>
+                <div style={{width:`${Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}%`,height:"100%",background:"var(--brand,#b85c19)",borderRadius:999,transition:"width .2s ease"}} />
+              </div>
             </div>
           )}
         </div>
@@ -1986,7 +1938,7 @@ export default function VerbsPage({
                     paddingLeft: "4px",
                   }}
                 >
-                  Verbs: <strong style={{ color: "var(--ink)" }}>{quizMode === "flashrev" ? flashRevUniqueWords : quizList.length}</strong>
+                  Verbs: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong>
                 </div>
 
                 {/* Clear Filters */}
@@ -2124,198 +2076,74 @@ export default function VerbsPage({
             </div>
           ) : (
             <div className="quiz">
+              <style>{`
+                .quiz-submit-btn{height:45px;padding:0 14px;border:none;border-radius:999px;background:var(--brand,#b85c19);color:#fff;font-weight:800;cursor:pointer}
+                .flashrev-dots{display:flex;align-items:center;justify-content:center;gap:6px;margin:0 0 10px}
+                .flashrev-dot{width:8px;height:8px;border-radius:50%;background:#e2e8f0}
+                .flashrev-dot.active{background:var(--brand,#b85c19);transform:scale(1.3)}
+                .flashrev-dot.done{background:#86efac}
+                @media(max-width:768px){.flash-controls .flash-nav-btn{display:none!important}}
+              `}</style>
               <div className="quiz-head">
-                <span>{quizMode === "flashrev" ? `Word ${Math.floor(quizIndex / FLASHREV_STEPS) + 1} of ${flashRevUniqueWords} · Q${(quizIndex % FLASHREV_STEPS) + 1}/${FLASHREV_STEPS}` : `Question ${quizIndex + 1} of ${quizList.length}`}</span>
-                <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
+                <span>
+                  {quizMode === "flashrev"
+                    ? <>Word {Math.floor(quizIndex / VERB_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{color:"var(--muted)",fontWeight:500}}> · Q{(quizIndex % VERB_FLASHREV_STEPS)+1}/{VERB_FLASHREV_STEPS}</span></>
+                    : <>Question {quizIndex + 1} of {quizList.length}</>}
+                </span>
+                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
+                <span style={{fontWeight:700,color:"var(--brand)"}}>Score: {quizScore}</span>
               </div>
+
+              {quizMode === "flashrev" && (
+                <div className="flashrev-dots">
+                  {Array.from({length:VERB_FLASHREV_STEPS}).map((_,i)=>(
+                    <span key={i} className={`flashrev-dot ${i < quizIndex % VERB_FLASHREV_STEPS ? "done" : i === quizIndex % VERB_FLASHREV_STEPS ? "active" : ""}`} />
+                  ))}
+                  <span style={{fontSize:12,color:"var(--muted)",marginLeft:6}}>
+                    {["Case","Präteritum","Partizip II","Meaning"][quizIndex % VERB_FLASHREV_STEPS]}
+                  </span>
+                </div>
+              )}
 
               <div className="quiz-card">
-                {effectiveMode === "case" && (
+                {effectiveVerbMode === "case" && (
                   <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
-                      Which grammatical case is governed by this verb?
-                    </span>
+                    <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Choose the correct case:</span>
                     <h1>{verbQuizWord.verb}</h1>
-                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
-                      Past: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong>
-                    </p>
-                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
-                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
-                    </p>
+                    <p style={{color:"var(--muted)",margin:0,fontSize:15}}>Meaning: <strong>{verbQuizWord.meaning}</strong></p>
                   </>
                 )}
-
-                {effectiveMode === "preterite" && (
-                  <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
-                      Type the Präteritum (Simple Past) form for:
-                    </span>
-                    <h1>{verbQuizWord.verb}</h1>
-                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
-                      Partizip II: <strong>{verbQuizWord.participle || "—"}</strong>
-                    </p>
-                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
-                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
-                    </p>
-                  </>
-                )}
-
-                {effectiveMode === "participle" && (
-                  <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
-                      Type the Partizip II (Past Participle) form for:
-                    </span>
-                    <h1>{verbQuizWord.verb}</h1>
-                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
-                      Präteritum: <strong>{verbQuizWord.preterite || "—"}</strong>
-                    </p>
-                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>
-                      Meaning: <strong style={{ color: "var(--ink-2)" }}>{verbQuizWord.meaning}</strong>
-                    </p>
-                  </>
-                )}
-
-                {effectiveMode === "infinitive" && (
-                  <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
-                      Type the Infinitive German verb for:
-                    </span>
-                    <h1 style={{ color: "var(--brand, #b85c19)" }}>{verbQuizWord.meaning}</h1>
-                    <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
-                      Past forms: <strong>{verbQuizWord.preterite || "—"} / {verbQuizWord.participle || "—"}</strong>
-                    </p>
-                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>
-                      Governs: <span className={`pill ${VERB_CASE_CLASS[verbQuizWord.caseType] || "bg-both"}`}>{verbQuizWord.caseType}</span>
-                    </p>
-                  </>
-                )}
+                {effectiveVerbMode === "preterite" && <><span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the Präteritum:</span><h1>{verbQuizWord.verb}</h1></>}
+                {effectiveVerbMode === "participle" && <><span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type Partizip II:</span><h1>{verbQuizWord.verb}</h1></>}
+                {effectiveVerbMode === "infinitive" && <><span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the infinitive:</span><h1>{verbQuizWord.meaning}</h1></>}
+                {effectiveVerbMode === "meaning" && <><span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the English meaning:</span><h1>{verbQuizWord.verb}</h1></>}
               </div>
 
-              {effectiveMode === "case" ? (
-                <div
-                  style={{
-                    width: "100%",
-                    maxWidth: "520px",
-                    margin: "18px auto 0",
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 14,
-                  }}
-                >
-                  {["Dativ", "Akkusativ", "Both / Common"].map((caseOption) => (
-                    <button
-                      key={caseOption}
-                      type="button"
-                      disabled={quizFeedback !== null}
-                      onClick={() => handleQuizCaseSelect(caseOption)}
-                      style={{
-                        minHeight: "40px",
-                        padding: "5px 10px",
-                        borderRadius: "12px",
-                        border: "none",
-                        background:
-                          caseOption === "Dativ"
-                            ? "#0878b5"
-                            : caseOption === "Akkusativ"
-                            ? "#c8103d"
-                            : "#16843d",
-                        color: "#ffffff",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        cursor: quizFeedback !== null ? "not-allowed" : "pointer",
-                        opacity: quizFeedback !== null ? 0.72 : 1,
-                        transition: "transform 0.15s ease, opacity 0.15s ease",
-                      }}
-                    >
+              {effectiveVerbMode === "case" ? (
+                <div style={{width:"100%",maxWidth:600,margin:"24px auto 0",display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:14}}>
+                  {["Dativ","Akkusativ","Both / Common"].map((caseOption)=>(
+                    <button key={caseOption} type="button" disabled={quizAnswerState !== "idle"} onClick={()=>handleQuizCaseSelect(caseOption)} style={{minHeight:45,height:45,padding:"0 10px",borderRadius:12,border:"none",background:caseOption==="Dativ"?"#0878b5":caseOption==="Akkusativ"?"#c8103d":"#16843d",color:"#fff",fontSize:14,fontWeight:800,cursor:quizAnswerState!=="idle"?"not-allowed":"pointer",opacity:quizAnswerState!=="idle"?0.72:1}}>
                       {caseOption}
                     </button>
                   ))}
                 </div>
               ) : (
-                <form
-                  onSubmit={handleQuizTextSubmit}
-                  style={{
-                    marginTop: 18,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 12,
-                    width: "100%",
-                    maxWidth: 420,
-                    marginInline: "auto",
-                  }}
-                >
-                  <div style={{ display: "flex", width: "100%", gap: 8 }}>
-                    <input
-                      type="text"
-                      autoFocus
-                      disabled={quizFeedback !== null}
-                      placeholder={
-                        effectiveMode === "preterite"
-                          ? "Type Präteritum form (e.g. ging, half)..."
-                          : effectiveMode === "participle"
-                          ? "Type Partizip II form (e.g. gegangen, geholfen)..."
-                          : "Type Infinitive verb (e.g. gehen, helfen)..."
-                      }
-                      value={quizTextInput}
-                      onChange={(e) => setQuizTextInput(e.target.value)}
-                      className="modal-input"
-                      style={{
-                        flex: 1,
-                        height: "46px",
-                        fontSize: "16px",
-                        fontWeight: 600,
-                        borderRadius: "12px",
-                        border: "1.5px solid var(--line-2, #ebdccb)",
-                        padding: "0 14px",
-                        outline: "none",
-                      }}
-                    />
-                    <button
-                      type="submit"
-                      disabled={quizFeedback !== null || !quizTextInput.trim()}
-                      className="btn btn-primary"
-                      style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop: 7 }}
-                    >
-                      Check
-                    </button>
-                  </div>
+                <form onSubmit={handleQuizTextSubmit} style={{marginTop:18,display:"flex",gap:8,width:"100%",maxWidth:420,marginInline:"auto"}}>
+                  <input autoFocus disabled={quizAnswerState !== "idle"} value={quizTextInput} onChange={(e)=>setQuizTextInput(e.target.value)} className="modal-input" placeholder={effectiveVerbMode==="meaning"?"Type English meaning...":effectiveVerbMode==="infinitive"?"Type infinitive...":effectiveVerbMode==="preterite"?"Type Präteritum...":"Type Partizip II..."} style={{flex:1,height:46,fontSize:16,fontWeight:600,borderRadius:12,padding:"0 14px"}} />
+                  <button type="submit" disabled={quizAnswerState !== "idle" || !quizTextInput.trim()} className="btn btn-primary" style={{height:46,padding:"0 18px",borderRadius:12}}>Check</button>
                 </form>
               )}
 
               {quizFeedback && (
-                <div style={{ marginTop: 24, textAlign: "center", animation: "fadeIn 0.15s ease-in" }}>
-                  <p
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: quizAnswerState === "correct" ? "#15803d" : "#dc2626",
-                    }}
-                  >
-                    {quizFeedback}
-                  </p>
-
-                  {quizAnswerState === "correct" && (
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                      Moving to next word in 1 second...
-                    </span>
-                  )}
-
-                  
+                <div style={{marginTop:20,textAlign:"center"}}>
+                  <p style={{fontSize:16,fontWeight:700,color:quizAnswerState==="correct"?"#15803d":"#dc2626"}}>{quizFeedback}</p>
+                  {quizAnswerState==="correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next question in 1 second...</span>}
+                  {quizAnswerState==="wrong" && <button type="button" className="btn btn-primary" onClick={handleForwardClick} style={{width:45,height:45,padding:0,borderRadius:14,fontSize:30,fontWeight:800}}>&gt;</button>}
                 </div>
               )}
-              <div className="quiz-submit-bottom" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 28 }}>
-                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz} title="End the quiz now and see your result">
-                  <span className="quiz-submit-tick">✓</span>
-                  Submit Quiz
-                </button>
-                {quizAnswerState === "wrong" && (
-                  <button type="button" className="btn btn-primary quiz-next-symbol" onClick={handleForwardClick} title="Next question" style={{ width: 45, height: 45, padding: 0, borderRadius: 12, fontSize: 24, fontWeight: 800 }}>
-                    &gt;
-                  </button>
-                )}
+              <div style={{display:"flex",justifyContent:"center",marginTop:20}}>
+                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
               </div>
-
             </div>
           )}
         </div>
@@ -2568,16 +2396,11 @@ export default function VerbsPage({
                 />
               </div>
 
-                            {duplicateEntry && (
-                <p style={{ color: "#dc2626", fontSize: 12.5, margin: "6px 0", fontWeight: 600 }}>
-                  ⚠ This entry already exists in your list.
-                </p>
-              )}
-<div className="modal-actions">
+              <div className="modal-actions">
                 <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={duplicateEntry}>
+                <button type="submit" className="btn btn-primary">
                   Save Verb
                 </button>
               </div>

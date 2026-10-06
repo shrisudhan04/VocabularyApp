@@ -1,7 +1,4 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-// after: import congratsAudio from "../assets/celebration.mp3";
-import wrongAudio from "../assets/wrong.mp3";
-import deleteAudio from "../assets/delete1.mp3";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
@@ -161,24 +158,29 @@ const playDuplicateSound = async () => {
     console.warn("Audio playback failed:", err);
   }
 };
-const playDeleteSound = () => {
+
+const playDangerSound = async () => {
   try {
-    const audio = new Audio(deleteAudio);
-    audio.volume = 0.8;
-    audio.play().catch((err) => console.warn("Delete sound error:", err));
+    const ctx = await getActiveAudioContext();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.35);
+
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
   } catch (err) {
-    console.warn("Delete sound failed:", err);
-  }
-};
-// REMOVE the old playDangerSound (the one using AudioContext/sawtooth oscillator)
-// REPLACE with:
-const playDangerSound = () => {
-  try {
-    const audio = new Audio(wrongAudio);
-    audio.volume = 0.8;
-    audio.play().catch((err) => console.warn("Wrong sound error:", err));
-  } catch (err) {
-    console.warn("Wrong sound failed:", err);
+    console.warn("Audio playback failed:", err);
   }
 };
 
@@ -1792,20 +1794,16 @@ export default function NounsPage({
                   <div className="actions">
                     <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
                     <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
-                  
-
-
-<button
-  onClick={() => {
-    playDeleteSound();
-    onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
-      onCommitNouns?.(list.filter((i) => i.id !== item.id))
-    );
-  }}
-  className="icon-btn"
->
-  🗑
-</button>
+                    <button
+                      onClick={() =>
+                        onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
+                          onCommitNouns?.(list.filter((i) => i.id !== item.id))
+                        )
+                      }
+                      className="icon-btn"
+                    >
+                      🗑
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1845,7 +1843,33 @@ export default function NounsPage({
               <p style={{ color: "var(--muted)", margin: 0 }}>No nouns available for flashcards.</p>
             </div>
           ) : (
-            <div className="flash-wrap">
+            <div className="flash-wrap" style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={handleShuffleFlashcards}
+                disabled={flashList.length <= 1}
+                aria-label="Shuffle flashcards"
+                title="Shuffle flashcards"
+                style={{
+                  position: "absolute",
+                  top: "8px",
+                  right: "8px",
+                  width: "36px",
+                  height: "36px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--muted)",
+                  fontSize: "20px",
+                  cursor: flashList.length <= 1 ? "not-allowed" : "pointer",
+                  opacity: flashList.length <= 1 ? 0.4 : 1,
+                  borderRadius: "8px",
+                }}
+              >
+                🔀
+              </button>
               <div className="flash" onClick={handleFlipCard}>
                 {!cardFlipped ? (
                   <>

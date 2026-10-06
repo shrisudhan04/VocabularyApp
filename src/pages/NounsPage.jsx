@@ -37,6 +37,34 @@ const shuffleArray = (array) => {
   return arr;
 };
 
+// A quiz needs at least this percentage to count as passed
+const PASS_PERCENT = 70;
+
+// German-aware answer comparison: ignores case/extra spaces, but umlauts must be right.
+// "ae/oe/ue/ss" are accepted as typing substitutes for "ä/ö/ü/ß" (so Mutter != Mütter).
+const foldGerman = (s = "") =>
+  String(s ?? "")
+    .normalize("NFC")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+
+// FlashRev rotates the question format so each word is checked on article, plural and meaning
+const FLASHREV_ROTATION = ["article", "plural", "english"];
+const getFlashRevMode = (word, index) => {
+  const available = FLASHREV_ROTATION.filter(
+    (m) =>
+      m === "article" ||
+      (m === "plural" && Boolean(word?.plural)) ||
+      (m === "english" && Boolean(word?.meaning))
+  );
+  return available[index % available.length];
+};
+
 const getActiveAudioContext = async () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
@@ -164,6 +192,7 @@ const STATUS_FILTER_OPTIONS = [
   { label: "All Status", value: "all" },
   { label: "In Progress", value: "In Progress" },
   { label: "Mastered", value: "Mastered" },
+  { label: "Forgot", value: "Forgot" },
 ];
 
 const QUIZ_DATE_DROPDOWN_OPTIONS = [
@@ -179,6 +208,7 @@ const QUIZ_MODE_OPTIONS = [
   { label: "Article (der/die/das)", value: "article" },
   { label: "English ➔ Noun", value: "english" },
   { label: "Plural Form", value: "plural" },
+  { label: "FlashRev (Flashcard Review)", value: "flashrev" },
 ];
 
 const EXCEL_ACTIONS = [
@@ -536,6 +566,8 @@ export default function NounsPage({
 
   // Shuffle seed for quiz ordering
   const [quizShuffleKey, setQuizShuffleKey] = useState(0);
+  // Bumped whenever a fresh quiz session should be built (reset / new filters / Try Again)
+  const [quizSessionKey, setQuizSessionKey] = useState(0);
 
   // Quiz Progress & Auto-Advance Transition State
   const [quizIndex, setQuizIndex] = useState(0);
@@ -579,6 +611,8 @@ export default function NounsPage({
 
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
+  // Flashcard order for this session (ids). Shuffling no longer rewrites your saved list.
+  const [flashOrder, setFlashOrder] = useState(null);
 
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
@@ -621,17 +655,36 @@ export default function NounsPage({
     return true;
   };
 
-  // Quiz Filtered Words with Count Limit & Shuffle Order
-  const availableQuizPool = useMemo(() => {
+  // Quiz session = the ids picked when the session starts. It is rebuilt only when the
+  // filters / mode / view / session key change, NOT every time the saved list changes, so
+  // saving answer results (status, FlashRev flags) can no longer reshuffle a running quiz.
+  const hasNouns = list.length > 0;
+  const quizSessionIds = useMemo(() => {
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      return matchesStatus && matchesDate;
+      const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
+      return matchesStatus && matchesDate && matchesMode;
     });
+    return (quizShuffleKey > 0 ? shuffleArray(filtered) : filtered).map((item) => item.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasNouns, viewMode, quizMode, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
 
-    return quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
-  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey]);
+  // Fresh word objects for the frozen ids (deleted words drop out, edits show up)
+  const availableQuizPool = useMemo(() => {
+    const byId = new Map(list.map((item) => [item.id, item]));
+    return quizSessionIds.map((id) => byId.get(id)).filter(Boolean);
+  }, [list, quizSessionIds]);
+
+  // Flashcards: stable order for the session, always showing the latest word data
+  const flashList = useMemo(() => {
+    if (!flashOrder) return list;
+    const byId = new Map(list.map((item) => [item.id, item]));
+    const ordered = flashOrder.map((id) => byId.get(id)).filter(Boolean);
+    const seen = new Set(flashOrder);
+    return [...ordered, ...list.filter((item) => !seen.has(item.id))];
+  }, [list, flashOrder]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
@@ -686,7 +739,22 @@ export default function NounsPage({
     setQuizAnswerState("idle");
     setQuizTextInput("");
     setQuizSelectedArticle("");
+    setQuizSessionKey((k) => k + 1);
   };
+
+  // Entering the quiz view starts a fresh session (so words read in flashcards show up
+  // in FlashRev). Leaving the quiz view stops a running countdown.
+  const [lastViewMode, setLastViewMode] = useState(viewMode);
+  if (lastViewMode !== viewMode) {
+    setLastViewMode(viewMode);
+    if (lastViewMode === "quiz") {
+      setTimerRunning(false);
+      setTimeLeft(null);
+    }
+    if (viewMode === "quiz") {
+      resetQuizProgress();
+    }
+  }
 
   const handleQuizStatusChange = (val) => {
     setQuizStatusFilter(val);
@@ -720,8 +788,7 @@ export default function NounsPage({
 
   const handleShuffleFlashcards = () => {
     if (list.length <= 1) return;
-    const shuffled = shuffleArray(list);
-    onCommitNouns?.(shuffled);
+    setFlashOrder(shuffleArray(list).map((item) => item.id));
     setCardIndex(0);
     setCardFlipped(false);
   };
@@ -970,7 +1037,12 @@ export default function NounsPage({
                 plural,
                 meaning,
                 gender: GENDER_MAP[article] || "",
-                status: status.toLowerCase() === "mastered" ? "Mastered" : "In Progress",
+                status:
+                  status.toLowerCase() === "mastered"
+                    ? "Mastered"
+                    : status.toLowerCase() === "forgot"
+                    ? "Forgot"
+                    : "In Progress",
                 createdAt: new Date().toISOString(),
               });
             }
@@ -1069,6 +1141,7 @@ export default function NounsPage({
   });
 
   const nounsMastered = list.filter((i) => i.status === "Mastered").length;
+  const nounsForgot = list.filter((i) => i.status === "Forgot").length;
   const countNoun = (art) => list.filter((i) => i.article === art).length;
 
   const openAddModal = () => {
@@ -1162,6 +1235,63 @@ export default function NounsPage({
       )
     );
 
+  // What a quiz answer means for the word itself:
+  //  - wrong answer anywhere  -> word is queued for FlashRev
+  //  - wrong on a Mastered word -> status becomes "Forgot"
+  //  - correct answer inside FlashRev -> word leaves the FlashRev queue
+  const recordAnswerResult = (word, ok) => {
+    if (!word) return;
+    let changed = false;
+    const updated = list.map((n) => {
+      if (n.id !== word.id) return n;
+      const next = { ...n };
+      if (ok) {
+        if (quizMode === "flashrev" && n.flashRev) {
+          next.flashRev = false;
+          changed = true;
+        }
+      } else {
+        if (!n.flashRev) {
+          next.flashRev = true;
+          changed = true;
+        }
+        if (n.status === "Mastered") {
+          next.status = "Forgot";
+          changed = true;
+        }
+      }
+      return next;
+    });
+    if (changed) onCommitNouns?.(updated);
+  };
+
+  // Flashcards: reading (flipping) a card queues that word for FlashRev
+  const handleFlipCard = () => {
+    if (!cardFlipped && nounCard && !nounCard.flashRev) {
+      onCommitNouns?.(list.map((n) => (n.id === nounCard.id ? { ...n, flashRev: true } : n)));
+    }
+    setCardFlipped((f) => !f);
+  };
+
+  // Shows the result modal; pass (>= PASS_PERCENT) gets the success sound, otherwise the fail sound
+  const openResultModal = (reason, score, total) => {
+    const pct = total > 0 ? (score / total) * 100 : 0;
+    if (reason !== "timeup") {
+      if (pct >= PASS_PERCENT) {
+        playGoalAchievedMusic();
+      } else {
+        playDangerSound();
+      }
+    }
+    setScoreModal({ isOpen: true, reason, score, total });
+  };
+
+  const closeScoreModal = () => {
+    stopGoalAchievedMusic();
+    setScoreModal((p) => ({ ...p, isOpen: false }));
+    resetQuizProgress();
+  };
+
   // Moves to the next question (or finishes the quiz)
   const goToNextQuestion = (finalScore) => {
     setQuizAnswerState("idle");
@@ -1174,13 +1304,19 @@ export default function NounsPage({
     } else {
       setTimerRunning(false);
       setTimeLeft(null);
-      setScoreModal({
-        isOpen: true,
-        reason: "finish",
-        score: finalScore,
-        total: quizList.length,
-      });
+      openResultModal("finish", finalScore, quizList.length);
     }
+  };
+
+  // Submit button: ends the quiz now and scores it against all questions in the quiz
+  const handleSubmitQuiz = () => {
+    if (!quizList.length) return;
+    if (autoNextTimeoutRef.current) {
+      clearTimeout(autoNextTimeoutRef.current);
+    }
+    setTimerRunning(false);
+    setTimeLeft(null);
+    openResultModal("submit", quizScore, quizList.length);
   };
 
   // Correct -> auto advance after 1s | Wrong -> stay and wait for Next button
@@ -1222,22 +1358,22 @@ export default function NounsPage({
       setQuizFeedback(`Wrong! Correct article is "${nounQuizWord.article}".`);
     }
 
+    recordAnswerResult(nounQuizWord, ok);
     triggerAutoAdvance(ok);
   };
 
-  // Text submit handler for English / Plural modes
+  // Text submit handler for English / Plural questions
   const handleQuizTextSubmit = (e) => {
     e?.preventDefault();
     if (quizAnswerState !== "idle" || !nounQuizWord || !quizTextInput.trim()) return;
 
-    const entered = normalize(quizTextInput);
     let ok = false;
 
-    if (quizMode === "english") {
+    if (effectiveMode === "english") {
       if (!quizSelectedArticle) return; // article must be chosen first
 
       const articleOk = quizSelectedArticle === nounQuizWord.article;
-      const nounOk = entered === normalize(nounQuizWord.noun);
+      const nounOk = foldGerman(quizTextInput) === foldGerman(nounQuizWord.noun);
       ok = articleOk && nounOk;
       if (ok) setQuizScore((prev) => prev + 1);
 
@@ -1253,12 +1389,13 @@ export default function NounsPage({
           ? "Correct! 🎉"
           : `Incorrect. ${detail} The correct answer is "${nounQuizWord.article} ${nounQuizWord.noun}".`
       );
-    } else if (quizMode === "plural") {
+    } else if (effectiveMode === "plural") {
       const expectedPlural = nounQuizWord.plural || "";
-      const targetPlural = normalize(expectedPlural.replace(/^die\s+/i, ""));
-      const enteredPluralClean = entered.replace(/^die\s+/i, "");
+      const stripDie = (str) => String(str ?? "").trim().replace(/^die\s+/i, "");
 
-      ok = Boolean(targetPlural) && enteredPluralClean === targetPlural;
+      ok =
+        Boolean(stripDie(expectedPlural)) &&
+        foldGerman(stripDie(quizTextInput)) === foldGerman(stripDie(expectedPlural));
       if (ok) setQuizScore((prev) => prev + 1);
       setQuizFeedback(
         ok
@@ -1267,11 +1404,38 @@ export default function NounsPage({
       );
     }
 
+    recordAnswerResult(nounQuizWord, ok);
     triggerAutoAdvance(ok);
   };
 
-  const nounCard = list[cardIndex];
+  const nounCard = flashList[cardIndex];
   const nounQuizWord = quizList[quizIndex];
+  // In FlashRev every question rotates between article / plural / English formats
+  const effectiveMode =
+    quizMode === "flashrev" ? getFlashRevMode(nounQuizWord, quizIndex) : quizMode;
+  const flashRevCount = list.filter((n) => n.flashRev).length;
+
+  // Result modal look: pass (>= PASS_PERCENT) vs fail vs time-up
+  const resultPct = scoreModal.total > 0 ? (scoreModal.score / scoreModal.total) * 100 : 0;
+  const resultPassed = resultPct >= PASS_PERCENT;
+  const resultTheme =
+    scoreModal.reason === "timeup"
+      ? {
+          gif: alertGif, color: "#b91c1c", bg: "#fee2e2", border: "#fca5a5",
+          badge: "⏰ Time Is Up!", title: "Time's Expired!",
+          text: "The countdown clock reached zero. Here is how you did:",
+        }
+      : resultPassed
+      ? {
+          gif: successGif, color: "#166534", bg: "#dcfce7", border: "#86efac",
+          badge: "🎉 Quiz Passed!", title: "Great Job!",
+          text: `You reached the ${PASS_PERCENT}% pass mark. Well done!`,
+        }
+      : {
+          gif: alertGif, color: "#b91c1c", bg: "#fee2e2", border: "#fca5a5",
+          badge: "📚 Keep Practicing", title: "Not Quite There Yet",
+          text: `You need at least ${PASS_PERCENT}% to pass. Review the words and try again.`,
+        };
 
   // Dynamic panel styling for quiz answering feedback
   const getQuizPanelStyle = () => {
@@ -1308,7 +1472,10 @@ export default function NounsPage({
             <div className="stat dark">
               <div className="stat-head">
                 <span className="stat-label">TOTAL NOUNS</span>
-                <span className="stat-pill dark">{nounsMastered} mastered</span>
+                <span style={{ display: "flex", gap: 6 }}>
+                  <span className="stat-pill dark">{nounsMastered} mastered</span>
+                  {nounsForgot > 0 && <span className="stat-pill dark">{nounsForgot} forgot</span>}
+                </span>
               </div>
               <div className="stat-foot">
                 <span className="stat-value">{list.length}</span>
@@ -1558,8 +1725,18 @@ export default function NounsPage({
                     <button
                       onClick={() => toggleStatus(item.id)}
                       className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
+                      style={
+                        item.status === "Forgot"
+                          ? { color: "#b91c1c", backgroundColor: "#fee2e2", borderColor: "#fca5a5" }
+                          : undefined
+                      }
+                      title={item.status === "Forgot" ? "Set automatically after a wrong quiz answer. Click to mark Mastered again." : undefined}
                     >
-                      {item.status === "Mastered" ? "✔ Mastered" : "☐ In Progress"}
+                      {item.status === "Mastered"
+                        ? "✔ Mastered"
+                        : item.status === "Forgot"
+                        ? "⚠ Forgot"
+                        : "☐ In Progress"}
                     </button>
                   </div>
                   <div className="actions">
@@ -1615,7 +1792,7 @@ export default function NounsPage({
             </div>
           ) : (
             <div className="flash-wrap">
-              <div className="flash" onClick={() => setCardFlipped(!cardFlipped)}>
+              <div className="flash" onClick={handleFlipCard}>
                 {!cardFlipped ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GUESS ARTICLE, PLURAL &amp; MEANING</span>
@@ -1644,11 +1821,13 @@ export default function NounsPage({
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>
                   🔊 Pronounce
                 </button>
-                <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
+                <button className="btn btn-secondary" disabled={cardIndex >= flashList.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
                   Next ▶
                 </button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>Card {cardIndex + 1} of {list.length}</span>
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>
+                Card {cardIndex + 1} of {flashList.length} · {flashRevCount} queued for FlashRev
+              </span>
             </div>
           )}
         </div>
@@ -1954,6 +2133,8 @@ export default function NounsPage({
               <p style={{ color: "var(--muted)", margin: "0 0 12px 0", fontSize: 15 }}>
                 {list.length === 0
                   ? "Add nouns to start quiz."
+                  : quizMode === "flashrev"
+                  ? "No FlashRev words yet. Flip some flashcards, or miss a question in another quiz mode, and those words will show up here (or relax your filters)."
                   : "No nouns match the selected status, date, or count filters."}
               </p>
               {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
@@ -1974,13 +2155,80 @@ export default function NounsPage({
             </div>
           ) : (
             <div className="quiz">
-              <div className="quiz-head">
-                <span>Question {quizIndex + 1} of {quizList.length}</span>
-                <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
+              <div
+                className="quiz-head"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto 1fr",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <style>{`
+                  .quiz-submit-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    height: 40px;
+                    padding: 0 24px;
+                    border: none;
+                    border-radius: 999px;
+                    background: var(--brand, #b45309);
+                    color: #fff;
+                    font-size: 14px;
+                    font-weight: 800;
+                    letter-spacing: 0.02em;
+                    cursor: pointer;
+                    box-shadow: 0 6px 16px rgba(180, 83, 9, 0.28);
+                    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+                  }
+                  .quiz-submit-btn:hover {
+                    transform: translateY(-2px);
+                    filter: brightness(1.08);
+                    box-shadow: 0 10px 22px rgba(180, 83, 9, 0.35);
+                  }
+                  .quiz-submit-btn:active {
+                    transform: translateY(0) scale(0.97);
+                    box-shadow: 0 3px 8px rgba(180, 83, 9, 0.3);
+                  }
+                  .quiz-submit-btn:focus-visible {
+                    outline: 3px solid rgba(180, 83, 9, 0.35);
+                    outline-offset: 2px;
+                  }
+                  .quiz-submit-btn .quiz-submit-tick {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.25);
+                    font-size: 12px;
+                  }
+                `}</style>
+
+                <span style={{ justifySelf: "start" }}>
+                  Question {quizIndex + 1} of {quizList.length}
+                </span>
+
+                <button
+                  type="button"
+                  className="quiz-submit-btn"
+                  onClick={handleSubmitQuiz}
+                  title="End the quiz now and see your result"
+                >
+                  <span className="quiz-submit-tick">✓</span>
+                  Submit
+                </button>
+
+                <span style={{ justifySelf: "end", fontWeight: 700, color: "var(--brand)" }}>
+                  Score: {quizScore}
+                </span>
               </div>
 
               <div className="quiz-card">
-                {quizMode === "article" && (
+                {effectiveMode === "article" && (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
                       Choose the correct article:
@@ -1995,7 +2243,7 @@ export default function NounsPage({
                   </>
                 )}
 
-                {quizMode === "english" && (
+                {effectiveMode === "english" && (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
                       Type the German singular noun for:
@@ -2004,7 +2252,7 @@ export default function NounsPage({
                   </>
                 )}
 
-                {quizMode === "plural" && (
+                {effectiveMode === "plural" && (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
                       Type the plural form for:
@@ -2017,7 +2265,7 @@ export default function NounsPage({
                 )}
               </div>
 
-              {quizMode === "article" ? (
+              {effectiveMode === "article" ? (
                 <div className="quiz-opts">
                   {["der", "die", "das"].map((opt) => (
                     <button
@@ -2044,7 +2292,7 @@ export default function NounsPage({
                     marginInline: "auto",
                   }}
                 >
-                  {quizMode === "english" && (
+                  {effectiveMode === "english" && (
                     <div style={{ width: "100%" }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)", marginBottom: 6, textAlign: "center" }}>
                         1. Choose the article
@@ -2093,7 +2341,7 @@ export default function NounsPage({
                       autoFocus
                       disabled={quizAnswerState !== "idle"}
                       placeholder={
-                        quizMode === "english"
+                        effectiveMode === "english"
                           ? "Type German word (e.g. Apfel)..."
                           : "Type plural form (e.g. Äpfel)..."
                       }
@@ -2116,7 +2364,7 @@ export default function NounsPage({
                       disabled={
                         quizAnswerState !== "idle" ||
                         !quizTextInput.trim() ||
-                        (quizMode === "english" && !quizSelectedArticle)
+                        (effectiveMode === "english" && !quizSelectedArticle)
                       }
                       className="btn btn-primary"
                       style={{ height: "46px", padding: "0 18px", borderRadius: "12px", marginTop: 7 }}
@@ -2176,7 +2424,7 @@ export default function NounsPage({
           style={{ zIndex: 1300 }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setScoreModal((p) => ({ ...p, isOpen: false }));
+              closeScoreModal();
             }
           }}
         >
@@ -2194,7 +2442,7 @@ export default function NounsPage({
             }}
           >
             <img
-              src={scoreModal.reason === "timeup" ? alertGif : (scoreModal.score > 0 ? congratsGif : alertGif)}
+              src={resultTheme.gif}
               alt="Quiz Results"
               style={{ width: 95, height: 95, objectFit: "contain", marginBottom: 12 }}
             />
@@ -2204,26 +2452,24 @@ export default function NounsPage({
                 fontSize: 11,
                 fontWeight: 800,
                 letterSpacing: "0.08em",
-                color: scoreModal.reason === "timeup" ? "#b91c1c" : "#b85c19",
-                backgroundColor: scoreModal.reason === "timeup" ? "#fee2e2" : "#fef3c7",
-                border: `1px solid ${scoreModal.reason === "timeup" ? "#fca5a5" : "#fde68a"}`,
+                color: resultTheme.color,
+                backgroundColor: resultTheme.bg,
+                border: `1px solid ${resultTheme.border}`,
                 padding: "4px 12px",
                 borderRadius: 20,
                 marginBottom: 8,
                 textTransform: "uppercase",
               }}
             >
-              {scoreModal.reason === "timeup" ? "⏰ Time Is Up!" : "🎉 Quiz Completed!"}
+              {resultTheme.badge}
             </span>
 
             <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>
-              {scoreModal.reason === "timeup" ? "Time's Expired!" : "Great Effort!"}
+              {resultTheme.title}
             </h3>
 
             <p style={{ color: "var(--muted)", margin: "0 0 16px", fontSize: 14 }}>
-              {scoreModal.reason === "timeup"
-                ? "The countdown clock reached zero. Here is how you did:"
-                : "You have reviewed all the questions in your pool!"}
+              {resultTheme.text}
             </p>
 
             <div
@@ -2260,8 +2506,8 @@ export default function NounsPage({
                   border: "1px solid #ebdccb",
                 }}
               >
-                <div style={{ fontSize: "26px", fontWeight: 800, color: "#166534" }}>
-                  {scoreModal.total > 0 ? Math.round((scoreModal.score / scoreModal.total) * 100) : 0}%
+                <div style={{ fontSize: "26px", fontWeight: 800, color: resultPassed ? "#166534" : "#b91c1c" }}>
+                  {scoreModal.total > 0 ? Math.round(resultPct) : 0}%
                 </div>
                 <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted)", marginTop: 2, textTransform: "uppercase" }}>
                   Accuracy
@@ -2274,7 +2520,7 @@ export default function NounsPage({
                 type="button"
                 className="btn btn-secondary"
                 style={{ flex: 1, justifyContent: "center" }}
-                onClick={() => setScoreModal((p) => ({ ...p, isOpen: false }))}
+                onClick={closeScoreModal}
               >
                 Close
               </button>
@@ -2283,6 +2529,7 @@ export default function NounsPage({
                 className="btn btn-primary"
                 style={{ flex: 1, justifyContent: "center" }}
                 onClick={() => {
+                  stopGoalAchievedMusic();
                   setScoreModal((p) => ({ ...p, isOpen: false }));
                   handleShuffleQuiz();
                   const parsed = parseInt(timerInput, 10);
@@ -2388,7 +2635,11 @@ export default function NounsPage({
                 <CustomDropdown
                   fullWidth
                   value={nounFormData.status}
-                  options={STATUS_OPTIONS}
+                  options={
+                    nounFormData.status === "Forgot"
+                      ? [...STATUS_OPTIONS, { label: "Forgot", value: "Forgot" }]
+                      : STATUS_OPTIONS
+                  }
                   onChange={(val) => setNounFormData({ ...nounFormData, status: val })}
                 />
               </div>

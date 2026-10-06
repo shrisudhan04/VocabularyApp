@@ -1164,24 +1164,6 @@ export default function PrepositionsPage({
     <>
       {viewMode === "list" && (
         <div className="section">
-          <style>{`
-            /* Overview alignment: keep everything inside the same left/right edges */
-            .section .stats-grid,
-            .section .toolbar,
-            .section .list { width:100%; max-width:100%; box-sizing:border-box; }
-            .section .stats-grid .stat { min-width:0; box-sizing:border-box; }
-            .section .stats-grid .stat-pill { white-space:nowrap; }
-            @media (max-width:768px) {
-              .section .stats-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
-              .section .stats-grid .stat { padding:16px 14px; }
-              .section .stats-grid .stat-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-              .section .stats-grid .stat-label { font-size:11px; letter-spacing:0.06em; line-height:1.3; min-width:0; }
-              .section .stats-grid .stat-pill { font-size:12px; padding:4px 10px; flex-shrink:0; }
-              .section .stats-grid .stat-foot { display:flex; align-items:flex-end; justify-content:space-between; gap:8px; }
-              .section .stats-grid .stat-value { font-size:34px; line-height:1; }
-              .section .stats-grid .stat-note { font-size:13px; white-space:nowrap; }
-            }
-          `}</style>
           <div className="stats-grid">
             <div className="stat dark">
               <div className="stat-head">
@@ -1479,9 +1461,7 @@ export default function PrepositionsPage({
                   </>
                 ) : (
                   <>
-                    <span className={`pill ${ARTICLE_CLASS[prepCard.article || "der"]}`} style={{ fontSize: 20, padding: "4px 16px", marginBottom: 8 }}>
-                      {prepCard.article || "der"}
-                    </span>
+                    
                     <span className={`pill ${PREP_CASE_CLASS[prepCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>
                       {prepCard.caseType === "Wechsel" ? "Wechselpräposition" : `+ ${prepCard.caseType}`}
                     </span>
@@ -1778,8 +1758,8 @@ export default function PrepositionsPage({
               style={{ touchAction: "pan-y" }}
             >
               <style>{`
-                .quiz-submit-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:45px; padding:0 30px; border:none; border-radius:999px; background:var(--brand,#b45319); color:#fff; font-size:16px; font-weight:600; cursor:pointer; box-shadow:0 10px 24px rgba(180,83,25,0.35); transition:transform .15s ease, box-shadow .15s ease; }
-                .quiz-next-btn { display:inline-flex; align-items:center; justify-content:center; width:45px; height:45px; padding:0; border:none; border-radius:18px; background:var(--brand,#b45319); color:#fff; font-size:30px; font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(180,83,25,0.35); transition:transform .15s ease, box-shadow .15s ease; }
+                .quiz-submit-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:56px; padding:0 30px; border:none; border-radius:999px; background:var(--brand,#b45319); color:#fff; font-size:16px; font-weight:600; cursor:pointer; box-shadow:0 10px 24px rgba(180,83,25,0.35); transition:transform .15s ease, box-shadow .15s ease; }
+                .quiz-next-btn { display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; padding:0; border:none; border-radius:18px; background:var(--brand,#b45319); color:#fff; font-size:30px; font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(180,83,25,0.35); transition:transform .15s ease, box-shadow .15s ease; }
                 .quiz-next-btn:active { transform:scale(0.97); box-shadow:0 4px 12px rgba(180,83,25,0.3); }
                 .quiz-submit-btn:active { transform:scale(0.97); box-shadow:0 4px 12px rgba(180,83,25,0.3); }
                 .quiz-opts { display:grid; grid-template-columns:repeat(3,1fr); gap:15px; width:100%; max-width:600px; margin:20px auto 0; }
@@ -1913,7 +1893,6 @@ export default function PrepositionsPage({
 
               {/* Next (after a wrong answer) and Submit Quiz, side by side */}
               <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 32 }}>
-                
                 <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
                 {quizAnswerState === "wrong" && (
                   <button type="button" className="quiz-next-btn" onClick={handleForwardClick} aria-label="Next question">

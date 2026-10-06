@@ -1871,7 +1871,7 @@ export default function VerbsPage({
       )}
 
       {viewMode === "flashcards" && (
-        <div className="panel">
+        <div className="panel" style={{ paddingTop: 10 }}>
           <div
             className="flash-filter-row"
             style={{
@@ -1879,13 +1879,13 @@ export default function VerbsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              gap: "10px",
+              gap: "6px",
               width: "100%",
               maxWidth: "100%",
               overflowX: "auto",
               overflowY: "visible",
               WebkitOverflowScrolling: "touch",
-              padding: "4px 2px 14px 2px",
+              padding: "0 2px 14px 2px",
               marginBottom: "16px",
               borderBottom: "1px solid var(--line-2, #ebdccb)",
             }}

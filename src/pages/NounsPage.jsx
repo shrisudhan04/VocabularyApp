@@ -1881,7 +1881,7 @@ export default function NounsPage({
       )}
 
       {viewMode === "flashcards" && (
-        <div className="panel">
+        <div className="panel" style={{ paddingTop: 10 }}>
           <div
             className="flashcard-filter-row"
             style={{
@@ -1889,13 +1889,13 @@ export default function NounsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              gap: "8px",
+              gap: "6px",
               width: "100%",
               maxWidth: "100%",
               overflowX: "auto",
               overflowY: "visible",
               WebkitOverflowScrolling: "touch",
-              padding: "4px 2px 12px",
+              padding: "0 2px 12px",
               marginBottom: "8px",
               borderBottom: "1px solid var(--line-2, #ebdccb)",
               scrollbarWidth: "thin",
@@ -2094,7 +2094,7 @@ export default function NounsPage({
               overflowX: "auto",
               overflowY: "hidden",
               WebkitOverflowScrolling: "touch",
-              padding: "4px 2px 14px 2px",
+              padding: "0 2px 14px 2px",
               marginBottom: "16px",
               borderBottom: "1px solid var(--line-2, #ebdccb)",
             }}

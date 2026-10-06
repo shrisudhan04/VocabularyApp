@@ -1793,16 +1793,7 @@ export default function NounsPage({
                     <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
                     <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
                   
-<button
-  onClick={() =>
-    onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
-      onCommitNouns?.(list.filter((i) => i.id !== item.id))
-    )
-  }
-  className="icon-btn"
->
-  🗑
-</button>
+
 
 <button
   onClick={() => {

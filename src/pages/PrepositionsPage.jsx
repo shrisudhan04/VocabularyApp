@@ -7,7 +7,7 @@ import {
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
 import GoalModal from "../components/GoalModal";
-import { PREP_CASE_CLASS, STATUS_OPTIONS, ARTICLE_CLASS } from "../constants/seedData";
+import { PREP_CASE_CLASS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
@@ -1108,20 +1108,6 @@ export default function PrepositionsPage({
     }
   };
 
-  const handleSubmitQuiz = () => {
-    if (!quizList.length) return;
-    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
-    setTimerRunning(false);
-    setTimerPaused(false);
-    setTimeLeft(null);
-    setScoreModal({
-      isOpen: true,
-      reason: "submit",
-      score: quizScore,
-      total: quizList.length,
-    });
-  };
-
   const prepCard = flashList[cardIndex];
 
   // Closing the result modal starts a fresh session so the pool reflects what changed
@@ -1497,7 +1483,6 @@ export default function PrepositionsPage({
               <div className="list-head preps-head">
                 <span style={{ textAlign: "center" }}>#</span>
                 <span>CASE</span>
-                <span>ARTICLE</span>
                 <span>PREPOSITION</span>
                 <span>MEANING</span>
                 <span>EXAMPLE SENTENCE</span>
@@ -1508,7 +1493,6 @@ export default function PrepositionsPage({
                 <div className={`row prep-row ${item.caseType}`} key={item.id}>
                   <div className="c-idx">{index + 1}</div>
                   <div className="c-case"><span className={`pill ${PREP_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
-                  <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article || "der"]}`}>{item.article || "der"}</span></div>
                   <div className="c-prep" style={{ fontWeight: 700 }}>{item.prep}</div>
                   <div className="c-mean">{item.meaning}</div>
                   <div className="c-eg">{item.example || "—"}</div>
@@ -1865,30 +1849,6 @@ export default function PrepositionsPage({
                 >
                   {timerPaused ? "▶" : "Ⅱ"}
                 </button>
-
-                <button
-                  type="button"
-                  onClick={handleSubmitQuiz}
-                  title="Submit Quiz"
-                  aria-label="Submit Quiz"
-                  style={{
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "10px",
-                    border: "1px solid #fca5a5",
-                    backgroundColor: "#ffffff",
-                    color: "#dc2626",
-                    fontSize: "20px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: 0,
-                  }}
-                >
-                  ✓
-                </button>
               </div>
             )}
           </div>
@@ -1901,93 +1861,20 @@ export default function PrepositionsPage({
           ) : (
             <div className="quiz">
               <style>{`
-                .quiz-submit-btn {
-                  display: inline-flex;
-                  align-items: center;
-                  justify-content: center;
-                  gap: 6px;
-                  height: 45px;
-                  padding: 0 12px;
-                  border: none;
-                  border-radius: 999px;
-                  background: var(--brand, #b45309);
-                  color: #fff;
-                  font-size: 14px;
-                  font-weight: 800;
-                  letter-spacing: 0.02em;
-                  cursor: pointer;
-                  box-shadow: 0 6px 16px rgba(180, 83, 9, 0.28);
-                  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
-                }
-                .quiz-submit-btn:hover {
-                  transform: translateY(-2px);
-                  filter: brightness(1.08);
-                  box-shadow: 0 10px 22px rgba(180, 83, 9, 0.35);
-                }
-                .quiz-submit-btn:active {
-                  transform: translateY(0) scale(0.97);
-                  box-shadow: 0 3px 8px rgba(180, 83, 9, 0.3);
-                }
-                .quiz-submit-btn:focus-visible {
-                  outline: 3px solid rgba(180, 83, 9, 0.35);
-                  outline-offset: 2px;
-                }
-                .quiz-submit-btn .quiz-submit-tick {
-                  display: inline-flex;
-                  align-items: center;
-                  justify-content: center;
-                  width: 10px;
-                  height: 10px;
-                  border-radius: 50%;
-                  background: rgba(255, 255, 255, 0.25);
-                  font-size: 12px;
-                }
-                .quiz-submit-bottom {
-                  display: flex;
-                  justify-content: center;
-                  margin-top: 28px;
-                }
-                .quiz-submit-top {
-                  display: none;
-                }
-                @media (min-width: 769px) {
-                  .quiz-head.quiz-head-with-submit {
-                    display: grid !important;
-                    grid-template-columns: 1fr auto 1fr;
-                    align-items: center;
-                    gap: 12px;
-                  }
-                  .quiz-head-with-submit .quiz-head-left { justify-self: start; }
-                  .quiz-head-with-submit .quiz-head-right { justify-self: end; }
-                  .quiz-submit-top { display: inline-flex; }
-                  .quiz-submit-bottom { display: none; }
-                }
-                @media (max-width: 768px) {
-                  .quiz-submit-top { display: none !important; }
-                  .quiz-submit-bottom { display: flex !important; }
-                }
                 .flashrev-dots { display:flex; align-items:center; justify-content:center; gap:6px; margin:0 0 10px; }
                 .flashrev-dot { width:8px; height:8px; border-radius:50%; background:#e2e8f0; }
                 .flashrev-dot.active { background:var(--brand,#b45319); transform:scale(1.3); }
                 .flashrev-dot.done { background:#86efac; }
                 @media(max-width:768px){ .flash-controls .flash-nav-btn{display:none!important;} }
               `}</style>
-              <div className="quiz-head quiz-head-with-submit">
+              <div className="quiz-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="quiz-head-left">
                   {quizMode === "flashrev"
                     ? <>Word {Math.floor(quizIndex / PREP_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{ color: "var(--muted)", fontWeight: 500 }}> · Q{(quizIndex % PREP_FLASHREV_STEPS) + 1}/{PREP_FLASHREV_STEPS}</span></>
                     : <>Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
 
-                <button
-                  type="button"
-                  className="quiz-submit-btn quiz-submit-top"
-                  onClick={handleSubmitQuiz}
-                  title="End the quiz now and see your result"
-                >
-                  <span className="quiz-submit-tick">✓</span>
-                  Submit Quiz
-                </button>
+                
 
                 <span className="quiz-head-right" style={{ fontWeight: 700, color: "var(--brand)" }}>
                   Score: {quizScore}
@@ -2067,23 +1954,25 @@ export default function PrepositionsPage({
                 <div style={{marginTop:20,textAlign:"center"}}>
                   <p style={{fontSize:16,fontWeight:700,color:quizAnswerState === "correct" ? "#15803d" : "#dc2626"}}>{quizFeedback}</p>
                   {quizAnswerState === "correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next word in 1 second...</span>}
-<button
-                    type="button"
-                    className="btn btn-primary quiz-next-symbol"
-                    autoFocus
-                    onClick={handleForwardClick}
-                    title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
-                    style={{
-                      width: 100,
-                      height: 45,
-                      padding: 0,
-                      borderRadius: 14,
-                      fontSize: 16,
-                      fontWeight: 600,
-                    }}
-                  >
-                    Next
-                  </button>                </div>
+{quizAnswerState === "wrong" && (
+                    <button
+                      type="button"
+                      className="btn btn-primary quiz-next-symbol"
+                      autoFocus
+                      onClick={handleForwardClick}
+                      title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
+                      style={{
+                        width: 100,
+                        height: 45,
+                        padding: 0,
+                        borderRadius: 14,
+                        fontSize: 16,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Next
+                    </button>
+                  )}                </div>
               )}
 
             </div>

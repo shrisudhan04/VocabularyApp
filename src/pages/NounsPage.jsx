@@ -1373,6 +1373,13 @@ export default function NounsPage({
     if (changed) onCommitNouns?.(updated);
   };
 
+  // Reset all words currently queued for FlashRev
+  const handleResetFlashRev = () => {
+    if (flashRevCount === 0) return;
+    onCommitNouns?.(list.map((n) => (n.flashRev ? { ...n, flashRev: false } : n)));
+    setCardFlipped(false);
+  };
+
   const handleFlipCard = () => {
     if (!cardFlipped && nounCard && !nounCard.flashRev) {
       onCommitNouns?.(list.map((n) => (n.id === nounCard.id ? { ...n, flashRev: true } : n)));
@@ -1889,7 +1896,7 @@ export default function NounsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              gap: "6px",
+              gap: "10px",
               width: "100%",
               maxWidth: "100%",
               overflowX: "auto",
@@ -2030,8 +2037,42 @@ export default function NounsPage({
                 onClick={handleFlipCard}
                 onTouchStart={handleFlashTouchStart}
                 onTouchEnd={handleFlashTouchEnd}
-                style={{ touchAction: "pan-y" }}
+                style={{ position: "relative", touchAction: "pan-y" }}
               >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleResetFlashRev();
+                  }}
+                  disabled={flashRevCount === 0}
+                  title="Reset FlashRev"
+                  aria-label="Reset FlashRev"
+                  style={{
+                    position: "absolute",
+                    top: "10px",
+                    right: "10px",
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--line-2, #ebdccb)",
+                    background: "rgba(255, 255, 255, 0.92)",
+                    color: "var(--brand, #b85c19)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    fontSize: "18px",
+                    fontWeight: 800,
+                    cursor: flashRevCount === 0 ? "default" : "pointer",
+                    opacity: flashRevCount === 0 ? 0.45 : 1,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                    zIndex: 3,
+                  }}
+                >
+                  ↻
+                </button>
+
                 {!cardFlipped ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GUESS ARTICLE, PLURAL &amp; MEANING</span>

@@ -1272,6 +1272,13 @@ export default function PatternsPage({
     setTouchStartX(null);
   };
 
+  // Reset all items currently queued for FlashRev
+  const handleResetFlashRev = () => {
+    if (flashRevCount === 0) return;
+    onCommitPatterns?.(list.map((item) => (item.flashRev ? { ...item, flashRev: false } : item)));
+    setCardFlipped(false);
+  };
+
   const handleFlipCard = () => {
     const card = flashList[cardIndex];
     if (!cardFlipped && card && !card.flashRev) {
@@ -1724,7 +1731,7 @@ export default function PatternsPage({
       )}
 
       {viewMode === "flashcards" && (
-        <div className="panel">
+        <div className="panel" style={{ marginTop: "-6px", paddingTop: 10 }}>
           {!flashList[cardIndex] ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
               <img src={noDataImg} alt="No Data" style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }} />
@@ -1737,7 +1744,42 @@ export default function PatternsPage({
                 onClick={handleFlipCard}
                 onTouchStart={handleFlashTouchStart}
                 onTouchEnd={handleFlashTouchEnd}
+                style={{ position: "relative", touchAction: "pan-y" }}
               >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleResetFlashRev();
+                  }}
+                  disabled={flashRevCount === 0}
+                  title="Reset FlashRev"
+                  aria-label="Reset FlashRev"
+                  style={{
+                    position: "absolute",
+                    top: "10px",
+                    right: "10px",
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--line-2, #ebdccb)",
+                    background: "rgba(255, 255, 255, 0.92)",
+                    color: "var(--brand, #b85c19)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    fontSize: "18px",
+                    fontWeight: 800,
+                    cursor: flashRevCount === 0 ? "default" : "pointer",
+                    opacity: flashRevCount === 0 ? 0.45 : 1,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                    zIndex: 3,
+                  }}
+                >
+                  ↻
+                </button>
+
                 {!cardFlipped ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE BELONGS TO THIS PATTERN?</span>

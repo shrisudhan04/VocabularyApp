@@ -1366,6 +1366,13 @@ export default function VerbsPage({
     }
     setTouchStartX(null);
   };
+  // Reset all items currently queued for FlashRev
+  const handleResetFlashRev = () => {
+    if (flashRevCount === 0) return;
+    onCommitVerbs?.(list.map((item) => (item.flashRev ? { ...item, flashRev: false } : item)));
+    setCardFlipped(false);
+  };
+
   const handleFlipCard = () => {
     if (!cardFlipped && verbCard && !verbCard.flashRev) {
       onCommitVerbs?.(list.map((item) => item.id === verbCard.id ? { ...item, flashRev: true } : item));
@@ -1871,7 +1878,7 @@ export default function VerbsPage({
       )}
 
       {viewMode === "flashcards" && (
-        <div className="panel" style={{ paddingTop: 10 }}>
+        <div className="panel" style={{ marginTop: "-6px", paddingTop: 10 }}>
           <div
             className="flash-filter-row"
             style={{
@@ -1879,7 +1886,7 @@ export default function VerbsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              gap: "6px",
+              gap: "10px",
               width: "100%",
               maxWidth: "100%",
               overflowX: "auto",
@@ -1982,7 +1989,41 @@ export default function VerbsPage({
             </div>
           ) : (
             <div className="flash-wrap">
-              <div className="flash" onClick={handleFlipCard}>
+              <div className="flash" onClick={handleFlipCard} style={{ position: "relative", touchAction: "pan-y" }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleResetFlashRev();
+                  }}
+                  disabled={flashRevCount === 0}
+                  title="Reset FlashRev"
+                  aria-label="Reset FlashRev"
+                  style={{
+                    position: "absolute",
+                    top: "10px",
+                    right: "10px",
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--line-2, #ebdccb)",
+                    background: "rgba(255, 255, 255, 0.92)",
+                    color: "var(--brand, #b85c19)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    fontSize: "18px",
+                    fontWeight: 800,
+                    cursor: flashRevCount === 0 ? "default" : "pointer",
+                    opacity: flashRevCount === 0 ? 0.45 : 1,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                    zIndex: 3,
+                  }}
+                >
+                  ↻
+                </button>
+
                 {!cardFlipped ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>RECALL CASE &amp; PAST TENSE FORMS</span>

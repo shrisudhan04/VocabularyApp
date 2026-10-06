@@ -667,7 +667,13 @@ export default function VerbsPage({
     return quizMode === "flashrev"
       ? ordered.flatMap((item) => Array(VERB_FLASHREV_STEPS).fill(item.id))
       : ordered.map((item) => item.id);
-  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
+    // The pool is frozen for the whole quiz session: it is only rebuilt when a
+    // filter/mode changes or resetQuizProgress() bumps quizSessionKey. `list` is
+    // intentionally NOT a dependency — otherwise mastering a word mid-quiz
+    // (flashRev -> false) would drop it from the pool and shift every index.
+    // list.length covers add/delete/import (e.g. data loading after mount).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
 
   const availableQuizWords = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
@@ -1409,7 +1415,8 @@ export default function VerbsPage({
   const goToNextQuestion = (finalScore) => {
     setQuizAnswerState("idle");
     setQuizFeedback(null);
-    setQuizSessionKey((k) => k + 1);
+    // NOTE: do not bump quizSessionKey here — it rebuilds (and reshuffles) the
+    // question pool, which must stay fixed while a quiz is running.
     setQuizTextInput("");
 
     if (quizIndex < quizList.length - 1) {

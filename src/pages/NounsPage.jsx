@@ -1,4 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+// after: import congratsAudio from "../assets/celebration.mp3";
+import wrongAudio from "../assets/wrong.mp3";
+import deleteAudio from "../assets/delete1.mp3";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
@@ -53,16 +56,19 @@ const foldGerman = (s = "") =>
     .replace(/ü/g, "ue")
     .replace(/ß/g, "ss");
 
-// FlashRev rotates the question format so each word is checked on article, plural and meaning
+// FlashRev rotates the question format so each word is checked on article, plural and meaning.
+// subIndex is quizIndex % FLASHREV_STEPS (0, 1, or 2) so all 3 types are asked per word.
 const FLASHREV_ROTATION = ["article", "plural", "english"];
-const getFlashRevMode = (word, index) => {
+const FLASHREV_STEPS = 3; // sub-questions per word
+
+const getFlashRevMode = (word, subIndex) => {
   const available = FLASHREV_ROTATION.filter(
     (m) =>
       m === "article" ||
       (m === "plural" && Boolean(word?.plural)) ||
       (m === "english" && Boolean(word?.meaning))
   );
-  return available[index % available.length];
+  return available[subIndex % available.length];
 };
 
 const getActiveAudioContext = async () => {
@@ -155,29 +161,24 @@ const playDuplicateSound = async () => {
     console.warn("Audio playback failed:", err);
   }
 };
-
-const playDangerSound = async () => {
+const playDeleteSound = () => {
   try {
-    const ctx = await getActiveAudioContext();
-    if (!ctx) return;
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(140, ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(70, ctx.currentTime + 0.35);
-
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.35);
+    const audio = new Audio(deleteAudio);
+    audio.volume = 0.8;
+    audio.play().catch((err) => console.warn("Delete sound error:", err));
   } catch (err) {
-    console.warn("Audio playback failed:", err);
+    console.warn("Delete sound failed:", err);
+  }
+};
+// REMOVE the old playDangerSound (the one using AudioContext/sawtooth oscillator)
+// REPLACE with:
+const playDangerSound = () => {
+  try {
+    const audio = new Audio(wrongAudio);
+    audio.volume = 0.8;
+    audio.play().catch((err) => console.warn("Wrong sound error:", err));
+  } catch (err) {
+    console.warn("Wrong sound failed:", err);
   }
 };
 
@@ -655,9 +656,14 @@ export default function NounsPage({
     return true;
   };
 
-  // Quiz session = the ids picked when the session starts. It is rebuilt only when the
-  // filters / mode / view / session key change, NOT every time the saved list changes, so
-  // saving answer results (status, FlashRev flags) can no longer reshuffle a running quiz.
+  // ---------------------------------------------------------------------------
+  // FlashRev quiz session: each word gets FLASHREV_STEPS (3) sub-questions.
+  // The pool is built by repeating each word id FLASHREV_STEPS times so that:
+  //   quizIndex 0,1,2 → word 0 (article, plural, english)
+  //   quizIndex 3,4,5 → word 1 (article, plural, english)
+  //   …and so on.
+  // For regular quiz modes the pool is one id per word (unchanged).
+  // ---------------------------------------------------------------------------
   const hasNouns = list.length > 0;
   const quizSessionIds = useMemo(() => {
     const filtered = list.filter((item) => {
@@ -667,7 +673,13 @@ export default function NounsPage({
       const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
       return matchesStatus && matchesDate && matchesMode;
     });
-    return (quizShuffleKey > 0 ? shuffleArray(filtered) : filtered).map((item) => item.id);
+    const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
+
+    if (quizMode === "flashrev") {
+      // Each word id appears FLASHREV_STEPS times consecutively
+      return ordered.flatMap((item) => Array(FLASHREV_STEPS).fill(item.id));
+    }
+    return ordered.map((item) => item.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasNouns, viewMode, quizMode, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
 
@@ -687,12 +699,27 @@ export default function NounsPage({
   }, [list, flashOrder]);
 
   const quizList = useMemo(() => {
+    if (quizMode === "flashrev") {
+      // wordCountInput limits unique words; sub-questions are still FLASHREV_STEPS per word
+      const count = parseInt(wordCountInput, 10);
+      if (!isNaN(count) && count > 0) {
+        // availableQuizPool already has ids repeated; slice by unique-word count
+        const maxSlots = count * FLASHREV_STEPS;
+        return availableQuizPool.slice(0, maxSlots);
+      }
+      return availableQuizPool;
+    }
     const count = parseInt(wordCountInput, 10);
     if (!isNaN(count) && count > 0) {
       return availableQuizPool.slice(0, count);
     }
     return availableQuizPool;
-  }, [availableQuizPool, wordCountInput]);
+  }, [availableQuizPool, wordCountInput, quizMode]);
+
+  // ---------------------------------------------------------------------------
+  // effectiveMode: for FlashRev, sub-question index = quizIndex % FLASHREV_STEPS
+  // so questions for a single word cycle through article → plural → english.
+  // ---------------------------------------------------------------------------
 
   // Countdown Timer
   useEffect(() => {
@@ -1235,18 +1262,27 @@ export default function NounsPage({
       )
     );
 
-  // What a quiz answer means for the word itself:
-  //  - wrong answer anywhere  -> word is queued for FlashRev
-  //  - wrong on a Mastered word -> status becomes "Forgot"
-  //  - correct answer inside FlashRev -> word leaves the FlashRev queue
+  // ---------------------------------------------------------------------------
+  // recordAnswerResult — FlashRev-aware version
+  //
+  // In FlashRev each word has FLASHREV_STEPS sub-questions.
+  // • A wrong answer on ANY sub-question keeps flashRev = true and may reset status.
+  // • A correct answer only clears flashRev after the LAST sub-question of that word
+  //   (i.e. when the next quizIndex would move to a new word).
+  // ---------------------------------------------------------------------------
   const recordAnswerResult = (word, ok) => {
     if (!word) return;
+
+    const isLastSubQuestion =
+      quizMode !== "flashrev" || (quizIndex % FLASHREV_STEPS === FLASHREV_STEPS - 1);
+
     let changed = false;
     const updated = list.map((n) => {
       if (n.id !== word.id) return n;
       const next = { ...n };
       if (ok) {
-        if (quizMode === "flashrev" && n.flashRev) {
+        // Only graduate the word out of FlashRev after its final sub-question
+        if (quizMode === "flashrev" && n.flashRev && isLastSubQuestion) {
           next.flashRev = false;
           changed = true;
         }
@@ -1410,10 +1446,25 @@ export default function NounsPage({
 
   const nounCard = flashList[cardIndex];
   const nounQuizWord = quizList[quizIndex];
-  // In FlashRev every question rotates between article / plural / English formats
+
+  // In FlashRev, sub-question index = quizIndex % FLASHREV_STEPS so all 3 types
+  // are asked for each word before moving on.
   const effectiveMode =
-    quizMode === "flashrev" ? getFlashRevMode(nounQuizWord, quizIndex) : quizMode;
+    quizMode === "flashrev"
+      ? getFlashRevMode(nounQuizWord, quizIndex % FLASHREV_STEPS)
+      : quizMode;
+
   const flashRevCount = list.filter((n) => n.flashRev).length;
+
+  // How many unique words remain in the current FlashRev session
+  const flashRevUniqueWords =
+    quizMode === "flashrev" ? quizList.length / FLASHREV_STEPS : quizList.length;
+
+  // Sub-question position label shown in the quiz header for FlashRev
+  const flashRevSubLabel =
+    quizMode === "flashrev"
+      ? ` · Q${(quizIndex % FLASHREV_STEPS) + 1}/${FLASHREV_STEPS}`
+      : "";
 
   // Result modal look: pass (>= PASS_PERCENT) vs fail vs time-up
   const resultPct = scoreModal.total > 0 ? (scoreModal.score / scoreModal.total) * 100 : 0;
@@ -1446,19 +1497,11 @@ export default function NounsPage({
     };
 
     if (quizAnswerState === "correct") {
-      return {
-        ...baseStyle,
-        backgroundColor: "#f0fdf4", // Pale green
-        borderColor: "#86efac",
-      };
+      return { ...baseStyle, backgroundColor: "#f0fdf4", borderColor: "#86efac" };
     }
 
     if (quizAnswerState === "wrong") {
-      return {
-        ...baseStyle,
-        backgroundColor: "#fef2f2", // Pale red
-        borderColor: "#fca5a5",
-      };
+      return { ...baseStyle, backgroundColor: "#fef2f2", borderColor: "#fca5a5" };
     }
 
     return baseStyle;
@@ -1749,16 +1792,30 @@ export default function NounsPage({
                   <div className="actions">
                     <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
                     <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
-                    <button
-                      onClick={() =>
-                        onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
-                          onCommitNouns?.(list.filter((i) => i.id !== item.id))
-                        )
-                      }
-                      className="icon-btn"
-                    >
-                      🗑
-                    </button>
+                   // BEFORE
+<button
+  onClick={() =>
+    onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
+      onCommitNouns?.(list.filter((i) => i.id !== item.id))
+    )
+  }
+  className="icon-btn"
+>
+  🗑
+</button>
+
+// AFTER
+<button
+  onClick={() => {
+    playDeleteSound();
+    onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
+      onCommitNouns?.(list.filter((i) => i.id !== item.id))
+    );
+  }}
+  className="icon-btn"
+>
+  🗑
+</button>
                   </div>
                 </div>
               ))}
@@ -1840,7 +1897,7 @@ export default function NounsPage({
         </div>
       )}
 
-      {/* 🎯 QUIZ VIEW: correct = auto advance, wrong = stay + Next button */}
+      {/* 🎯 QUIZ VIEW */}
       {viewMode === "quiz" && (
         <div className="panel" style={getQuizPanelStyle()}>
           <div
@@ -1918,12 +1975,20 @@ export default function NounsPage({
                   }}
                 >
                   <span style={{ fontSize: "14px" }}>🔢</span>
-                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>Count:</span>
+                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>
+                    {quizMode === "flashrev" ? "Words:" : "Count:"}
+                  </span>
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    placeholder={availableQuizPool.length ? `${availableQuizPool.length}` : "All"}
+                    placeholder={
+                      quizMode === "flashrev"
+                        ? `${flashRevUniqueWords}`
+                        : availableQuizPool.length
+                        ? `${availableQuizPool.length}`
+                        : "All"
+                    }
                     value={wordCountInput}
                     onChange={(e) => {
                       const val = e.target.value.replace(/[^0-9]/g, "");
@@ -2019,41 +2084,27 @@ export default function NounsPage({
                   onClick={handleShuffleQuiz}
                   className="btn btn-secondary"
                   title="Shuffle quiz questions order"
-                  style={{
-                    flexShrink: 0,
-                    whiteSpace: "nowrap",
-                    height: "40px",
-                    borderRadius: "12px",
-                    padding: "0 12px",
-                  }}
+                  style={{ flexShrink: 0, whiteSpace: "nowrap", height: "40px", borderRadius: "12px", padding: "0 12px" }}
                 >
                   🔀 Shuffle
                 </button>
 
-                <div
-                  style={{
-                    flexShrink: 0,
-                    fontSize: "13.5px",
-                    color: "var(--muted)",
-                    whiteSpace: "nowrap",
-                    paddingLeft: "4px",
-                  }}
-                >
-                  Words: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong>
+                <div style={{ flexShrink: 0, fontSize: "13.5px", color: "var(--muted)", whiteSpace: "nowrap", paddingLeft: "4px" }}>
+                  {quizMode === "flashrev" ? (
+                    <>
+                      Words: <strong style={{ color: "var(--ink)" }}>{flashRevUniqueWords}</strong>
+                      <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{FLASHREV_STEPS}Q</span>
+                    </>
+                  ) : (
+                    <>Words: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong></>
+                  )}
                 </div>
 
                 {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{
-                      flexShrink: 0,
-                      padding: "0 12px",
-                      fontSize: "12.5px",
-                      whiteSpace: "nowrap",
-                      height: "40px",
-                      borderRadius: "12px",
-                    }}
+                    style={{ flexShrink: 0, padding: "0 12px", fontSize: "12.5px", whiteSpace: "nowrap", height: "40px", borderRadius: "12px" }}
                     onClick={() => {
                       setQuizStatusFilter("all");
                       setQuizDateMode("all");
@@ -2083,36 +2134,20 @@ export default function NounsPage({
                 }}
               >
                 <span style={{ fontSize: "16px" }}>{timeLeft <= 5 ? "🔥" : "⏳"}</span>
-                <span
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 800,
-                    color: timeLeft <= 5 ? "#dc2626" : "#15803d",
-                    letterSpacing: "0.02em",
-                  }}
-                >
+                <span style={{ fontSize: "15px", fontWeight: 800, color: timeLeft <= 5 ? "#dc2626" : "#15803d", letterSpacing: "0.02em" }}>
                   {timeLeft}s remaining
                 </span>
-
                 <button
                   type="button"
                   onClick={handleStopTimer}
                   title="Stop Timer"
                   style={{
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "8px",
-                    border: "1px solid #fca5a5",
-                    backgroundColor: "#ffffff",
-                    color: "#dc2626",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: 0,
-                    marginLeft: "4px",
+                    width: "30px", height: "30px", borderRadius: "8px",
+                    border: "1px solid #fca5a5", backgroundColor: "#ffffff",
+                    color: "#dc2626", fontSize: "12px", fontWeight: 700,
+                    cursor: "pointer", display: "inline-flex",
+                    alignItems: "center", justifyContent: "center",
+                    padding: 0, marginLeft: "4px",
                   }}
                 >
                   ⏸
@@ -2124,19 +2159,11 @@ export default function NounsPage({
           {!nounQuizWord ? (
             <div
               style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "36px 16px",
-                textAlign: "center",
+                display: "flex", flexDirection: "column", alignItems: "center",
+                justifyContent: "center", padding: "36px 16px", textAlign: "center",
               }}
             >
-              <img
-                src={noDataImg}
-                alt="No Data"
-                style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }}
-              />
+              <img src={noDataImg} alt="No Data" style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }} />
               <p style={{ color: "var(--muted)", margin: "0 0 12px 0", fontSize: 15 }}>
                 {list.length === 0
                   ? "Add nouns to start quiz."
@@ -2162,84 +2189,104 @@ export default function NounsPage({
             </div>
           ) : (
             <div className="quiz">
-                <style>{`
-                  .quiz-submit-btn {
-                    display: inline-flex;
+              <style>{`
+                .quiz-submit-btn {
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 8px;
+                  height: 40px;
+                  padding: 0 24px;
+                  border: none;
+                  border-radius: 999px;
+                  background: var(--brand, #b45309);
+                  color: #fff;
+                  font-size: 14px;
+                  font-weight: 800;
+                  letter-spacing: 0.02em;
+                  cursor: pointer;
+                  box-shadow: 0 6px 16px rgba(180, 83, 9, 0.28);
+                  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+                }
+                .quiz-submit-btn:hover {
+                  transform: translateY(-2px);
+                  filter: brightness(1.08);
+                  box-shadow: 0 10px 22px rgba(180, 83, 9, 0.35);
+                }
+                .quiz-submit-btn:active {
+                  transform: translateY(0) scale(0.97);
+                  box-shadow: 0 3px 8px rgba(180, 83, 9, 0.3);
+                }
+                .quiz-submit-btn:focus-visible {
+                  outline: 3px solid rgba(180, 83, 9, 0.35);
+                  outline-offset: 2px;
+                }
+                .quiz-submit-btn .quiz-submit-tick {
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 50%;
+                  background: rgba(255, 255, 255, 0.25);
+                  font-size: 12px;
+                }
+                .quiz-submit-bottom {
+                  display: flex;
+                  justify-content: center;
+                  margin-top: 28px;
+                }
+                .quiz-submit-top {
+                  display: none;
+                }
+                @media (min-width: 769px) {
+                  .quiz-head.quiz-head-with-submit {
+                    display: grid !important;
+                    grid-template-columns: 1fr auto 1fr;
                     align-items: center;
-                    justify-content: center;
-                    gap: 8px;
-                    height: 40px;
-                    padding: 0 24px;
-                    border: none;
-                    border-radius: 999px;
-                    background: var(--brand, #b45309);
-                    color: #fff;
-                    font-size: 14px;
-                    font-weight: 800;
-                    letter-spacing: 0.02em;
-                    cursor: pointer;
-                    box-shadow: 0 6px 16px rgba(180, 83, 9, 0.28);
-                    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+                    gap: 12px;
                   }
-                  .quiz-submit-btn:hover {
-                    transform: translateY(-2px);
-                    filter: brightness(1.08);
-                    box-shadow: 0 10px 22px rgba(180, 83, 9, 0.35);
-                  }
-                  .quiz-submit-btn:active {
-                    transform: translateY(0) scale(0.97);
-                    box-shadow: 0 3px 8px rgba(180, 83, 9, 0.3);
-                  }
-                  .quiz-submit-btn:focus-visible {
-                    outline: 3px solid rgba(180, 83, 9, 0.35);
-                    outline-offset: 2px;
-                  }
-                  .quiz-submit-btn .quiz-submit-tick {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 20px;
-                    height: 20px;
-                    border-radius: 50%;
-                    background: rgba(255, 255, 255, 0.25);
-                    font-size: 12px;
-                  }
+                  .quiz-head-with-submit .quiz-head-left { justify-self: start; }
+                  .quiz-head-with-submit .quiz-head-right { justify-self: end; }
+                  .quiz-submit-top { display: inline-flex; }
+                  .quiz-submit-bottom { display: none; }
+                }
 
-                  /* Mobile: Submit sits at the bottom */
-                  .quiz-submit-bottom {
-                    display: flex;
-                    justify-content: center;
-                    margin-top: 28px;
-                  }
-                  .quiz-submit-top {
-                    display: none;
-                  }
-
-                  /* Web: Submit sits top-center, between the question count and the score */
-                  @media (min-width: 769px) {
-                    .quiz-head.quiz-head-with-submit {
-                      display: grid !important;
-                      grid-template-columns: 1fr auto 1fr;
-                      align-items: center;
-                      gap: 12px;
-                    }
-                    .quiz-head-with-submit .quiz-head-left {
-                      justify-self: start;
-                    }
-                    .quiz-head-with-submit .quiz-head-right {
-                      justify-self: end;
-                    }
-                    .quiz-submit-top {
-                      display: inline-flex;
-                    }
-                    .quiz-submit-bottom {
-                      display: none;
-                    }
-                  }
-                `}</style>
+                /* FlashRev sub-question progress dots */
+                .flashrev-dots {
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 6px;
+                  margin-bottom: 10px;
+                }
+                .flashrev-dot {
+                  width: 8px;
+                  height: 8px;
+                  border-radius: 50%;
+                  background: var(--line-2, #e2e8f0);
+                  transition: background 0.2s ease, transform 0.2s ease;
+                }
+                .flashrev-dot.active {
+                  background: var(--brand, #b45309);
+                  transform: scale(1.3);
+                }
+                .flashrev-dot.done {
+                  background: #86efac;
+                }
+              `}</style>
 
               <div className="quiz-head quiz-head-with-submit">
-                <span className="quiz-head-left">Question {quizIndex + 1} of {quizList.length}</span>
+                <span className="quiz-head-left">
+                  {quizMode === "flashrev" ? (
+                    <>
+                      Word {Math.floor(quizIndex / FLASHREV_STEPS) + 1} of {flashRevUniqueWords}
+                      <span style={{ color: "var(--muted)", fontWeight: 500 }}>{flashRevSubLabel}</span>
+                    </>
+                  ) : (
+                    <>Question {quizIndex + 1} of {quizList.length}</>
+                  )}
+                </span>
 
                 <button
                   type="button"
@@ -2255,6 +2302,27 @@ export default function NounsPage({
                   Score: {quizScore}
                 </span>
               </div>
+
+              {/* FlashRev sub-question dots */}
+              {quizMode === "flashrev" && (
+                <div className="flashrev-dots">
+                  {Array.from({ length: FLASHREV_STEPS }).map((_, i) => {
+                    const subIdx = quizIndex % FLASHREV_STEPS;
+                    const dotClass =
+                      i < subIdx ? "done" : i === subIdx ? "active" : "";
+                    return (
+                      <span
+                        key={i}
+                        className={`flashrev-dot ${dotClass}`}
+                        title={["Article", "Plural", "English"][i]}
+                      />
+                    );
+                  })}
+                  <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 6 }}>
+                    {["Article", "Plural", "English → Noun"][quizIndex % FLASHREV_STEPS]}
+                  </span>
+                </div>
+              )}
 
               <div className="quiz-card">
                 {effectiveMode === "article" && (
@@ -2340,11 +2408,8 @@ export default function NounsPage({
                               disabled={quizAnswerState !== "idle"}
                               onClick={() => setQuizSelectedArticle(art)}
                               style={{
-                                flex: 1,
-                                height: 46,
-                                borderRadius: 12,
-                                fontSize: 16,
-                                fontWeight: 800,
+                                flex: 1, height: 46, borderRadius: 12,
+                                fontSize: 16, fontWeight: 800,
                                 cursor: quizAnswerState !== "idle" ? "default" : "pointer",
                                 color: selected ? "#ffffff" : color,
                                 backgroundColor: selected ? color : bg,
@@ -2378,14 +2443,9 @@ export default function NounsPage({
                       onChange={(e) => setQuizTextInput(e.target.value)}
                       className="modal-input"
                       style={{
-                        flex: 1,
-                        height: "46px",
-                        fontSize: "16px",
-                        fontWeight: 600,
-                        borderRadius: "12px",
-                        border: "1.5px solid var(--line-2, #ebdccb)",
-                        padding: "0 14px",
-                        outline: "none",
+                        flex: 1, height: "46px", fontSize: "16px", fontWeight: 600,
+                        borderRadius: "12px", border: "1.5px solid var(--line-2, #ebdccb)",
+                        padding: "0 14px", outline: "none",
                       }}
                     />
                     <button
@@ -2406,19 +2466,15 @@ export default function NounsPage({
 
               {quizFeedback && (
                 <div style={{ marginTop: 20, textAlign: "center", animation: "fadeIn 0.15s ease-in" }}>
-                  <p
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: quizAnswerState === "correct" ? "#15803d" : "#dc2626",
-                    }}
-                  >
+                  <p style={{ fontSize: 16, fontWeight: 700, color: quizAnswerState === "correct" ? "#15803d" : "#dc2626" }}>
                     {quizFeedback}
                   </p>
 
                   {quizAnswerState === "correct" && (
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                      Moving to next word in 1 second...
+                      {quizMode === "flashrev" && quizIndex % FLASHREV_STEPS < FLASHREV_STEPS - 1
+                        ? `Next sub-question in 1 second...`
+                        : `Moving to next word in 1 second...`}
                     </span>
                   )}
 
@@ -2428,19 +2484,14 @@ export default function NounsPage({
                       className="btn btn-primary"
                       autoFocus
                       onClick={handleForwardClick}
-                      style={{
-                        marginTop: 10,
-                        height: 44,
-                        padding: "0 22px",
-                        borderRadius: 12,
-                        fontWeight: 700,
-                      }}
+                      style={{ marginTop: 10, height: 44, padding: "0 22px", borderRadius: 12, fontWeight: 700 }}
                     >
                       {quizIndex < quizList.length - 1 ? "Next ▶" : "Finish 🏁"}
                     </button>
                   )}
                 </div>
               )}
+
               <div className="quiz-submit-bottom">
                 <button
                   type="button"
@@ -2462,73 +2513,34 @@ export default function NounsPage({
         <div
           className="overlay"
           style={{ zIndex: 1300 }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeScoreModal();
-            }
-          }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeScoreModal(); }}
         >
           <div
             className="modal"
             style={{
-              textAlign: "center",
-              maxWidth: 360,
-              padding: "26px 20px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              borderRadius: "20px",
-              animation: "fadeIn 0.2s ease-in-out",
+              textAlign: "center", maxWidth: 360, padding: "26px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center",
+              borderRadius: "20px", animation: "fadeIn 0.2s ease-in-out",
             }}
           >
-            <img
-              src={resultTheme.gif}
-              alt="Quiz Results"
-              style={{ width: 95, height: 95, objectFit: "contain", marginBottom: 12 }}
-            />
+            <img src={resultTheme.gif} alt="Quiz Results" style={{ width: 95, height: 95, objectFit: "contain", marginBottom: 12 }} />
 
             <span
               style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                color: resultTheme.color,
-                backgroundColor: resultTheme.bg,
+                fontSize: 11, fontWeight: 800, letterSpacing: "0.08em",
+                color: resultTheme.color, backgroundColor: resultTheme.bg,
                 border: `1px solid ${resultTheme.border}`,
-                padding: "4px 12px",
-                borderRadius: 20,
-                marginBottom: 8,
-                textTransform: "uppercase",
+                padding: "4px 12px", borderRadius: 20, marginBottom: 8, textTransform: "uppercase",
               }}
             >
               {resultTheme.badge}
             </span>
 
-            <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>
-              {resultTheme.title}
-            </h3>
+            <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>{resultTheme.title}</h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 16px", fontSize: 14 }}>{resultTheme.text}</p>
 
-            <p style={{ color: "var(--muted)", margin: "0 0 16px", fontSize: 14 }}>
-              {resultTheme.text}
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                width: "100%",
-                marginBottom: "18px",
-              }}
-            >
-              <div
-                style={{
-                  flex: 1,
-                  padding: "12px 6px",
-                  borderRadius: "12px",
-                  backgroundColor: "#f7f2ed",
-                  border: "1px solid #ebdccb",
-                }}
-              >
+            <div style={{ display: "flex", gap: "12px", width: "100%", marginBottom: "18px" }}>
+              <div style={{ flex: 1, padding: "12px 6px", borderRadius: "12px", backgroundColor: "#f7f2ed", border: "1px solid #ebdccb" }}>
                 <div style={{ fontSize: "26px", fontWeight: 800, color: "var(--brand, #b85c19)" }}>
                   {scoreModal.score} / {scoreModal.total}
                 </div>
@@ -2536,16 +2548,7 @@ export default function NounsPage({
                   Score
                 </div>
               </div>
-
-              <div
-                style={{
-                  flex: 1,
-                  padding: "12px 6px",
-                  borderRadius: "12px",
-                  backgroundColor: "#f7f2ed",
-                  border: "1px solid #ebdccb",
-                }}
-              >
+              <div style={{ flex: 1, padding: "12px 6px", borderRadius: "12px", backgroundColor: "#f7f2ed", border: "1px solid #ebdccb" }}>
                 <div style={{ fontSize: "26px", fontWeight: 800, color: resultPassed ? "#166534" : "#b91c1c" }}>
                   {scoreModal.total > 0 ? Math.round(resultPct) : 0}%
                 </div>
@@ -2556,12 +2559,7 @@ export default function NounsPage({
             </div>
 
             <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ flex: 1, justifyContent: "center" }}
-                onClick={closeScoreModal}
-              >
+              <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={closeScoreModal}>
                 Close
               </button>
               <button
@@ -2591,12 +2589,7 @@ export default function NounsPage({
         isOpen={goalModalOpen}
         onClose={() => setGoalModalOpen(false)}
         defaultCategory="Nouns"
-        categoryStats={{
-          Nouns: {
-            dailyCurrent: nounDailyCount,
-            weeklyCurrent: nounWeeklyCount,
-          },
-        }}
+        categoryStats={{ Nouns: { dailyCurrent: nounDailyCount, weeklyCurrent: nounWeeklyCount } }}
         initialDailyTarget={nounDailyTarget}
         initialWeeklyTarget={nounWeeklyTarget}
       />
@@ -2707,43 +2700,24 @@ export default function NounsPage({
           <div
             className="modal"
             style={{
-              textAlign: "center",
-              maxWidth: 360,
-              padding: "24px 20px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
+              textAlign: "center", maxWidth: 360, padding: "24px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center",
               animation: "fadeIn 0.2s ease-in-out",
             }}
           >
-            <img
-              src={warningRedGif}
-              alt="Warning"
-              style={{ width: 90, height: 90, objectFit: "contain", marginBottom: 16 }}
-            />
+            <img src={warningRedGif} alt="Warning" style={{ width: 90, height: 90, objectFit: "contain", marginBottom: 16 }} />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>Reset All Nouns?</h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
               Are you sure you want to delete all nouns? This action will permanently remove your entire vocabulary list and cannot be undone.
             </p>
             <div style={{ display: "flex", gap: 10, width: "100%" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ flex: 1, justifyContent: "center" }}
-                onClick={() => setResetModalOpen(false)}
-              >
+              <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setResetModalOpen(false)}>
                 Cancel
               </button>
               <button
                 type="button"
                 className="btn btn-primary"
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  backgroundColor: "#dc2626",
-                  borderColor: "#dc2626",
-                  color: "#ffffff",
-                }}
+                style={{ flex: 1, justifyContent: "center", backgroundColor: "#dc2626", borderColor: "#dc2626", color: "#ffffff" }}
                 onClick={handleConfirmReset}
               >
                 Yes, Reset All
@@ -2763,29 +2737,16 @@ export default function NounsPage({
           <div
             className="modal"
             style={{
-              textAlign: "center",
-              maxWidth: 360,
-              padding: "24px 20px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
+              textAlign: "center", maxWidth: 360, padding: "24px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center",
             }}
           >
-            <img
-              src={alertGif}
-              alt="Alert"
-              style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }}
-            />
+            <img src={alertGif} alt="Alert" style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }} />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--ink)" }}>Word Already Exists!</h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
               <strong>"{duplicateWordName}"</strong> is already in your vocabulary list.
             </p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ width: "100%", justifyContent: "center" }}
-              onClick={() => setDuplicateModalOpen(false)}
-            >
+            <button type="button" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => setDuplicateModalOpen(false)}>
               Understood
             </button>
           </div>
@@ -2807,88 +2768,48 @@ export default function NounsPage({
           <div
             className="modal"
             style={{
-              textAlign: "center",
-              maxWidth: 380,
-              padding: "28px 22px 24px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              borderRadius: 20,
-              border: "1px solid #ebdccb",
-              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.18)",
-              animation: "fadeIn 0.22s ease-out",
+              textAlign: "center", maxWidth: 380, padding: "28px 22px 24px",
+              display: "flex", flexDirection: "column", alignItems: "center",
+              borderRadius: 20, border: "1px solid #ebdccb",
+              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.18)", animation: "fadeIn 0.22s ease-out",
             }}
           >
-            <img
-              src={congratsGif}
-              alt="Celebration Congrats"
-              style={{ width: 105, height: 105, objectFit: "contain", marginBottom: 12 }}
-            />
-
+            <img src={congratsGif} alt="Celebration Congrats" style={{ width: 105, height: 105, objectFit: "contain", marginBottom: 12 }} />
             <span
               style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                color: "#b85c19",
-                backgroundColor: "#fef3c7",
-                border: "1px solid #fde68a",
-                padding: "4px 12px",
-                borderRadius: 20,
-                marginBottom: 10,
-                textTransform: "uppercase",
+                fontSize: 11, fontWeight: 800, letterSpacing: "0.08em",
+                color: "#b85c19", backgroundColor: "#fef3c7",
+                border: "1px solid #fde68a", padding: "4px 12px",
+                borderRadius: 20, marginBottom: 10, textTransform: "uppercase",
               }}
             >
               {goalCelebration.goalType === "daily" ? "🎯 Daily Goal Achieved!" : "🏆 Weekly Goal Achieved!"}
             </span>
-
             <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "var(--ink, #1e1e1e)" }}>
               Herzlichen Glückwunsch!
             </h3>
-
             <p style={{ color: "var(--muted, #6b7280)", margin: "0 0 16px", fontSize: 14, lineHeight: 1.55 }}>
               {goalCelebration.goalType === "daily" ? (
-                <>
-                  You reached your daily goal of{" "}
-                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} nouns</strong>!
-                </>
+                <>You reached your daily goal of <strong style={{ color: "#b85c19" }}>{goalCelebration.target} nouns</strong>!</>
               ) : (
-                <>
-                  Phenomenal work! You hit your weekly goal of{" "}
-                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} nouns</strong>!
-                </>
+                <>Phenomenal work! You hit your weekly goal of <strong style={{ color: "#b85c19" }}>{goalCelebration.target} nouns</strong>!</>
               )}
             </p>
-
             {goalCelebration.addedWord && (
               <div
                 style={{
-                  fontSize: 12.5,
-                  color: "#166534",
-                  backgroundColor: "#dcfce7",
-                  border: "1px solid #86efac",
-                  padding: "6px 14px",
-                  borderRadius: 10,
-                  marginBottom: 18,
-                  fontWeight: 600,
+                  fontSize: 12.5, color: "#166534", backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac", padding: "6px 14px",
+                  borderRadius: 10, marginBottom: 18, fontWeight: 600,
                 }}
               >
                 Added: <strong>"{goalCelebration.addedWord}"</strong>
               </div>
             )}
-
             <button
               type="button"
               className="btn btn-primary"
-              style={{
-                width: "100%",
-                justifyContent: "center",
-                padding: "12px 18px",
-                fontSize: 14.5,
-                fontWeight: 700,
-                backgroundColor: "#b85c19",
-                borderColor: "#b85c19",
-              }}
+              style={{ width: "100%", justifyContent: "center", padding: "12px 18px", fontSize: 14.5, fontWeight: 700, backgroundColor: "#b85c19", borderColor: "#b85c19" }}
               onClick={() => {
                 stopGoalAchievedMusic();
                 setGoalCelebration((p) => ({ ...p, isOpen: false }));
@@ -2910,32 +2831,19 @@ export default function NounsPage({
           <div
             className="modal"
             style={{
-              textAlign: "center",
-              maxWidth: 360,
-              padding: "24px 20px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
+              textAlign: "center", maxWidth: 360, padding: "24px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center",
               animation: "fadeIn 0.2s ease-in-out",
             }}
           >
-            <img
-              src={successGif}
-              alt="Success"
-              style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }}
-            />
+            <img src={successGif} alt="Success" style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }} />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--brand, #16a34a)" }}>
               {successWordInfo.isEdit ? "Noun Updated!" : "Noun Added Successfully!"}
             </h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
               <strong>"{successWordInfo.article} {successWordInfo.noun}"</strong> has been saved to your vocabulary.
             </p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ width: "100%", justifyContent: "center" }}
-              onClick={() => setSuccessModalOpen(false)}
-            >
+            <button type="button" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => setSuccessModalOpen(false)}>
               Great! 🎉
             </button>
           </div>
@@ -2951,87 +2859,34 @@ export default function NounsPage({
         >
           <div
             className="modal"
-            style={{
-              textAlign: "center",
-              maxWidth: 380,
-              padding: "24px 20px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-            }}
+            style={{ textAlign: "center", maxWidth: 380, padding: "24px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}
           >
             <h3 style={{ margin: "0 0 16px", fontSize: 20, color: "var(--ink)" }}>Import Summary</h3>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                width: "100%",
-                justifyContent: "center",
-                marginBottom: 16,
-              }}
-            >
-              <div
-                style={{
-                  flex: 1,
-                  padding: "14px 8px",
-                  borderRadius: 10,
-                  backgroundColor: "#dcfce7",
-                  border: "1px solid #86efac",
-                  color: "#166534",
-                  fontWeight: 700,
-                }}
-              >
+            <div style={{ display: "flex", gap: 12, width: "100%", justifyContent: "center", marginBottom: 16 }}>
+              <div style={{ flex: 1, padding: "14px 8px", borderRadius: 10, backgroundColor: "#dcfce7", border: "1px solid #86efac", color: "#166534", fontWeight: 700 }}>
                 <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.added}</div>
                 <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>Added</div>
               </div>
-
-              <div
-                style={{
-                  flex: 1,
-                  padding: "14px 8px",
-                  borderRadius: 10,
-                  backgroundColor: "#fef9c3",
-                  border: "1px solid #fde047",
-                  color: "#854d0e",
-                  fontWeight: 700,
-                }}
-              >
+              <div style={{ flex: 1, padding: "14px 8px", borderRadius: 10, backgroundColor: "#fef9c3", border: "1px solid #fde047", color: "#854d0e", fontWeight: 700 }}>
                 <div style={{ fontSize: 28, lineHeight: 1.1 }}>{importSummary.duplicates}</div>
                 <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>Duplicates</div>
               </div>
             </div>
-
             {importSummary.duplicateWords.length > 0 && (
               <div
                 style={{
-                  fontSize: 12,
-                  color: "#854d0e",
-                  backgroundColor: "#fefce8",
-                  border: "1px dashed #facc15",
-                  borderRadius: 6,
-                  padding: "8px 12px",
-                  width: "100%",
-                  boxSizing: "border-box",
-                  maxHeight: 90,
-                  overflowY: "auto",
-                  marginBottom: 16,
-                  textAlign: "left",
+                  fontSize: 12, color: "#854d0e", backgroundColor: "#fefce8",
+                  border: "1px dashed #facc15", borderRadius: 6,
+                  padding: "8px 12px", width: "100%", boxSizing: "border-box",
+                  maxHeight: 90, overflowY: "auto", marginBottom: 16, textAlign: "left",
                 }}
               >
                 <strong>Skipped words:</strong>{" "}
                 {importSummary.duplicateWords.slice(0, 8).join(", ")}
-                {importSummary.duplicateWords.length > 8 &&
-                  ` and ${importSummary.duplicateWords.length - 8} more...`}
+                {importSummary.duplicateWords.length > 8 && ` and ${importSummary.duplicateWords.length - 8} more...`}
               </div>
             )}
-
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ width: "100%", justifyContent: "center" }}
-              onClick={() => setImportSummary(null)}
-            >
+            <button type="button" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => setImportSummary(null)}>
               Done
             </button>
           </div>

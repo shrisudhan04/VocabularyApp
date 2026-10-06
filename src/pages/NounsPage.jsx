@@ -32,7 +32,7 @@ const shuffleArray = (array) => {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+    [arr[j], arr[i]] = [arr[j], arr[i]];
   }
   return arr;
 };
@@ -40,8 +40,6 @@ const shuffleArray = (array) => {
 // A quiz needs at least this percentage to count as passed
 const PASS_PERCENT = 70;
 
-// German-aware answer comparison: ignores case/extra spaces, but umlauts must be right.
-// "ae/oe/ue/ss" are accepted as typing substitutes for "ä/ö/ü/ß" (so Mutter != Mütter).
 const foldGerman = (s = "") =>
   String(s ?? "")
     .normalize("NFC")
@@ -53,10 +51,8 @@ const foldGerman = (s = "") =>
     .replace(/ü/g, "ue")
     .replace(/ß/g, "ss");
 
-// FlashRev rotates the question format so each word is checked on article, plural and meaning.
-// subIndex is quizIndex % FLASHREV_STEPS (0, 1, or 2) so all 3 types are asked per word.
 const FLASHREV_ROTATION = ["article", "plural", "english"];
-const FLASHREV_STEPS = 3; // sub-questions per word
+const FLASHREV_STEPS = 3;
 
 const getFlashRevMode = (word, subIndex) => {
   const available = FLASHREV_ROTATION.filter(
@@ -228,7 +224,6 @@ const EMPTY_FORM = {
   status: "In Progress",
 };
 
-// 🗓️ Interactive Real Calendar Picker Popover
 function RealCalendarPicker({ selectedDate, onSelectDate }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -559,26 +554,26 @@ export default function NounsPage({
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
   const [quizMode, setQuizMode] = useState("article");
   const [quizTextInput, setQuizTextInput] = useState("");
-  const [quizSelectedArticle, setQuizSelectedArticle] = useState(""); // for English -> Noun mode
+  const [quizSelectedArticle, setQuizSelectedArticle] = useState("");
 
   // Quiz Controls: Question Count Limit & Timer
   const [wordCountInput, setWordCountInput] = useState("");
   const [timerInput, setTimerInput] = useState("30");
   const [timeLeft, setTimeLeft] = useState(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  // Keeps the active quiz banner UI displayed even when paused
+  const [isQuizActive, setIsQuizActive] = useState(false);
 
   // Shuffle seed for quiz ordering
   const [quizShuffleKey, setQuizShuffleKey] = useState(0);
-  // Bumped whenever a fresh quiz session should be built (reset / new filters / Try Again)
   const [quizSessionKey, setQuizSessionKey] = useState(0);
 
   // Quiz Progress & Auto-Advance Transition State
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
-  const [quizAnswerState, setQuizAnswerState] = useState("idle"); // 'idle' | 'correct' | 'wrong'
+  const [quizAnswerState, setQuizAnswerState] = useState("idle");
 
-  // Timeout reference for auto-progression
   const autoNextTimeoutRef = useRef(null);
 
   // Quiz Completion & Score Modal
@@ -614,14 +609,12 @@ export default function NounsPage({
 
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
-  // Flashcard order for this session (ids). Shuffling no longer rewrites your saved list.
   const [flashOrder, setFlashOrder] = useState(null);
   const [touchStartX, setTouchStartX] = useState(null);
 
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Clear timeout on unmount
   useEffect(() => {
     return () => {
       if (autoNextTimeoutRef.current) {
@@ -630,7 +623,6 @@ export default function NounsPage({
     };
   }, []);
 
-  // Date Filtering Evaluator
   const matchesDateFilter = (isoDate, mode, specificDate) => {
     if (!isoDate || mode === "all") return true;
     const itemDate = new Date(isoDate);
@@ -659,14 +651,6 @@ export default function NounsPage({
     return true;
   };
 
-  // ---------------------------------------------------------------------------
-  // FlashRev quiz session: each word gets FLASHREV_STEPS (3) sub-questions.
-  // The pool is built by repeating each word id FLASHREV_STEPS times so that:
-  //   quizIndex 0,1,2 → word 0 (article, plural, english)
-  //   quizIndex 3,4,5 → word 1 (article, plural, english)
-  //   …and so on.
-  // For regular quiz modes the pool is one id per word (unchanged).
-  // ---------------------------------------------------------------------------
   const hasNouns = list.length > 0;
   const quizSessionIds = useMemo(() => {
     const filtered = list.filter((item) => {
@@ -679,20 +663,16 @@ export default function NounsPage({
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
 
     if (quizMode === "flashrev") {
-      // Each word id appears FLASHREV_STEPS times consecutively
       return ordered.flatMap((item) => Array(FLASHREV_STEPS).fill(item.id));
     }
     return ordered.map((item) => item.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasNouns, viewMode, quizMode, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
 
-  // Fresh word objects for the frozen ids (deleted words drop out, edits show up)
   const availableQuizPool = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
     return quizSessionIds.map((id) => byId.get(id)).filter(Boolean);
   }, [list, quizSessionIds]);
 
-  // Flashcards: stable order for the session, always showing the latest word data
   const flashList = useMemo(() => {
     if (!flashOrder) return list;
     const byId = new Map(list.map((item) => [item.id, item]));
@@ -703,10 +683,8 @@ export default function NounsPage({
 
   const quizList = useMemo(() => {
     if (quizMode === "flashrev") {
-      // wordCountInput limits unique words; sub-questions are still FLASHREV_STEPS per word
       const count = parseInt(wordCountInput, 10);
       if (!isNaN(count) && count > 0) {
-        // availableQuizPool already has ids repeated; slice by unique-word count
         const maxSlots = count * FLASHREV_STEPS;
         return availableQuizPool.slice(0, maxSlots);
       }
@@ -719,11 +697,6 @@ export default function NounsPage({
     return availableQuizPool;
   }, [availableQuizPool, wordCountInput, quizMode]);
 
-  // ---------------------------------------------------------------------------
-  // effectiveMode: for FlashRev, sub-question index = quizIndex % FLASHREV_STEPS
-  // so questions for a single word cycle through article → plural → english.
-  // ---------------------------------------------------------------------------
-
   // Countdown Timer
   useEffect(() => {
     let interval = null;
@@ -733,6 +706,7 @@ export default function NounsPage({
       }, 1000);
     } else if (timerRunning && timeLeft === 0) {
       setTimerRunning(false);
+      setIsQuizActive(false);
       playDangerSound();
       setScoreModal({
         isOpen: true,
@@ -747,15 +721,38 @@ export default function NounsPage({
   }, [timerRunning, timeLeft, quizScore, quizList.length]);
 
   const handleStartTimer = () => {
+    if (timeLeft !== null && timeLeft > 0) {
+      setTimerRunning(true);
+      setIsQuizActive(true);
+      return;
+    }
+
     const parsed = parseInt(timerInput, 10);
     if (!isNaN(parsed) && parsed > 0) {
       setTimeLeft(parsed);
       setTimerRunning(true);
+      setIsQuizActive(true);
+    }
+  };
+
+  const handleToggleTimer = () => {
+    if (timerRunning) {
+      // ⏸ Pause: stop ticking, keep remaining time intact, stay in active quiz banner
+      setTimerRunning(false);
+      return;
+    }
+
+    // ▶ Resume: continue ticking with same time left
+    if (timeLeft !== null && timeLeft > 0) {
+      setTimerRunning(true);
+    } else {
+      handleStartTimer();
     }
   };
 
   const handleStopTimer = () => {
     setTimerRunning(false);
+    setIsQuizActive(false);
     setTimeLeft(null);
   };
 
@@ -772,13 +769,12 @@ export default function NounsPage({
     setQuizSessionKey((k) => k + 1);
   };
 
-  // Entering the quiz view starts a fresh session (so words read in flashcards show up
-  // in FlashRev). Leaving the quiz view stops a running countdown.
   const [lastViewMode, setLastViewMode] = useState(viewMode);
   if (lastViewMode !== viewMode) {
     setLastViewMode(viewMode);
     if (lastViewMode === "quiz") {
       setTimerRunning(false);
+      setIsQuizActive(false);
       setTimeLeft(null);
     }
     if (viewMode === "quiz") {
@@ -804,7 +800,6 @@ export default function NounsPage({
     resetQuizProgress();
   };
 
-  // Global Shuffle Handlers
   const handleShuffleList = () => {
     if (list.length <= 1) return;
     const shuffled = shuffleArray(list);
@@ -855,8 +850,6 @@ export default function NounsPage({
 
   const nounCard = flashList[cardIndex];
 
-  
-
   const duplicateNoun = useMemo(() => {
     const current = nounFormData.noun.trim().toLowerCase();
     if (!current) return false;
@@ -867,7 +860,6 @@ export default function NounsPage({
     );
   }, [nounFormData.noun, list, editingNounId]);
 
-  // Hourly notifier
   useEffect(() => {
     let timerId = null;
     if (hourlyAlertsActive && list.length > 0) {
@@ -909,7 +901,6 @@ export default function NounsPage({
     await sendNounNotification(word);
   };
 
-  // Goal helpers
   const getGoalCounts = (items = []) => {
     const safeItems = Array.isArray(items) ? items : [];
     const now = new Date();
@@ -1309,14 +1300,6 @@ export default function NounsPage({
       )
     );
 
-  // ---------------------------------------------------------------------------
-  // recordAnswerResult — FlashRev-aware version
-  //
-  // In FlashRev each word has FLASHREV_STEPS sub-questions.
-  // • A wrong answer on ANY sub-question keeps flashRev = true and may reset status.
-  // • A correct answer only clears flashRev after the LAST sub-question of that word
-  //   (i.e. when the next quizIndex would move to a new word).
-  // ---------------------------------------------------------------------------
   const recordAnswerResult = (word, ok) => {
     if (!word) return;
 
@@ -1328,7 +1311,6 @@ export default function NounsPage({
       if (n.id !== word.id) return n;
       const next = { ...n };
       if (ok) {
-        // Only graduate the word out of FlashRev after its final sub-question
         if (quizMode === "flashrev" && n.flashRev && isLastSubQuestion) {
           next.flashRev = false;
           changed = true;
@@ -1348,7 +1330,6 @@ export default function NounsPage({
     if (changed) onCommitNouns?.(updated);
   };
 
-  // Flashcards: reading (flipping) a card queues that word for FlashRev
   const handleFlipCard = () => {
     if (!cardFlipped && nounCard && !nounCard.flashRev) {
       onCommitNouns?.(list.map((n) => (n.id === nounCard.id ? { ...n, flashRev: true } : n)));
@@ -1356,7 +1337,6 @@ export default function NounsPage({
     setCardFlipped((f) => !f);
   };
 
-  // Shows the result modal; pass (>= PASS_PERCENT) gets the success sound, otherwise the fail sound
   const openResultModal = (reason, score, total) => {
     const pct = total > 0 ? (score / total) * 100 : 0;
     if (reason !== "timeup") {
@@ -1375,7 +1355,6 @@ export default function NounsPage({
     resetQuizProgress();
   };
 
-  // Moves to the next question (or finishes the quiz)
   const goToNextQuestion = (finalScore) => {
     setQuizAnswerState("idle");
     setQuizFeedback(null);
@@ -1386,23 +1365,23 @@ export default function NounsPage({
       setQuizIndex((prev) => prev + 1);
     } else {
       setTimerRunning(false);
+      setIsQuizActive(false);
       setTimeLeft(null);
       openResultModal("finish", finalScore, quizList.length);
     }
   };
 
-  // Submit button: ends the quiz now and scores it against all questions in the quiz
   const handleSubmitQuiz = () => {
     if (!quizList.length) return;
     if (autoNextTimeoutRef.current) {
       clearTimeout(autoNextTimeoutRef.current);
     }
     setTimerRunning(false);
+    setIsQuizActive(false);
     setTimeLeft(null);
     openResultModal("submit", quizScore, quizList.length);
   };
 
-  // Correct -> auto advance after 1s | Wrong -> stay and wait for Next button
   const triggerAutoAdvance = (isCorrect) => {
     setQuizAnswerState(isCorrect ? "correct" : "wrong");
 
@@ -1416,20 +1395,18 @@ export default function NounsPage({
       clearTimeout(autoNextTimeoutRef.current);
     }
 
-    if (!isCorrect) return; // wait for the user to click Next
+    if (!isCorrect) return;
 
     autoNextTimeoutRef.current = setTimeout(() => {
       goToNextQuestion(quizScore + 1);
     }, 1000);
   };
 
-  // Manual forward button (only used after a wrong answer)
   const handleForwardClick = () => {
     if (quizAnswerState !== "wrong") return;
     goToNextQuestion(quizScore);
   };
 
-  // Article selection handler
   const handleArticleOptionSelect = (selectedArticle) => {
     if (quizAnswerState !== "idle" || !nounQuizWord) return;
 
@@ -1445,7 +1422,6 @@ export default function NounsPage({
     triggerAutoAdvance(ok);
   };
 
-  // Text submit handler for English / Plural questions
   const handleQuizTextSubmit = (e) => {
     e?.preventDefault();
     if (quizAnswerState !== "idle" || !nounQuizWord || !quizTextInput.trim()) return;
@@ -1453,7 +1429,7 @@ export default function NounsPage({
     let ok = false;
 
     if (effectiveMode === "english") {
-      if (!quizSelectedArticle) return; // article must be chosen first
+      if (!quizSelectedArticle) return;
 
       const articleOk = quizSelectedArticle === nounQuizWord.article;
       const nounOk = foldGerman(quizTextInput) === foldGerman(nounQuizWord.noun);
@@ -1493,8 +1469,6 @@ export default function NounsPage({
 
   const nounQuizWord = quizList[quizIndex];
 
-  // In FlashRev, sub-question index = quizIndex % FLASHREV_STEPS so all 3 types
-  // are asked for each word before moving on.
   const effectiveMode =
     quizMode === "flashrev"
       ? getFlashRevMode(nounQuizWord, quizIndex % FLASHREV_STEPS)
@@ -1502,17 +1476,14 @@ export default function NounsPage({
 
   const flashRevCount = list.filter((n) => n.flashRev).length;
 
-  // How many unique words remain in the current FlashRev session
   const flashRevUniqueWords =
     quizMode === "flashrev" ? quizList.length / FLASHREV_STEPS : quizList.length;
 
-  // Sub-question position label shown in the quiz header for FlashRev
   const flashRevSubLabel =
     quizMode === "flashrev"
       ? ` · Q${(quizIndex % FLASHREV_STEPS) + 1}/${FLASHREV_STEPS}`
       : "";
 
-  // Result modal look: pass (>= PASS_PERCENT) vs fail vs time-up
   const resultPct = scoreModal.total > 0 ? (scoreModal.score / scoreModal.total) * 100 : 0;
   const resultPassed = resultPct >= PASS_PERCENT;
   const resultTheme =
@@ -1534,7 +1505,6 @@ export default function NounsPage({
           text: `You need at least ${PASS_PERCENT}% to pass. Review the words and try again.`,
         };
 
-  // Dynamic panel styling for quiz answering feedback
   const getQuizPanelStyle = () => {
     const baseStyle = {
       marginTop: "-6px",
@@ -1950,7 +1920,7 @@ export default function NounsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              justifyContent: timerRunning ? "center" : "flex-start",
+              justifyContent: isQuizActive ? "center" : "flex-start",
               gap: "10px",
               width: "100%",
               maxWidth: "100%",
@@ -1962,7 +1932,7 @@ export default function NounsPage({
               borderBottom: "1px solid var(--line-2, #ebdccb)",
             }}
           >
-            {!timerRunning ? (
+            {!isQuizActive ? (
               <>
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
@@ -2166,8 +2136,8 @@ export default function NounsPage({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "10px",
-                  backgroundColor: timeLeft <= 5 ? "#fef2f2" : "#f0fdf4",
-                  border: `1.5px solid ${timeLeft <= 5 ? "#f87171" : "#86efac"}`,
+                  backgroundColor: !timerRunning ? "#fffbeb" : timeLeft <= 5 ? "#fef2f2" : "#f0fdf4",
+                  border: `1.5px solid ${!timerRunning ? "#fde68a" : timeLeft <= 5 ? "#f87171" : "#86efac"}`,
                   padding: "0 12px 0 16px",
                   borderRadius: "14px",
                   height: "44px",
@@ -2176,24 +2146,67 @@ export default function NounsPage({
                   boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
                 }}
               >
-                <span style={{ fontSize: "16px" }}>{timeLeft <= 5 ? "🔥" : "⏳"}</span>
-                <span style={{ fontSize: "15px", fontWeight: 800, color: timeLeft <= 5 ? "#dc2626" : "#15803d", letterSpacing: "0.02em" }}>
-                  {timeLeft}s remaining
-                </span>
-                <button
-                  type="button"
-                  onClick={handleStopTimer}
-                  title="Stop Timer"
+                <span style={{ fontSize: "16px" }}>{!timerRunning ? "⏸️" : timeLeft <= 5 ? "🔥" : "⏳"}</span>
+                <span
                   style={{
-                    width: "30px", height: "30px", borderRadius: "8px",
-                    border: "1px solid #fca5a5", backgroundColor: "#ffffff",
-                    color: "#dc2626", fontSize: "12px", fontWeight: 700,
-                    cursor: "pointer", display: "inline-flex",
-                    alignItems: "center", justifyContent: "center",
-                    padding: 0, marginLeft: "4px",
+                    fontSize: "15px",
+                    fontWeight: 800,
+                    color: !timerRunning ? "#b45309" : timeLeft <= 5 ? "#dc2626" : "#15803d",
+                    letterSpacing: "0.02em",
                   }}
                 >
-                  ⏸
+                  {timeLeft}s remaining {!timerRunning && "(Paused)"}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleToggleTimer}
+                  title={timerRunning ? "Pause Timer" : "Resume Timer"}
+                  aria-label={timerRunning ? "Pause Timer" : "Resume Timer"}
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "8px",
+                    border: timerRunning ? "1px solid #fca5a5" : "1px solid #86efac",
+                    backgroundColor: timerRunning ? "#ffffff" : "#15803d",
+                    color: timerRunning ? "#dc2626" : "#ffffff",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    marginLeft: "4px",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {timerRunning ? "⏸" : "▶"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSubmitQuiz}
+                  title="Submit Quiz"
+                  aria-label="Submit Quiz"
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "8px",
+                    border: "1px solid #fca5a5",
+                    backgroundColor: "#ffffff",
+                    color: "#dc2626",
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    marginLeft: "4px",
+                  }}
+                >
+                  ✓
                 </button>
               </div>
             )}
@@ -2279,23 +2292,7 @@ export default function NounsPage({
                   justify-content: center;
                   margin-top: 28px;
                 }
-                .quiz-submit-top {
-                  display: none;
-                }
-                @media (min-width: 769px) {
-                  .quiz-head.quiz-head-with-submit {
-                    display: grid !important;
-                    grid-template-columns: 1fr auto 1fr;
-                    align-items: center;
-                    gap: 12px;
-                  }
-                  .quiz-head-with-submit .quiz-head-left { justify-self: start; }
-                  .quiz-head-with-submit .quiz-head-right { justify-self: end; }
-                  .quiz-submit-top { display: inline-flex; }
-                  .quiz-submit-bottom { display: none; }
-                }
 
-                /* FlashRev sub-question progress dots */
                 .flashrev-dots {
                   display: flex;
                   align-items: center;
@@ -2336,22 +2333,11 @@ export default function NounsPage({
                   )}
                 </span>
 
-                <button
-                  type="button"
-                  className="quiz-submit-btn quiz-submit-top"
-                  onClick={handleSubmitQuiz}
-                  title="End the quiz now and see your result"
-                >
-                  <span className="quiz-submit-tick">✓</span>
-                  Submit Quiz
-                </button>
-
                 <span className="quiz-head-right" style={{ fontWeight: 700, color: "var(--brand)" }}>
                   Score: {quizScore}
                 </span>
               </div>
 
-              {/* FlashRev sub-question dots */}
               {quizMode === "flashrev" && (
                 <div className="flashrev-dots">
                   {Array.from({ length: FLASHREV_STEPS }).map((_, i) => {
@@ -2525,34 +2511,38 @@ export default function NounsPage({
                         : `Moving to next word in 1 second...`}
                     </span>
                   )}
-
                 </div>
               )}
 
-              <div className="quiz-submit-bottom" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                <button
-                  type="button"
-                  className="quiz-submit-btn"
-                  onClick={handleSubmitQuiz}
-                  title="End the quiz now and see your result"
+              {quizAnswerState === "wrong" && (
+                <div
+                  className="quiz-submit-bottom"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 12,
+                  }}
                 >
-                  <span className="quiz-submit-tick">✓</span>
-                  Submit Quiz
-                </button>
-
-                {quizAnswerState === "wrong" && (
                   <button
                     type="button"
                     className="btn btn-primary quiz-next-symbol"
                     autoFocus
                     onClick={handleForwardClick}
                     title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
-                    style={{ width: 45, height: 45, padding: 0, borderRadius: 14, fontSize: 30, fontWeight: 800 }}
+                    style={{
+                      width: 45,
+                      height: 45,
+                      padding: 0,
+                      borderRadius: 14,
+                      fontSize: 30,
+                      fontWeight: 800,
+                    }}
                   >
                     &gt;
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -2624,6 +2614,7 @@ export default function NounsPage({
                   if (!isNaN(parsed) && parsed > 0) {
                     setTimeLeft(parsed);
                     setTimerRunning(true);
+                    setIsQuizActive(true);
                   }
                 }}
               >

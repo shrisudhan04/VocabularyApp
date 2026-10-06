@@ -37,6 +37,30 @@ const shuffleArray = (array) => {
   return arr;
 };
 
+const PASS_PERCENT = 70;
+
+const foldGerman = (s = "") =>
+  String(s ?? "")
+    .normalize("NFC")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+
+// Pattern FlashRev: each pattern is tested on article, suffix/ending, and examples.
+const FLASHREV_ROTATION = ["article", "ending", "examples"];
+const FLASHREV_STEPS = 3;
+
+const getFlashRevMode = (pattern, subIndex) => {
+  const available = FLASHREV_ROTATION.filter(
+    (mode) => mode === "article" || Boolean(pattern?.[mode])
+  );
+  return available[subIndex % Math.max(available.length, 1)];
+};
+
 const getActiveAudioContext = async () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
@@ -173,6 +197,13 @@ const QUIZ_DATE_DROPDOWN_OPTIONS = [
   { label: "Last Week", value: "last_week" },
   { label: "Last Month", value: "last_month" },
   { label: "Specific Date...", value: "specific" },
+];
+
+const QUIZ_MODE_OPTIONS = [
+  { label: "Article", value: "article" },
+  { label: "Rule → Suffix", value: "ending" },
+  { label: "Example → Suffix", value: "examples" },
+  { label: "FlashRev", value: "flashrev" },
 ];
 
 const EXCEL_ACTIONS = [
@@ -513,16 +544,19 @@ export default function PatternsPage({
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
 
-  // Quiz Filters
+  // Quiz Filters & Mode
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
+  const [quizMode, setQuizMode] = useState("article");
+  const [quizTextInput, setQuizTextInput] = useState("");
 
   // Quiz Controls: Question Count Limit & Timer
   const [wordCountInput, setWordCountInput] = useState("");
   const [timerInput, setTimerInput] = useState("30");
   const [timeLeft, setTimeLeft] = useState(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [timerPaused, setTimerPaused] = useState(false);
 
   // Quiz Progress
   const [quizIndex, setQuizIndex] = useState(0);
@@ -530,6 +564,7 @@ export default function PatternsPage({
   const [quizFeedback, setQuizFeedback] = useState(null);
   const [quizAnswerState, setQuizAnswerState] = useState("idle"); // 'idle' | 'correct' | 'wrong'
   const [quizShuffleKey, setQuizShuffleKey] = useState(0);
+  const [quizSessionKey, setQuizSessionKey] = useState(0);
   const autoNextTimeoutRef = useRef(null);
 
   // Clear auto-advance timeout on unmount
@@ -573,6 +608,8 @@ export default function PatternsPage({
 
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
+  const [flashOrder, setFlashOrder] = useState(null);
+  const [touchStartX, setTouchStartX] = useState(null);
 
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
@@ -605,23 +642,46 @@ export default function PatternsPage({
     return true;
   };
 
-  const availableQuizPool = useMemo(() => {
+  const hasPatterns = list.length > 0;
+
+  // Freeze the quiz session by id, while allowing edits/deletions to update the displayed data.
+  const quizSessionIds = useMemo(() => {
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      return matchesStatus && matchesDate;
+      const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
+      return matchesStatus && matchesDate && matchesMode;
     });
-    return quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
-  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey]);
+    const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
+    if (quizMode === "flashrev") {
+      return ordered.flatMap((item) => Array(FLASHREV_STEPS).fill(item.id));
+    }
+    return ordered.map((item) => item.id);
+  }, [hasPatterns, viewMode, quizMode, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
+
+  const availableQuizPool = useMemo(() => {
+    const byId = new Map(list.map((item) => [item.id, item]));
+    return quizSessionIds.map((id) => byId.get(id)).filter(Boolean);
+  }, [list, quizSessionIds]);
+
+  const flashList = useMemo(() => {
+    if (!flashOrder) return list;
+    const byId = new Map(list.map((item) => [item.id, item]));
+    const ordered = flashOrder.map((id) => byId.get(id)).filter(Boolean);
+    const seen = new Set(flashOrder);
+    return [...ordered, ...list.filter((item) => !seen.has(item.id))];
+  }, [list, flashOrder]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
-    if (!isNaN(count) && count > 0) {
-      return availableQuizPool.slice(0, count);
+    if (quizMode === "flashrev") {
+      if (!isNaN(count) && count > 0) return availableQuizPool.slice(0, count * FLASHREV_STEPS);
+      return availableQuizPool;
     }
+    if (!isNaN(count) && count > 0) return availableQuizPool.slice(0, count);
     return availableQuizPool;
-  }, [availableQuizPool, wordCountInput]);
+  }, [availableQuizPool, wordCountInput, quizMode]);
 
   useEffect(() => {
     let interval = null;
@@ -631,6 +691,7 @@ export default function PatternsPage({
       }, 1000);
     } else if (timerRunning && timeLeft === 0) {
       setTimerRunning(false);
+      setTimerPaused(false);
       playDangerSound();
       setScoreModal({
         isOpen: true,
@@ -648,12 +709,28 @@ export default function PatternsPage({
     const parsed = parseInt(timerInput, 10);
     if (!isNaN(parsed) && parsed > 0) {
       setTimeLeft(parsed);
+      setTimerPaused(false);
+      setTimerRunning(true);
+    }
+  };
+
+  const handlePauseTimer = () => {
+    if (timerRunning && timeLeft !== null && timeLeft > 0) {
+      setTimerRunning(false);
+      setTimerPaused(true);
+    }
+  };
+
+  const handleResumeTimer = () => {
+    if (timerPaused && timeLeft !== null && timeLeft > 0) {
+      setTimerPaused(false);
       setTimerRunning(true);
     }
   };
 
   const handleStopTimer = () => {
     setTimerRunning(false);
+    setTimerPaused(false);
     setTimeLeft(null);
   };
 
@@ -663,6 +740,13 @@ export default function PatternsPage({
     setQuizScore(0);
     setQuizFeedback(null);
     setQuizAnswerState("idle");
+    setQuizTextInput("");
+    setQuizSessionKey((k) => k + 1);
+  };
+
+  const handleQuizModeChange = (val) => {
+    setQuizMode(val);
+    resetQuizProgress();
   };
 
   const handleQuizStatusChange = (val) => {
@@ -672,9 +756,7 @@ export default function PatternsPage({
 
   const handleQuizDateModeChange = (val) => {
     setQuizDateMode(val);
-    if (val !== "specific") {
-      setQuizSpecificDate("");
-    }
+    if (val !== "specific") setQuizSpecificDate("");
     resetQuizProgress();
   };
 
@@ -682,6 +764,22 @@ export default function PatternsPage({
     setQuizSpecificDate(dateStr);
     resetQuizProgress();
   };
+
+  const lastViewModeRef = useRef(viewMode);
+  useEffect(() => {
+    if (lastViewModeRef.current === viewMode) return;
+
+    if (lastViewModeRef.current === "quiz") {
+      setTimerRunning(false);
+      setTimeLeft(null);
+    }
+
+    if (viewMode === "quiz") {
+      resetQuizProgress();
+    }
+
+    lastViewModeRef.current = viewMode;
+  }, [viewMode]);
 
   useEffect(() => {
     let timerId = null;
@@ -1127,51 +1225,6 @@ export default function PatternsPage({
     );
 
   const patternCard = list[cardIndex];
-  // Moves to the next question (or finishes the quiz)
-  const goToNextQuestion = (finalScore) => {
-    setQuizAnswerState("idle");
-    setQuizFeedback(null);
-
-    if (quizIndex < quizList.length - 1) {
-      setQuizIndex((prev) => prev + 1);
-    } else {
-      setTimerRunning(false);
-      setTimeLeft(null);
-      setScoreModal({
-        isOpen: true,
-        reason: "finish",
-        score: finalScore,
-        total: quizList.length,
-      });
-    }
-  };
-
-  // Correct -> auto advance after 1s | Wrong -> stay and wait for Next button
-  const triggerAutoAdvance = (isCorrect) => {
-    setQuizAnswerState(isCorrect ? "correct" : "wrong");
-
-    if (isCorrect) {
-      playSuccessSound();
-    } else {
-      playDangerSound();
-    }
-
-    if (autoNextTimeoutRef.current) {
-      clearTimeout(autoNextTimeoutRef.current);
-    }
-
-    if (!isCorrect) return; // wait for the user to click Next
-
-    autoNextTimeoutRef.current = setTimeout(() => {
-      goToNextQuestion(quizScore + 1);
-    }, 1000);
-  };
-
-  // Manual forward button (only used after a wrong answer)
-  const handleForwardClick = () => {
-    if (quizAnswerState !== "wrong") return;
-    goToNextQuestion(quizScore);
-  };
 
   // Shuffle handlers
   const handleShuffleList = () => {
@@ -1186,9 +1239,137 @@ export default function PatternsPage({
 
   const handleShuffleFlashcards = () => {
     if (list.length <= 1) return;
-    onCommitPatterns?.(shuffleArray(list));
+    setFlashOrder(shuffleArray(list).map((item) => item.id));
     setCardIndex(0);
     setCardFlipped(false);
+  };
+
+  const handleFlashPrevious = () => {
+    if (cardIndex <= 0) return;
+    setCardIndex((prev) => prev - 1);
+    setCardFlipped(false);
+  };
+
+  const handleFlashNext = () => {
+    if (cardIndex >= flashList.length - 1) return;
+    setCardIndex((prev) => prev + 1);
+    setCardFlipped(false);
+  };
+
+  const handleFlashTouchStart = (e) => {
+    setTouchStartX(e.touches?.[0]?.clientX ?? null);
+  };
+
+  const handleFlashTouchEnd = (e) => {
+    if (touchStartX === null) return;
+    const endX = e.changedTouches?.[0]?.clientX;
+    if (typeof endX !== "number") return;
+    const deltaX = endX - touchStartX;
+    if (Math.abs(deltaX) >= 60) {
+      if (deltaX < 0) handleFlashNext();
+      else handleFlashPrevious();
+    }
+    setTouchStartX(null);
+  };
+
+  const handleFlipCard = () => {
+    const card = flashList[cardIndex];
+    if (!cardFlipped && card && !card.flashRev) {
+      onCommitPatterns?.(list.map((p) => p.id === card.id ? { ...p, flashRev: true } : p));
+    }
+    setCardFlipped((f) => !f);
+  };
+
+  const recordAnswerResult = (pattern, ok) => {
+    if (!pattern) return;
+    const isLastSubQuestion = quizMode !== "flashrev" || (quizIndex % FLASHREV_STEPS === FLASHREV_STEPS - 1);
+    let changed = false;
+    const updated = list.map((p) => {
+      if (p.id !== pattern.id) return p;
+      const next = { ...p };
+      if (ok) {
+        if (quizMode === "flashrev" && p.flashRev && isLastSubQuestion) {
+          next.flashRev = false;
+          changed = true;
+        }
+      } else {
+        if (!p.flashRev) { next.flashRev = true; changed = true; }
+        if (p.status === "Mastered") { next.status = "In Progress"; changed = true; }
+      }
+      return next;
+    });
+    if (changed) onCommitPatterns?.(updated);
+  };
+
+  const openResultModal = (reason, score, total) => {
+    const pct = total > 0 ? (score / total) * 100 : 0;
+    if (reason !== "timeup") {
+      if (pct >= PASS_PERCENT) playGoalAchievedMusic();
+      else playDangerSound();
+    }
+    setScoreModal({ isOpen: true, reason, score, total });
+  };
+
+  const closeScoreModal = () => {
+    stopGoalAchievedMusic();
+    setScoreModal((p) => ({ ...p, isOpen: false }));
+    resetQuizProgress();
+  };
+
+  const goToNextQuestion = (finalScore) => {
+    setQuizAnswerState("idle");
+    setQuizFeedback(null);
+    setQuizTextInput("");
+    if (quizIndex < quizList.length - 1) {
+      setQuizIndex((prev) => prev + 1);
+    } else {
+      setTimerRunning(false);
+      setTimeLeft(null);
+      openResultModal("finish", finalScore, quizList.length);
+    }
+  };
+
+  const handleSubmitQuiz = () => {
+    if (!quizList.length) return;
+    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
+    setTimerRunning(false);
+    setTimeLeft(null);
+    openResultModal("submit", quizScore, quizList.length);
+  };
+
+  const triggerAutoAdvance = (isCorrect) => {
+    setQuizAnswerState(isCorrect ? "correct" : "wrong");
+    if (isCorrect) playSuccessSound(); else playDangerSound();
+    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
+    if (!isCorrect) return;
+    autoNextTimeoutRef.current = setTimeout(() => {
+      goToNextQuestion(quizScore + 1);
+    }, 1000);
+  };
+
+  const handleForwardClick = () => {
+    if (quizAnswerState !== "wrong") return;
+    goToNextQuestion(quizScore);
+  };
+
+  const handleArticleOptionSelect = (selectedArticle) => {
+    if (quizAnswerState !== "idle" || !patternQuizWord) return;
+    const ok = selectedArticle === patternQuizWord.article;
+    if (ok) setQuizScore((prev) => prev + 1);
+    setQuizFeedback(ok ? "Correct! 🎉" : `Wrong! Correct article is "${patternQuizWord.article}".`);
+    recordAnswerResult(patternQuizWord, ok);
+    triggerAutoAdvance(ok);
+  };
+
+  const handlePatternTextSubmit = (e) => {
+    e?.preventDefault();
+    if (quizAnswerState !== "idle" || !patternQuizWord || !quizTextInput.trim()) return;
+    const expected = effectiveMode === "examples" ? patternQuizWord.ending : patternQuizWord.ending;
+    const ok = foldGerman(quizTextInput) === foldGerman(expected);
+    if (ok) setQuizScore((prev) => prev + 1);
+    setQuizFeedback(ok ? "Correct! 🎉" : `Incorrect. The correct suffix is "${expected}".`);
+    recordAnswerResult(patternQuizWord, ok);
+    triggerAutoAdvance(ok);
   };
 
   // Pale green / red panel tint while answering
@@ -1208,6 +1389,22 @@ export default function PatternsPage({
   };
 
   const patternQuizWord = quizList[quizIndex];
+  const effectiveMode = quizMode === "flashrev"
+    ? getFlashRevMode(patternQuizWord, quizIndex % FLASHREV_STEPS)
+    : quizMode;
+  const flashRevCount = list.filter((p) => p.flashRev).length;
+  const flashRevUniqueWords = quizMode === "flashrev" ? quizList.length / FLASHREV_STEPS : quizList.length;
+  const flashRevSubLabel = quizMode === "flashrev" ? ` · Q${(quizIndex % FLASHREV_STEPS) + 1}/${FLASHREV_STEPS}` : "";
+
+  const resultPct = scoreModal.total > 0 ? (scoreModal.score / scoreModal.total) * 100 : 0;
+  const resultPassed = resultPct >= PASS_PERCENT;
+  const resultTheme =
+    scoreModal.reason === "timeup"
+      ? { gif: alertGif, color: "#b91c1c", bg: "#fee2e2", border: "#fca5a5", badge: "⏰ Time Is Up!", title: "Time's Expired!", text: "The countdown clock reached zero. Here is how you did:" }
+      : resultPassed
+      ? { gif: successGif, color: "#166534", bg: "#dcfce7", border: "#86efac", badge: "🎉 Quiz Passed!", title: "Great Job!", text: `You reached the ${PASS_PERCENT}% pass mark. Well done!` }
+      : { gif: alertGif, color: "#b91c1c", bg: "#fee2e2", border: "#fca5a5", badge: "📚 Keep Practicing", title: "Not Quite There Yet", text: `You need at least ${PASS_PERCENT}% to pass. Review the patterns and try again.` };
+
 
   return (
     <>
@@ -1528,56 +1725,43 @@ export default function PatternsPage({
 
       {viewMode === "flashcards" && (
         <div className="panel">
-          {!patternCard ? (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "24px 16px",
-              }}
-            >
-              <img
-                src={noDataImg}
-                alt="No Data"
-                style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }}
-              />
+          {!flashList[cardIndex] ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
+              <img src={noDataImg} alt="No Data" style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }} />
               <p style={{ color: "var(--muted)", margin: 0 }}>No patterns available for flashcards.</p>
             </div>
           ) : (
             <div className="flash-wrap">
-              <div className="flash" onClick={() => setCardFlipped(!cardFlipped)}>
+              <div
+                className="flash"
+                onClick={handleFlipCard}
+                onTouchStart={handleFlashTouchStart}
+                onTouchEnd={handleFlashTouchEnd}
+              >
                 {!cardFlipped ? (
                   <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
-                      WHICH ARTICLE BELONGS TO THIS PATTERN?
-                    </span>
-                    <h2 style={{ fontFamily: "monospace" }}>{patternCard.ending}</h2>
-                    <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to reveal article &amp; rules)</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE BELONGS TO THIS PATTERN?</span>
+                    <h2 style={{ fontFamily: "monospace" }}>{flashList[cardIndex].ending}</h2>
+                    <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap or swipe to navigate · tap to reveal)</span>
                   </>
                 ) : (
                   <>
-                    <span className={`pill ${ARTICLE_CLASS[patternCard.article]}`} style={{ fontSize: 22, padding: "6px 22px" }}>
-                      {patternCard.article} ({GENDER_MAP[patternCard.article]})
+                    <span className={`pill ${ARTICLE_CLASS[flashList[cardIndex].article]}`} style={{ fontSize: 22, padding: "6px 22px" }}>
+                      {flashList[cardIndex].article} ({GENDER_MAP[flashList[cardIndex].article]})
                     </span>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-2)", margin: "14px 0 6px" }}>{patternCard.rule}</p>
-                    <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, fontStyle: "italic" }}>e.g. {patternCard.examples}</p>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-2)", margin: "14px 0 6px" }}>{flashList[cardIndex].rule}</p>
+                    <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, fontStyle: "italic" }}>e.g. {flashList[cardIndex].examples}</p>
                   </>
                 )}
               </div>
               <div className="flash-controls">
-                <button className="btn btn-secondary" disabled={cardIndex === 0} onClick={() => { setCardIndex(cardIndex - 1); setCardFlipped(false); }}>
-                  ◀ Previous
-                </button>
-                <button className="btn btn-secondary mid" onClick={() => speakGerman(patternCard.examples || patternCard.ending)}>
-                  🔊 Hear Examples
-                </button>
-                <button className="btn btn-secondary" disabled={cardIndex >= list.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
-                  Next ▶
-                </button>
+                <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex === 0} onClick={handleFlashPrevious}>◀ Previous</button>
+                <button className="btn btn-secondary mid" onClick={() => speakGerman(flashList[cardIndex].examples || flashList[cardIndex].ending)}>🔊 Hear Examples</button>
+                <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex >= flashList.length - 1} onClick={handleFlashNext}>Next ▶</button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>Pattern {cardIndex + 1} of {list.length}</span>
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                Pattern {cardIndex + 1} of {flashList.length} · {Math.round(((cardIndex + 1) / flashList.length) * 100)}% · {flashRevCount} queued for FlashRev
+              </div>
             </div>
           )}
         </div>
@@ -1585,7 +1769,6 @@ export default function PatternsPage({
 
       {viewMode === "quiz" && (
         <div className="panel" style={getQuizPanelStyle()}>
-          {/* QUIZ TOOLBAR: Focused purely on Article Finding */}
           <div
             className="quiz-controls-row"
             style={{
@@ -1593,7 +1776,7 @@ export default function PatternsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              justifyContent: timerRunning ? "center" : "flex-start",
+              justifyContent: (timerRunning || timerPaused) ? "center" : "flex-start",
               gap: "10px",
               width: "100%",
               maxWidth: "100%",
@@ -1605,9 +1788,20 @@ export default function PatternsPage({
               borderBottom: "1px solid var(--line-2, #ebdccb)",
             }}
           >
-            {!timerRunning ? (
+            {!(timerRunning || timerPaused) ? (
               <>
-                {/* Status Dropdown */}
+                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <CustomDropdown
+                    icon="🎯"
+                    value={quizMode}
+                    options={QUIZ_MODE_OPTIONS}
+                    onChange={(val) => {
+                      setQuizMode(val);
+                      resetQuizProgress();
+                    }}
+                  />
+                </div>
+
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
                     icon="📌"
@@ -1617,7 +1811,6 @@ export default function PatternsPage({
                   />
                 </div>
 
-                {/* Date Filter Dropdown */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
                     icon="📅"
@@ -1627,7 +1820,6 @@ export default function PatternsPage({
                   />
                 </div>
 
-                {/* Real Calendar Picker */}
                 {quizDateMode === "specific" && (
                   <RealCalendarPicker
                     selectedDate={quizSpecificDate}
@@ -1635,7 +1827,6 @@ export default function PatternsPage({
                   />
                 )}
 
-                {/* Count Limit Pill */}
                 <div
                   style={{
                     flexShrink: 0,
@@ -1653,12 +1844,20 @@ export default function PatternsPage({
                   }}
                 >
                   <span style={{ fontSize: "14px" }}>🔢</span>
-                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>Count:</span>
+                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>
+                    {quizMode === "flashrev" ? "Words:" : "Count:"}
+                  </span>
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    placeholder={availableQuizPool.length ? `${availableQuizPool.length}` : "All"}
+                    placeholder={
+                      quizMode === "flashrev"
+                        ? `${flashRevUniqueWords}`
+                        : availableQuizPool.length
+                        ? `${availableQuizPool.length}`
+                        : "All"
+                    }
                     value={wordCountInput}
                     onChange={(e) => {
                       const val = e.target.value.replace(/[^0-9]/g, "");
@@ -1681,7 +1880,6 @@ export default function PatternsPage({
                   />
                 </div>
 
-                {/* Set Timer Setup Pill */}
                 <div
                   style={{
                     flexShrink: 0,
@@ -1750,48 +1948,32 @@ export default function PatternsPage({
                   </button>
                 </div>
 
-                {/* Patterns Pool Count */}
-                <div
-                  style={{
-                    flexShrink: 0,
-                    fontSize: "13.5px",
-                    color: "var(--muted)",
-                    whiteSpace: "nowrap",
-                    paddingLeft: "4px",
-                  }}
-                >
-                  Patterns: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong>
-                </div>
-
-                {/* Clear Filters */}
                 <button
                   type="button"
                   onClick={handleShuffleQuiz}
                   className="btn btn-secondary"
                   title="Shuffle quiz questions order"
-                  style={{
-                    flexShrink: 0,
-                    whiteSpace: "nowrap",
-                    height: "40px",
-                    borderRadius: "12px",
-                    padding: "0 12px",
-                  }}
+                  style={{ flexShrink: 0, whiteSpace: "nowrap", height: "40px", borderRadius: "12px", padding: "0 12px" }}
                 >
                   🔀 Shuffle
                 </button>
+
+                <div style={{ flexShrink: 0, fontSize: "13.5px", color: "var(--muted)", whiteSpace: "nowrap", paddingLeft: "4px" }}>
+                  {quizMode === "flashrev" ? (
+                    <>
+                      Words: <strong style={{ color: "var(--ink)" }}>{flashRevUniqueWords}</strong>
+                      <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{FLASHREV_STEPS}Q</span>
+                    </>
+                  ) : (
+                    <>Words: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong></>
+                  )}
+                </div>
 
                 {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{
-                      flexShrink: 0,
-                      padding: "0 12px",
-                      fontSize: "12.5px",
-                      whiteSpace: "nowrap",
-                      height: "40px",
-                      borderRadius: "12px",
-                    }}
+                    style={{ flexShrink: 0, padding: "0 12px", fontSize: "12.5px", whiteSpace: "nowrap", height: "40px", borderRadius: "12px" }}
                     onClick={() => {
                       setQuizStatusFilter("all");
                       setQuizDateMode("all");
@@ -1810,8 +1992,8 @@ export default function PatternsPage({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "10px",
-                  backgroundColor: timeLeft <= 5 ? "#fef2f2" : "#f0fdf4",
-                  border: `1.5px solid ${timeLeft <= 5 ? "#f87171" : "#86efac"}`,
+                  backgroundColor: timerPaused ? "#fff7ed" : (timeLeft <= 5 ? "#fef2f2" : "#f0fdf4"),
+                  border: `1.5px solid ${timerPaused ? "#fdba74" : (timeLeft <= 5 ? "#f87171" : "#86efac")}`,
                   padding: "0 12px 0 16px",
                   borderRadius: "14px",
                   height: "44px",
@@ -1820,30 +2002,28 @@ export default function PatternsPage({
                   boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
                 }}
               >
-                <span style={{ fontSize: "16px" }}>{timeLeft <= 5 ? "🔥" : "⏳"}</span>
-                <span
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 800,
-                    color: timeLeft <= 5 ? "#dc2626" : "#15803d",
-                    letterSpacing: "0.02em",
-                  }}
-                >
-                  {timeLeft}s remaining
+                <span style={{ fontSize: "16px" }}>{timerPaused ? "⏸️" : (timeLeft <= 5 ? "🔥" : "⏳")}</span>
+                <span style={{ fontSize: "15px", fontWeight: 800, color: timerPaused ? "#c2410c" : (timeLeft <= 5 ? "#dc2626" : "#15803d"), letterSpacing: "0.02em" }}>
+                  {timeLeft}s {timerPaused ? "paused" : "remaining"}
                 </span>
-
+                {timerPaused ? (
+                  <button type="button" onClick={handleResumeTimer} title="Resume Timer" style={{ width:"30px", height:"30px", borderRadius:"8px", border:"none", backgroundColor:"var(--brand, #b85c19)", color:"#fff", fontSize:"13px", fontWeight:700, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", padding:0, marginLeft:"4px" }}>▶</button>
+                ) : (
+                  <button type="button" onClick={handlePauseTimer} title="Pause Timer" style={{ width:"30px", height:"30px", borderRadius:"8px", border:"1px solid #fca5a5", backgroundColor:"#fff", color:"#dc2626", fontSize:"12px", fontWeight:700, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", padding:0, marginLeft:"4px" }}>⏸</button>
+                )}
                 <button
                   type="button"
-                  onClick={handleStopTimer}
-                  title="Stop Timer"
-                  style={{
+                  onClick={handleSubmitQuiz}
+                  title="Submit Quiz"
+                  aria-label="Submit Quiz"
+                   style={{
                     width: "30px",
                     height: "30px",
                     borderRadius: "8px",
                     border: "1px solid #fca5a5",
                     backgroundColor: "#ffffff",
                     color: "#dc2626",
-                    fontSize: "12px",
+                    fontSize: "16px",
                     fontWeight: 700,
                     cursor: "pointer",
                     display: "inline-flex",
@@ -1853,212 +2033,171 @@ export default function PatternsPage({
                     marginLeft: "4px",
                   }}
                 >
-                  ⏸
+                  ✓
                 </button>
               </div>
             )}
           </div>
 
           {!patternQuizWord ? (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "36px 16px",
-                textAlign: "center",
-              }}
-            >
-              <img
-                src={noDataImg}
-                alt="No Data"
-                style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }}
-              />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "36px 16px", textAlign: "center" }}>
+              <img src={noDataImg} alt="No Data" style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }} />
               <p style={{ color: "var(--muted)", margin: "0 0 12px 0", fontSize: 15 }}>
-                {list.length === 0
-                  ? "Add patterns to start quiz."
-                  : "No patterns match the selected status, date, or count filters."}
+                {list.length === 0 ? "Add patterns to start quiz." : quizMode === "flashrev" ? "No FlashRev patterns yet. Flip some flashcards, or miss a question in another quiz mode, and those patterns will show up here (or relax your filters)." : "No patterns match the selected status, date, or count filters."}
               </p>
               {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setQuizStatusFilter("all");
-                    setQuizDateMode("all");
-                    setQuizSpecificDate("");
-                    setWordCountInput("");
-                    resetQuizProgress();
-                  }}
-                >
+                <button type="button" className="btn btn-secondary" onClick={() => { setQuizStatusFilter("all"); setQuizDateMode("all"); setQuizSpecificDate(""); setWordCountInput(""); resetQuizProgress(); }}>
                   Reset Quiz Filters
                 </button>
               )}
             </div>
           ) : (
             <div className="quiz">
-              <div className="quiz-head">
-                <span>Question {quizIndex + 1} of {quizList.length}</span>
-                <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
-              </div>
+              <style>{`
+                .timer-submit-mobile {
+                  width: 48px;
+                  height: 30px;
+                  border-radius: 8px;
+                  border: 1px solid #fca5a5;
+                  background: #fff;
+                  color: #dc2626;
+                  font-size: 18px;
+                  font-weight: 700;
+                  cursor: pointer;
+                  display: none;
+                  align-items: center;
+                  justify-content: center;
+                  padding: 0;
+                  margin-left: 2px;
+                  line-height: 1;
+                }
+                .timer-submit-mobile:hover {
+                  background: #fff7f7;
+                }
 
-              {/* Pure Article Quiz Card */}
-              <div className="quiz-card">
-                <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
-                  Which article goes with this suffix / pattern?
+                .quiz-submit-btn {
+                  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+                  height: 45px; padding: 0 12px; border: none; border-radius: 999px;
+                  background: var(--brand, #b45309); color: #fff; font-size: 14px; font-weight: 800;
+                  letter-spacing: 0.02em; cursor: pointer; box-shadow: 0 6px 16px rgba(180, 83, 9, 0.28);
+                  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+                }
+                .quiz-submit-btn:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 10px 22px rgba(180, 83, 9, 0.35); }
+                .quiz-submit-btn:active { transform: translateY(0) scale(0.97); box-shadow: 0 3px 8px rgba(180, 83, 9, 0.3); }
+                .quiz-submit-btn:focus-visible { outline: 3px solid rgba(180, 83, 9, 0.35); outline-offset: 2px; }
+                .quiz-submit-btn .quiz-submit-tick { display: inline-flex; align-items: center; justify-content: center; width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); font-size: 12px; }
+                .quiz-submit-bottom { display: flex; justify-content: center; margin-top: 28px; }
+                .quiz-submit-top { display: none; }
+                @media (max-width: 768px) {
+                  .timer-submit-mobile { display: inline-flex; }
+                  .quiz-submit-top { display: none !important; }
+                  .quiz-submit-bottom { display: none !important; }
+                }
+                @media (min-width: 769px) {
+                  .quiz-head.quiz-head-with-submit { display: grid !important; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+                  .quiz-head-with-submit .quiz-head-left { justify-self: start; }
+                  .quiz-head-with-submit .quiz-head-right { justify-self: end; }
+                  .quiz-submit-top { display: inline-flex; }
+                  .quiz-submit-bottom { display: none; }
+                  .timer-submit-mobile { display: none !important; }
+                }
+                .flashrev-dots { display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:10px; }
+                .flashrev-dot { width:8px; height:8px; border-radius:50%; background:var(--line-2,#e2e8f0); transition:background .2s ease,transform .2s ease; }
+                .flashrev-dot.active { background:var(--brand,#b45309); transform:scale(1.3); }
+                .flashrev-dot.done { background:#86efac; }
+                @media (max-width:768px) { .flash-controls .flash-nav-btn { display:none !important; } }
+              `}</style>
+
+              <div className="quiz-head quiz-head-with-submit">
+                <span className="quiz-head-left">
+                  {quizMode === "flashrev" ? <>Pattern {Math.floor(quizIndex / FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{ color:"var(--muted)", fontWeight:500 }}>{flashRevSubLabel}</span></> : <>Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
-                <h1 style={{ fontFamily: "monospace" }}>{patternQuizWord.ending}</h1>
-                <p style={{ color: "var(--muted)", margin: "4px 0", fontSize: 14 }}>
-                  Rule: <strong style={{ color: "var(--ink-2)" }}>{patternQuizWord.rule}</strong>
-                </p>
-                {patternQuizWord.examples && (
-                  <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>
-                    Examples: <strong style={{ color: "var(--ink-2)" }}>{patternQuizWord.examples}</strong>
-                  </p>
-                )}
+                <button type="button" className="quiz-submit-btn quiz-submit-top" onClick={handleSubmitQuiz} title="End the quiz now and see your result"><span className="quiz-submit-tick">✓</span> Submit Quiz</button>
+                <span className="quiz-head-right" style={{ fontWeight:700, color:"var(--brand)" }}>Score: {quizScore}</span>
               </div>
 
-              {/* der / die / das Choice Buttons */}
-              <div className="quiz-opts">
-                {["der", "die", "das"].map((opt) => (
-                  <button
-                    key={opt}
-                    disabled={quizFeedback !== null}
-                    className={`quiz-opt ${opt}`}
-                    onClick={() => {
-                      const ok = opt === patternQuizWord.article;
-                      const nextScore = ok ? quizScore + 1 : quizScore;
-                      if (ok) setQuizScore(nextScore);
-                      setQuizFeedback(
-                        ok
-                          ? "Correct! 🎉"
-                          : `Wrong! Suffix "${patternQuizWord.ending}" takes "${patternQuizWord.article}".`
-                      );
-                      triggerAutoAdvance(ok);
-                    }}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-
-              {quizFeedback && (
-                <div style={{ marginTop: 24, textAlign: "center", animation: "fadeIn 0.15s ease-in" }}>
-                  <p
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: quizAnswerState === "correct" ? "#15803d" : "#dc2626",
-                    }}
-                  >
-                    {quizFeedback}
-                  </p>
-
-                  {quizAnswerState === "correct" && (
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                      Moving to next word in 1 second...
-                    </span>
-                  )}
-
-                  {quizAnswerState === "wrong" && (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      autoFocus
-                      onClick={handleForwardClick}
-                      style={{
-                        marginTop: 10,
-                        height: 44,
-                        padding: "0 22px",
-                        borderRadius: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {quizIndex < quizList.length - 1 ? "Next ▶" : "Finish 🏁"}
-                    </button>
-                  )}
+              {quizMode === "flashrev" && (
+                <div className="flashrev-dots">
+                  {Array.from({length:FLASHREV_STEPS}).map((_,i)=>{ const subIdx=quizIndex%FLASHREV_STEPS; return <span key={i} className={`flashrev-dot ${i<subIdx?"done":i===subIdx?"active":""}`} title={["Article","Rule → Suffix","Example → Suffix"][i]} />; })}
+                  <span style={{fontSize:12,color:"var(--muted)",marginLeft:6}}>{["Article","Rule → Suffix","Example → Suffix"][quizIndex%FLASHREV_STEPS]}</span>
                 </div>
               )}
+
+              <div className="quiz-card">
+                {effectiveMode === "article" && (<>
+                  <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Which article goes with this suffix / pattern?</span>
+                  <h1 style={{fontFamily:"monospace"}}>{patternQuizWord.ending}</h1>
+                  <p style={{color:"var(--muted)",margin:"4px 0",fontSize:14}}>Rule: <strong style={{color:"var(--ink-2)"}}>{patternQuizWord.rule}</strong></p>
+                  {patternQuizWord.examples && <p style={{color:"var(--muted)",margin:0,fontSize:14}}>Examples: <strong style={{color:"var(--ink-2)"}}>{patternQuizWord.examples}</strong></p>}
+                </>)}
+                {effectiveMode === "ending" && (<>
+                  <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the German suffix / ending for this rule:</span>
+                  <h1 style={{color:"var(--brand,#b85c19)"}}>{patternQuizWord.rule}</h1>
+                </>)}
+                {effectiveMode === "examples" && (<>
+                  <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the suffix / ending represented by these examples:</span>
+                  <h1>{patternQuizWord.examples || "—"}</h1>
+                  <p style={{color:"var(--muted)",margin:0,fontSize:15}}>Article: <strong>{patternQuizWord.article}</strong></p>
+                </>)}
+              </div>
+
+              {effectiveMode === "article" ? (
+                <div className="quiz-opts">{["der","die","das"].map((opt)=><button key={opt} disabled={quizAnswerState!=="idle"} className={`quiz-opt ${opt}`} onClick={()=>handleArticleOptionSelect(opt)}>{opt}</button>)}</div>
+              ) : (
+                <form onSubmit={handlePatternTextSubmit} style={{marginTop:18,display:"flex",flexDirection:"column",alignItems:"center",gap:12,width:"100%",maxWidth:420,marginInline:"auto"}}>
+                  <input autoFocus type="text" value={quizTextInput} disabled={quizAnswerState!=="idle"} onChange={(e)=>setQuizTextInput(e.target.value)} placeholder="Type your answer..." style={{width:"100%",height:46,borderRadius:12,border:"2px solid #ebdccb",padding:"0 14px",fontSize:16,outline:"none",textAlign:"center"}} />
+                  <button type="submit" disabled={quizAnswerState!=="idle" || !quizTextInput.trim()} className="btn btn-primary" style={{minWidth:130,justifyContent:"center"}}>Check</button>
+                </form>
+              )}
+
+              {quizFeedback && <div style={{marginTop:20,textAlign:"center",animation:"fadeIn .15s ease-in"}}>
+                <p style={{fontSize:16,fontWeight:700,color:quizAnswerState==="correct"?"#15803d":"#dc2626"}}>{quizFeedback}</p>
+                {quizAnswerState==="correct" && <span style={{fontSize:12,color:"var(--muted)"}}>{quizMode==="flashrev" && quizIndex%FLASHREV_STEPS<FLASHREV_STEPS-1 ? "Next sub-question in 1 second..." : "Moving to next word in 1 second..."}</span>}
+              </div>}
+
+              <div className="quiz-submit-bottom" style={{alignItems:"center",justifyContent:"center",gap:12,marginTop:16}}>
+                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}><span className="quiz-submit-tick">✓</span> Submit Quiz</button>
+                {quizAnswerState === "wrong" && <button type="button" className="btn btn-primary quiz-next-symbol" autoFocus onClick={handleForwardClick} title={quizIndex<quizList.length-1?"Next question":"Finish quiz"} style={{width:45,height:45,padding:0,borderRadius:14,fontSize:30,fontWeight:800}}>&gt;</button>}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Quiz Results & Time-Up Modal */}
+
+      {/* 🏆 Quiz Results & Time-Up Modal */}
       {scoreModal.isOpen && (
         <div
           className="overlay"
           style={{ zIndex: 1300 }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setScoreModal((p) => ({ ...p, isOpen: false }));
-            }
-          }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeScoreModal(); }}
         >
           <div
             className="modal"
             style={{
-              textAlign: "center",
-              maxWidth: 360,
-              padding: "26px 20px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              borderRadius: "20px",
-              animation: "fadeIn 0.2s ease-in-out",
+              textAlign: "center", maxWidth: 360, padding: "26px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center",
+              borderRadius: "20px", animation: "fadeIn 0.2s ease-in-out",
             }}
           >
-            <img
-              src={scoreModal.reason === "timeup" ? alertGif : (scoreModal.score > 0 ? congratsGif : alertGif)}
-              alt="Quiz Results"
-              style={{ width: 95, height: 95, objectFit: "contain", marginBottom: 12 }}
-            />
+            <img src={resultTheme.gif} alt="Quiz Results" style={{ width: 95, height: 95, objectFit: "contain", marginBottom: 12 }} />
 
             <span
               style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                color: scoreModal.reason === "timeup" ? "#b91c1c" : "#b85c19",
-                backgroundColor: scoreModal.reason === "timeup" ? "#fee2e2" : "#fef3c7",
-                border: `1px solid ${scoreModal.reason === "timeup" ? "#fca5a5" : "#fde68a"}`,
-                padding: "4px 12px",
-                borderRadius: 20,
-                marginBottom: 8,
-                textTransform: "uppercase",
+                fontSize: 11, fontWeight: 800, letterSpacing: "0.08em",
+                color: resultTheme.color, backgroundColor: resultTheme.bg,
+                border: `1px solid ${resultTheme.border}`,
+                padding: "4px 12px", borderRadius: 20, marginBottom: 8, textTransform: "uppercase",
               }}
             >
-              {scoreModal.reason === "timeup" ? "⏰ Time Is Up!" : "🎉 Quiz Completed!"}
+              {resultTheme.badge}
             </span>
 
-            <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>
-              {scoreModal.reason === "timeup" ? "Time's Expired!" : "Great Effort!"}
-            </h3>
+            <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>{resultTheme.title}</h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 16px", fontSize: 14 }}>{resultTheme.text}</p>
 
-            <p style={{ color: "var(--muted)", margin: "0 0 16px", fontSize: 14 }}>
-              {scoreModal.reason === "timeup"
-                ? "The countdown clock reached zero. Here is how you did:"
-                : "You have reviewed all the patterns in your pool!"}
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                width: "100%",
-                marginBottom: "18px",
-              }}
-            >
-              <div
-                style={{
-                  flex: 1,
-                  padding: "12px 6px",
-                  borderRadius: "12px",
-                  backgroundColor: "#f7f2ed",
-                  border: "1px solid #ebdccb",
-                }}
-              >
+            <div style={{ display: "flex", gap: "12px", width: "100%", marginBottom: "18px" }}>
+              <div style={{ flex: 1, padding: "12px 6px", borderRadius: "12px", backgroundColor: "#f7f2ed", border: "1px solid #ebdccb" }}>
                 <div style={{ fontSize: "26px", fontWeight: 800, color: "var(--brand, #b85c19)" }}>
                   {scoreModal.score} / {scoreModal.total}
                 </div>
@@ -2066,18 +2205,9 @@ export default function PatternsPage({
                   Score
                 </div>
               </div>
-
-              <div
-                style={{
-                  flex: 1,
-                  padding: "12px 6px",
-                  borderRadius: "12px",
-                  backgroundColor: "#f7f2ed",
-                  border: "1px solid #ebdccb",
-                }}
-              >
-                <div style={{ fontSize: "26px", fontWeight: 800, color: "#166534" }}>
-                  {scoreModal.total > 0 ? Math.round((scoreModal.score / scoreModal.total) * 100) : 0}%
+              <div style={{ flex: 1, padding: "12px 6px", borderRadius: "12px", backgroundColor: "#f7f2ed", border: "1px solid #ebdccb" }}>
+                <div style={{ fontSize: "26px", fontWeight: 800, color: resultPassed ? "#166534" : "#b91c1c" }}>
+                  {scoreModal.total > 0 ? Math.round(resultPct) : 0}%
                 </div>
                 <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted)", marginTop: 2, textTransform: "uppercase" }}>
                   Accuracy
@@ -2086,12 +2216,7 @@ export default function PatternsPage({
             </div>
 
             <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ flex: 1, justifyContent: "center" }}
-                onClick={() => setScoreModal((p) => ({ ...p, isOpen: false }))}
-              >
+              <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={closeScoreModal}>
                 Close
               </button>
               <button
@@ -2099,6 +2224,7 @@ export default function PatternsPage({
                 className="btn btn-primary"
                 style={{ flex: 1, justifyContent: "center" }}
                 onClick={() => {
+                  stopGoalAchievedMusic();
                   setScoreModal((p) => ({ ...p, isOpen: false }));
                   handleShuffleQuiz();
                   const parsed = parseInt(timerInput, 10);
@@ -2114,6 +2240,7 @@ export default function PatternsPage({
           </div>
         </div>
       )}
+
 
       {/* Study Goals Modal */}
       <GoalModal

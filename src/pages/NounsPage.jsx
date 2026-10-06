@@ -616,6 +616,7 @@ export default function NounsPage({
   const [cardFlipped, setCardFlipped] = useState(false);
   // Flashcard order for this session (ids). Shuffling no longer rewrites your saved list.
   const [flashOrder, setFlashOrder] = useState(null);
+  const [touchStartX, setTouchStartX] = useState(null);
 
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
@@ -821,6 +822,50 @@ export default function NounsPage({
     setCardIndex(0);
     setCardFlipped(false);
   };
+
+  const handleFlashPrevious = () => {
+    if (cardIndex <= 0) return;
+    setCardIndex((prev) => prev - 1);
+    setCardFlipped(false);
+  };
+
+  const handleFlashNext = () => {
+    if (cardIndex >= flashList.length - 1) {
+      return;
+    }
+    setCardIndex((prev) => prev + 1);
+    setCardFlipped(false);
+  };
+
+  const handleFlashTouchStart = (e) => {
+    setTouchStartX(e.touches?.[0]?.clientX ?? null);
+  };
+
+  const handleFlashTouchEnd = (e) => {
+    if (touchStartX === null) return;
+    const endX = e.changedTouches?.[0]?.clientX;
+    if (typeof endX !== "number") return;
+    const deltaX = endX - touchStartX;
+    if (Math.abs(deltaX) >= 60) {
+      if (deltaX < 0) handleFlashNext();
+      else handleFlashPrevious();
+    }
+    setTouchStartX(null);
+  };
+
+  const nounCard = flashList[cardIndex];
+
+  
+
+  const duplicateNoun = useMemo(() => {
+    const current = nounFormData.noun.trim().toLowerCase();
+    if (!current) return false;
+    return list.some(
+      (item) =>
+        item.noun?.trim().toLowerCase() === current &&
+        item.id !== editingNounId
+    );
+  }, [nounFormData.noun, list, editingNounId]);
 
   // Hourly notifier
   useEffect(() => {
@@ -1446,7 +1491,6 @@ export default function NounsPage({
     triggerAutoAdvance(ok);
   };
 
-  const nounCard = flashList[cardIndex];
   const nounQuizWord = quizList[quizIndex];
 
   // In FlashRev, sub-question index = quizIndex % FLASHREV_STEPS so all 3 types
@@ -1843,34 +1887,14 @@ export default function NounsPage({
               <p style={{ color: "var(--muted)", margin: 0 }}>No nouns available for flashcards.</p>
             </div>
           ) : (
-            <div className="flash-wrap" style={{ position: "relative" }}>
-              <button
-                type="button"
-                onClick={handleShuffleFlashcards}
-                disabled={flashList.length <= 1}
-                aria-label="Shuffle flashcards"
-                title="Shuffle flashcards"
-                style={{
-                  position: "absolute",
-                  top: "8px",
-                  right: "8px",
-                  width: "36px",
-                  height: "36px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--muted)",
-                  fontSize: "20px",
-                  cursor: flashList.length <= 1 ? "not-allowed" : "pointer",
-                  opacity: flashList.length <= 1 ? 0.4 : 1,
-                  borderRadius: "8px",
-                }}
+            <div className="flash-wrap">
+              <div
+                className="flash"
+                onClick={handleFlipCard}
+                onTouchStart={handleFlashTouchStart}
+                onTouchEnd={handleFlashTouchEnd}
+                style={{ touchAction: "pan-y" }}
               >
-                🔀
-              </button>
-              <div className="flash" onClick={handleFlipCard}>
                 {!cardFlipped ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>GUESS ARTICLE, PLURAL &amp; MEANING</span>
@@ -1892,19 +1916,24 @@ export default function NounsPage({
                   </>
                 )}
               </div>
+              <div style={{ width: "100%", marginBottom: "10px" }}>
+                <div style={{ height: "6px", background: "var(--line-2, #ebdccb)", borderRadius: "999px", overflow: "hidden" }}>
+                  <div style={{ width: `${flashList.length ? ((cardIndex + 1) / flashList.length) * 100 : 0}%`, height: "100%", background: "var(--brand, #b85c19)", borderRadius: "999px", transition: "width 0.25s ease" }} />
+                </div>
+              </div>
               <div className="flash-controls">
-                <button className="btn btn-secondary" disabled={cardIndex === 0} onClick={() => { setCardIndex(cardIndex - 1); setCardFlipped(false); }}>
+                <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex === 0} onClick={handleFlashPrevious}>
                   ◀ Previous
                 </button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${nounCard.article} ${nounCard.noun}. ${nounCard.plural || ""}`)}>
                   🔊 Pronounce
                 </button>
-                <button className="btn btn-secondary" disabled={cardIndex >= flashList.length - 1} onClick={() => { setCardIndex(cardIndex + 1); setCardFlipped(false); }}>
+                <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex >= flashList.length - 1} onClick={handleFlashNext}>
                   Next ▶
                 </button>
               </div>
               <span style={{ color: "var(--muted)", fontSize: 13 }}>
-                Card {cardIndex + 1} of {flashList.length} · {flashRevCount} queued for FlashRev
+                Card {cardIndex + 1} of {flashList.length} · {Math.round(((cardIndex + 1) / flashList.length) * 100)}% · {flashRevCount} queued for FlashRev
               </span>
             </div>
           )}
@@ -2288,6 +2317,11 @@ export default function NounsPage({
                 .flashrev-dot.done {
                   background: #86efac;
                 }
+                @media (max-width: 768px) {
+                  .flash-controls .flash-nav-btn {
+                    display: none !important;
+                  }
+                }
               `}</style>
 
               <div className="quiz-head quiz-head-with-submit">
@@ -2662,8 +2696,16 @@ export default function NounsPage({
                   required
                   placeholder="e.g. Apfel"
                   value={nounFormData.noun}
-                  onChange={(e) => setNounFormData({ ...nounFormData, noun: e.target.value })}
+                  onChange={(e) => {
+                    setAiError("");
+                    setNounFormData({ ...nounFormData, noun: e.target.value });
+                  }}
                 />
+                {duplicateNoun && (
+                  <p style={{ color: "#dc2626", fontSize: 12.5, margin: "6px 0 0", fontWeight: 600 }}>
+                    ⚠ This German noun already exists in your vocabulary.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -2695,7 +2737,7 @@ export default function NounsPage({
                 <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={duplicateNoun}>
                   Save Noun
                 </button>
               </div>

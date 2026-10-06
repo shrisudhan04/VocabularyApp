@@ -478,6 +478,7 @@ export default function PrepositionsPage({
   const [timerInput, setTimerInput] = useState("30");
   const [timeLeft, setTimeLeft] = useState(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [timerPaused, setTimerPaused] = useState(false);
 
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
@@ -673,6 +674,7 @@ export default function PrepositionsPage({
       }, 1000);
     } else if (timerRunning && timeLeft === 0) {
       setTimerRunning(false);
+      setTimerPaused(false);
       playDangerSound();
       setScoreModal({
         isOpen: true,
@@ -690,12 +692,26 @@ export default function PrepositionsPage({
     const parsed = parseInt(timerInput, 10);
     if (!isNaN(parsed) && parsed > 0) {
       setTimeLeft(parsed);
+      setTimerPaused(false);
       setTimerRunning(true);
     }
   };
 
+  const handlePauseTimer = () => {
+    if (!timerRunning || timeLeft === null) return;
+    setTimerRunning(false);
+    setTimerPaused(true);
+  };
+
+  const handleResumeTimer = () => {
+    if (!timerPaused || timeLeft === null || timeLeft <= 0) return;
+    setTimerPaused(false);
+    setTimerRunning(true);
+  };
+
   const handleStopTimer = () => {
     setTimerRunning(false);
+    setTimerPaused(false);
     setTimeLeft(null);
   };
 
@@ -1060,6 +1076,7 @@ export default function PrepositionsPage({
     if (!quizList.length) return;
     if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
     setTimerRunning(false);
+    setTimerPaused(false);
     setTimeLeft(null);
     setScoreModal({
       isOpen: true,
@@ -1081,6 +1098,7 @@ export default function PrepositionsPage({
       setQuizIndex((prev) => prev + 1);
     } else {
       setTimerRunning(false);
+      setTimerPaused(false);
       setTimeLeft(null);
       setScoreModal({
         isOpen: true,
@@ -1567,7 +1585,7 @@ export default function PrepositionsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              justifyContent: timerRunning ? "center" : "flex-start",
+              justifyContent: (timerRunning || timerPaused) ? "center" : "flex-start",
               gap: "10px",
               width: "100%",
               maxWidth: "100%",
@@ -1579,7 +1597,7 @@ export default function PrepositionsPage({
               borderBottom: "1px solid var(--line-2, #ebdccb)",
             }}
           >
-            {!timerRunning ? (
+            {!(timerRunning || timerPaused) ? (
               <>
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
@@ -1767,33 +1785,68 @@ export default function PrepositionsPage({
                   padding: "0 12px 0 16px",
                   borderRadius: "14px",
                   height: "44px",
+                  boxSizing: "border-box",
                   whiteSpace: "nowrap",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
                 }}
               >
                 <span style={{ fontSize: "16px" }}>{timeLeft <= 5 ? "🔥" : "⏳"}</span>
-                <span style={{ fontSize: "15px", fontWeight: 800, color: timeLeft <= 5 ? "#dc2626" : "#15803d" }}>
+                <span style={{
+                  fontSize: "15px",
+                  fontWeight: 800,
+                  color: timeLeft <= 5 ? "#dc2626" : "#15803d",
+                  letterSpacing: "0.02em"
+                }}>
                   {timeLeft}s remaining
                 </span>
+
                 <button
                   type="button"
-                  onClick={handleStopTimer}
+                  onClick={timerPaused ? handleResumeTimer : handlePauseTimer}
+                  title={timerPaused ? "Resume Timer" : "Pause Timer"}
+                  aria-label={timerPaused ? "Resume Timer" : "Pause Timer"}
                   style={{
                     width: "30px",
                     height: "30px",
-                    borderRadius: "8px",
+                    borderRadius: "10px",
                     border: "1px solid #fca5a5",
                     backgroundColor: "#ffffff",
                     color: "#dc2626",
-                    fontSize: "12px",
+                    fontSize: "14px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    marginLeft: "2px",
+                  }}
+                >
+                  {timerPaused ? "▶" : "Ⅱ"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSubmitQuiz}
+                  title="Submit Quiz"
+                  aria-label="Submit Quiz"
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "10px",
+                    border: "1px solid #fca5a5",
+                    backgroundColor: "#ffffff",
+                    color: "#dc2626",
+                    fontSize: "20px",
                     fontWeight: 700,
                     cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    marginLeft: "4px",
+                    padding: 0,
                   }}
                 >
-                  ⏸
+                  ✓
                 </button>
               </div>
             )}
@@ -1807,15 +1860,70 @@ export default function PrepositionsPage({
           ) : (
             <div className="quiz">
               <style>{`
-                .quiz-submit-btn { height:45px; padding:0 14px; border:none; border-radius:999px; background:var(--brand,#b45319); color:#fff; font-weight:800; cursor:pointer; }
-                .quiz-submit-top { display:inline-flex; align-items:center; justify-content:center; justify-self:center; }
-                .quiz-submit-bottom { display:none; align-items:center; justify-content:center; }
-                @media(max-width:768px){
-                  .quiz-submit-top{display:none!important;}
-                  .quiz-submit-bottom{display:inline-flex!important;}
+                .quiz-submit-btn {
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 6px;
+                  height: 45px;
+                  padding: 0 12px;
+                  border: none;
+                  border-radius: 999px;
+                  background: var(--brand, #b45309);
+                  color: #fff;
+                  font-size: 14px;
+                  font-weight: 800;
+                  letter-spacing: 0.02em;
+                  cursor: pointer;
+                  box-shadow: 0 6px 16px rgba(180, 83, 9, 0.28);
+                  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
                 }
-                @media(min-width:769px){
-                  .quiz-submit-bottom{display:none!important;}
+                .quiz-submit-btn:hover {
+                  transform: translateY(-2px);
+                  filter: brightness(1.08);
+                  box-shadow: 0 10px 22px rgba(180, 83, 9, 0.35);
+                }
+                .quiz-submit-btn:active {
+                  transform: translateY(0) scale(0.97);
+                  box-shadow: 0 3px 8px rgba(180, 83, 9, 0.3);
+                }
+                .quiz-submit-btn:focus-visible {
+                  outline: 3px solid rgba(180, 83, 9, 0.35);
+                  outline-offset: 2px;
+                }
+                .quiz-submit-btn .quiz-submit-tick {
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                  width: 10px;
+                  height: 10px;
+                  border-radius: 50%;
+                  background: rgba(255, 255, 255, 0.25);
+                  font-size: 12px;
+                }
+                .quiz-submit-bottom {
+                  display: flex;
+                  justify-content: center;
+                  margin-top: 28px;
+                }
+                .quiz-submit-top {
+                  display: none;
+                }
+                @media (min-width: 769px) {
+                  .quiz-head.quiz-head-with-submit {
+                    display: grid !important;
+                    grid-template-columns: 1fr auto 1fr;
+                    align-items: center;
+                    gap: 12px;
+                  }
+                  .quiz-head-with-submit .quiz-head-left { justify-self: start; }
+                  .quiz-head-with-submit .quiz-head-right { justify-self: end; }
+                  .quiz-submit-top { display: inline-flex; }
+                  .quiz-submit-bottom { display: none; }
+                }
+                @media (max-width: 768px) {
+                  .quiz-submit-top { display: none !important; }
+                  .quiz-submit-bottom { display: flex !important; }
                 }
                 .flashrev-dots { display:flex; align-items:center; justify-content:center; gap:6px; margin:0 0 10px; }
                 .flashrev-dot { width:8px; height:8px; border-radius:50%; background:#e2e8f0; }
@@ -1823,24 +1931,26 @@ export default function PrepositionsPage({
                 .flashrev-dot.done { background:#86efac; }
                 @media(max-width:768px){ .flash-controls .flash-nav-btn{display:none!important;} }
               `}</style>
-              <div
-                className="quiz-head"
-                style={{
-                  position: "relative",
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto 1fr",
-                  alignItems: "center",
-                  gap: "12px",
-                  width: "100%",
-                }}
-              >
-                <span style={{ justifySelf: "start" }}>
+              <div className="quiz-head quiz-head-with-submit">
+                <span className="quiz-head-left">
                   {quizMode === "flashrev"
-                    ? <>Word {Math.floor(quizIndex / PREP_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{color:"var(--muted)",fontWeight:500}}> · Q{(quizIndex % PREP_FLASHREV_STEPS)+1}/{PREP_FLASHREV_STEPS}</span></>
+                    ? <>Word {Math.floor(quizIndex / PREP_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{ color: "var(--muted)", fontWeight: 500 }}> · Q{(quizIndex % PREP_FLASHREV_STEPS) + 1}/{PREP_FLASHREV_STEPS}</span></>
                     : <>Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
-                <button type="button" className="quiz-submit-btn quiz-submit-top" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
-                <span style={{ fontWeight: 700, color: "var(--brand)", justifySelf: "end" }}>Score: {quizScore}</span>
+
+                <button
+                  type="button"
+                  className="quiz-submit-btn quiz-submit-top"
+                  onClick={handleSubmitQuiz}
+                  title="End the quiz now and see your result"
+                >
+                  <span className="quiz-submit-tick">✓</span>
+                  Submit Quiz
+                </button>
+
+                <span className="quiz-head-right" style={{ fontWeight: 700, color: "var(--brand)" }}>
+                  Score: {quizScore}
+                </span>
               </div>
 
               {quizMode === "flashrev" && (
@@ -1883,8 +1993,23 @@ export default function PrepositionsPage({
                     <button
                       key={opt}
                       disabled={quizAnswerState !== "idle"}
-                      className="quiz-opt"
+                      className={`quiz-opt quiz-opt-${opt.toLowerCase()}`}
                       onClick={() => handleQuizCaseSelect(opt)}
+                      style={{
+                        backgroundColor:
+                          opt === "Dativ"
+                            ? "#0b72a8"
+                            : opt === "Akkusativ"
+                            ? "#c8103f"
+                            : "#15803d",
+                        color: "#ffffff",
+                        borderColor:
+                          opt === "Dativ"
+                            ? "#0b72a8"
+                            : opt === "Akkusativ"
+                            ? "#c8103f"
+                            : "#15803d",
+                      }}
                     >
                       {opt}
                     </button>
@@ -1900,13 +2025,11 @@ export default function PrepositionsPage({
               {quizFeedback && (
                 <div style={{marginTop:20,textAlign:"center"}}>
                   <p style={{fontSize:16,fontWeight:700,color:quizAnswerState === "correct" ? "#15803d" : "#dc2626"}}>{quizFeedback}</p>
-                  {quizAnswerState === "correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next question in 1 second...</span>}
+                  {quizAnswerState === "correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next word in 1 second...</span>}
                   {quizAnswerState === "wrong" && <button type="button" className="btn btn-primary" onClick={handleForwardClick} style={{width:45,height:45,padding:0,borderRadius:14,fontSize:30,fontWeight:800}}>&gt;</button>}
                 </div>
               )}
-              <div style={{display:"flex",justifyContent:"center",marginTop:20}}>
-                <button type="button" className="quiz-submit-btn quiz-submit-bottom" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
-              </div>
+
             </div>
           )}
         </div>
@@ -1948,6 +2071,7 @@ export default function PrepositionsPage({
                   const parsed = parseInt(timerInput, 10);
                   if (!isNaN(parsed) && parsed > 0) {
                     setTimeLeft(parsed);
+                    setTimerPaused(false);
                     setTimerRunning(true);
                   }
                 }}

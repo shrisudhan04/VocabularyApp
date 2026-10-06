@@ -1748,7 +1748,7 @@ export default function NounsPage({
                   </div>
                   <div className="actions">
                     <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                    <button onClick={() => openEditModal(item)} className="icon-btn">✏</button>
+                    <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
                     <button
                       onClick={() =>
                         onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>

@@ -1461,9 +1461,7 @@ export default function PrepositionsPage({
                   </>
                 ) : (
                   <>
-                    <span className={`pill ${ARTICLE_CLASS[prepCard.article || "der"]}`} style={{ fontSize: 20, padding: "4px 16px", marginBottom: 8 }}>
-                      {prepCard.article || "der"}
-                    </span>
+                    
                     <span className={`pill ${PREP_CASE_CLASS[prepCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>
                       {prepCard.caseType === "Wechsel" ? "Wechselpräposition" : `+ ${prepCard.caseType}`}
                     </span>

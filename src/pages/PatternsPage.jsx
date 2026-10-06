@@ -611,6 +611,12 @@ export default function PatternsPage({
   const [flashOrder, setFlashOrder] = useState(null);
   const [touchStartX, setTouchStartX] = useState(null);
 
+  // Flashcard filters — same custom-dropdown / horizontal-scroll style as Nouns.
+  const [flashArticleFilter, setFlashArticleFilter] = useState("all");
+  const [flashStatusFilter, setFlashStatusFilter] = useState("all");
+  const [flashDateMode, setFlashDateMode] = useState("all");
+  const [flashSpecificDate, setFlashSpecificDate] = useState("");
+
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -665,13 +671,32 @@ export default function PatternsPage({
     return quizSessionIds.map((id) => byId.get(id)).filter(Boolean);
   }, [list, quizSessionIds]);
 
+  const filteredFlashPool = useMemo(() => {
+    return list.filter((item) => {
+      const itemStatus = item.status || "In Progress";
+      const matchesArticle =
+        flashArticleFilter === "all" || item.article === flashArticleFilter;
+      const matchesStatus =
+        flashStatusFilter === "all" || itemStatus === flashStatusFilter;
+      const matchesDate = matchesDateFilter(
+        item.createdAt,
+        flashDateMode,
+        flashSpecificDate
+      );
+      return matchesArticle && matchesStatus && matchesDate;
+    });
+  }, [list, flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
+
   const flashList = useMemo(() => {
-    if (!flashOrder) return list;
-    const byId = new Map(list.map((item) => [item.id, item]));
+    if (!flashOrder) return filteredFlashPool;
+    const byId = new Map(filteredFlashPool.map((item) => [item.id, item]));
     const ordered = flashOrder.map((id) => byId.get(id)).filter(Boolean);
     const seen = new Set(flashOrder);
-    return [...ordered, ...list.filter((item) => !seen.has(item.id))];
-  }, [list, flashOrder]);
+    return [
+      ...ordered,
+      ...filteredFlashPool.filter((item) => !seen.has(item.id)),
+    ];
+  }, [filteredFlashPool, flashOrder]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
@@ -1239,8 +1264,47 @@ export default function PatternsPage({
   };
 
   const handleShuffleFlashcards = () => {
-    if (list.length <= 1) return;
-    setFlashOrder(shuffleArray(list).map((item) => item.id));
+    if (filteredFlashPool.length <= 1) return;
+    setFlashOrder(shuffleArray(filteredFlashPool).map((item) => item.id));
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashArticleChange = (value) => {
+    setFlashArticleFilter(value);
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashStatusChange = (value) => {
+    setFlashStatusFilter(value);
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashDateModeChange = (value) => {
+    setFlashDateMode(value);
+    if (value !== "specific") setFlashSpecificDate("");
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashDateSelect = (date) => {
+    setFlashSpecificDate(date);
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const clearFlashFilters = () => {
+    setFlashArticleFilter("all");
+    setFlashStatusFilter("all");
+    setFlashDateMode("all");
+    setFlashSpecificDate("");
+    setFlashOrder(null);
     setCardIndex(0);
     setCardFlipped(false);
   };
@@ -1733,6 +1797,119 @@ export default function PatternsPage({
 
       {viewMode === "flashcards" && (
         <div className="panel" style={{ marginTop: "-6px", paddingTop: 10 }}>
+          <div
+            className="flash-filter-row"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "center",
+              gap: "8px",
+              width: "100%",
+              maxWidth: "100%",
+              overflowX: "auto",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+              padding: "4px 2px 12px 2px",
+              marginBottom: "12px",
+              borderBottom: "1px solid var(--line-2, #ebdccb)",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+          >
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <CustomDropdown
+                icon="👤"
+                value={flashArticleFilter}
+                options={GENDER_OPTIONS}
+                onChange={handleFlashArticleChange}
+              />
+            </div>
+
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <CustomDropdown
+                icon="📌"
+                value={flashStatusFilter}
+                options={STATUS_FILTER_OPTIONS}
+                onChange={handleFlashStatusChange}
+              />
+            </div>
+
+            <div
+              style={{
+                flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <CustomDropdown
+                icon="📅"
+                value={flashDateMode}
+                options={QUIZ_DATE_DROPDOWN_OPTIONS}
+                onChange={handleFlashDateModeChange}
+              />
+              {flashDateMode === "specific" && (
+                <RealCalendarPicker
+                  selectedDate={flashSpecificDate}
+                  onSelectDate={handleFlashDateSelect}
+                />
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleShuffleFlashcards}
+              className="btn btn-secondary"
+              disabled={filteredFlashPool.length <= 1}
+              title="Shuffle the filtered flashcards"
+              style={{
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                height: "40px",
+                borderRadius: "12px",
+                padding: "0 14px",
+                opacity: filteredFlashPool.length <= 1 ? 0.55 : 1,
+              }}
+            >
+              🔀 Shuffle
+            </button>
+
+            {(flashArticleFilter !== "all" ||
+              flashStatusFilter !== "all" ||
+              flashDateMode !== "all" ||
+              flashSpecificDate) && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={clearFlashFilters}
+                style={{
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
+                  height: "40px",
+                  borderRadius: "12px",
+                  padding: "0 12px",
+                  fontSize: "12.5px",
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
+
+            <span
+              style={{
+                flexShrink: 0,
+                color: "var(--muted)",
+                fontSize: "13px",
+                whiteSpace: "nowrap",
+                paddingLeft: "2px",
+              }}
+            >
+              Cards: <strong style={{ color: "var(--ink)" }}>{filteredFlashPool.length}</strong>
+            </span>
+          </div>
+
           {!flashList[cardIndex] ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
               <img src={noDataImg} alt="No Data" style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }} />
@@ -2097,6 +2274,11 @@ export default function PatternsPage({
           ) : (
             <div className="quiz">
               <style>{`
+        .flash-filter-row::-webkit-scrollbar {
+          display: none;
+          width: 0;
+          height: 0;
+        }
                 .timer-submit-mobile {
                   width: 48px;
                   height: 30px;

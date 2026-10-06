@@ -1087,6 +1087,7 @@ export default function PatternsPage({
 
       const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
+        
         contents: `For the German noun ending/suffix "${patternFormData.ending.trim()}", give the grammatical article it most reliably indicates (der, die, or das), a short one-sentence rule explaining the pattern (mention notable exceptions only if important), and 3 to 4 example nouns written with their article, separated by commas (e.g. "die Station, die Nation").`,
         config: {
           responseMimeType: "application/json",

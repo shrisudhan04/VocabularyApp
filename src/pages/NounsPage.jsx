@@ -2238,8 +2238,8 @@ export default function NounsPage({
                   align-items: center;
                   justify-content: center;
                   gap: 8px;
-                  height: 40px;
-                  padding: 0 24px;
+                  height: 62px;
+                  padding: 0 28px;
                   border: none;
                   border-radius: 999px;
                   background: var(--brand, #b45309);
@@ -2526,21 +2526,10 @@ export default function NounsPage({
                     </span>
                   )}
 
-                  {quizAnswerState === "wrong" && (
-                    <button
-                      type="button"
-                      className="btn btn-primary quiz-next-symbol"
-                      autoFocus
-                      onClick={handleForwardClick}
-                      title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
-                    >
-                      &gt;
-                    </button>
-                  )}
                 </div>
               )}
 
-              <div className="quiz-submit-bottom" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <div className="quiz-submit-bottom" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
                 <button
                   type="button"
                   className="quiz-submit-btn"
@@ -2550,6 +2539,19 @@ export default function NounsPage({
                   <span className="quiz-submit-tick">✓</span>
                   Submit Quiz
                 </button>
+
+                {quizAnswerState === "wrong" && (
+                  <button
+                    type="button"
+                    className="btn btn-primary quiz-next-symbol"
+                    autoFocus
+                    onClick={handleForwardClick}
+                    title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
+                    style={{ width: 62, height: 62, padding: 0, borderRadius: 14, fontSize: 30, fontWeight: 800 }}
+                  >
+                    &gt;
+                  </button>
+                )}
               </div>
             </div>
           )}

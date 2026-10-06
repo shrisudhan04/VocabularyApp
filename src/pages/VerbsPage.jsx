@@ -18,7 +18,10 @@ import congratsAudio from "../assets/celebration.mp3";
 import noDataImg from "../assets/nodata.svg";
 import "../App.css";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.8-flash";
+
+// A quiz needs at least this percentage to count as passed
+const PASS_PERCENT = 70;
 
 const normalize = (s = "") =>
   String(s ?? "")
@@ -26,6 +29,17 @@ const normalize = (s = "") =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
+
+const foldGerman = (s = "") =>
+  String(s ?? "")
+    .normalize("NFC")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
 
 // Fisher-Yates array shuffle helper
 const shuffleArray = (array) => {
@@ -536,6 +550,9 @@ export default function VerbsPage({
   const [timerInput, setTimerInput] = useState("30");
   const [timeLeft, setTimeLeft] = useState(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [timerExpired, setTimerExpired] = useState(false);
+  // Keeps the active quiz banner displayed even when paused
+  const [isQuizActive, setIsQuizActive] = useState(false);
 
   // Quiz Progress
   const [quizIndex, setQuizIndex] = useState(0);
@@ -649,6 +666,7 @@ export default function VerbsPage({
     return availableQuizWords;
   }, [availableQuizWords, wordCountInput, quizMode]);
 
+  // Countdown Timer — same lifecycle as the Noun page
   useEffect(() => {
     let interval = null;
     if (timerRunning && timeLeft !== null && timeLeft > 0) {
@@ -657,6 +675,8 @@ export default function VerbsPage({
       }, 1000);
     } else if (timerRunning && timeLeft === 0) {
       setTimerRunning(false);
+      setIsQuizActive(false);
+      setTimerExpired(true);
       playDangerSound();
       setScoreModal({
         isOpen: true,
@@ -671,15 +691,41 @@ export default function VerbsPage({
   }, [timerRunning, timeLeft, quizScore, quizList.length]);
 
   const handleStartTimer = () => {
+    if (timeLeft !== null && timeLeft > 0) {
+      setTimerExpired(false);
+      setTimerRunning(true);
+      setIsQuizActive(true);
+      return;
+    }
+
     const parsed = parseInt(timerInput, 10);
     if (!isNaN(parsed) && parsed > 0) {
+      setTimerExpired(false);
       setTimeLeft(parsed);
       setTimerRunning(true);
+      setIsQuizActive(true);
+    }
+  };
+
+  const handleToggleTimer = () => {
+    if (timerRunning) {
+      // Pause: keep remaining time and keep the active quiz banner.
+      setTimerRunning(false);
+      return;
+    }
+
+    // Resume with the remaining time.
+    if (timeLeft !== null && timeLeft > 0) {
+      setTimerRunning(true);
+    } else {
+      handleStartTimer();
     }
   };
 
   const handleStopTimer = () => {
     setTimerRunning(false);
+    setTimerExpired(false);
+    setIsQuizActive(false);
     setTimeLeft(null);
   };
 
@@ -690,8 +736,23 @@ export default function VerbsPage({
     setQuizFeedback(null);
     setQuizAnswerState("idle");
     setQuizTextInput("");
+    setTimerExpired(false);
     setQuizSessionKey((k) => k + 1);
   };
+
+  const [lastViewMode, setLastViewMode] = useState(viewMode);
+  if (lastViewMode !== viewMode) {
+    setLastViewMode(viewMode);
+    if (lastViewMode === "quiz") {
+      setTimerRunning(false);
+      setIsQuizActive(false);
+      setTimeLeft(null);
+      setTimerExpired(false);
+    }
+    if (viewMode === "quiz") {
+      resetQuizProgress();
+    }
+  }
 
   const handleQuizStatusChange = (val) => {
     setQuizStatusFilter(val);
@@ -1210,21 +1271,21 @@ export default function VerbsPage({
     e?.preventDefault();
     if (quizFeedback !== null || !verbQuizWord) return;
 
-    const entered = normalize(quizTextInput);
+    const entered = foldGerman(quizTextInput);
     let target = "";
     let label = "";
 
     if (effectiveVerbMode === "preterite") {
-      target = normalize(verbQuizWord.preterite);
+      target = foldGerman(verbQuizWord.preterite);
       label = `The Präteritum form is "${verbQuizWord.preterite || "—"}".`;
     } else if (effectiveVerbMode === "participle") {
-      target = normalize(verbQuizWord.participle);
+      target = foldGerman(verbQuizWord.participle);
       label = `The Partizip II form is "${verbQuizWord.participle || "—"}".`;
     } else if (effectiveVerbMode === "infinitive") {
-      target = normalize(verbQuizWord.verb);
+      target = foldGerman(verbQuizWord.verb);
       label = `The infinitive verb is "${verbQuizWord.verb}".`;
     } else if (effectiveVerbMode === "meaning") {
-      target = normalize(verbQuizWord.meaning);
+      target = foldGerman(verbQuizWord.meaning);
       label = `The meaning is "${verbQuizWord.meaning || "—"}".`;
     }
 
@@ -1271,12 +1332,31 @@ export default function VerbsPage({
     }
     setCardFlipped((f) => !f);
   };
+  const openResultModal = (reason, score, total) => {
+    const pct = total > 0 ? (score / total) * 100 : 0;
+    if (reason !== "timeup") {
+      if (pct >= PASS_PERCENT) {
+        playGoalAchievedMusic();
+      } else {
+        playDangerSound();
+      }
+    }
+    setScoreModal({ isOpen: true, reason, score, total });
+  };
+
+  const closeScoreModal = () => {
+    stopGoalAchievedMusic();
+    setScoreModal((p) => ({ ...p, isOpen: false }));
+    resetQuizProgress();
+  };
+
   const handleSubmitQuiz = () => {
     if (!quizList.length) return;
     if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
     setTimerRunning(false);
+    setIsQuizActive(false);
     setTimeLeft(null);
-    setScoreModal({ isOpen: true, reason: "submit", score: quizScore, total: quizList.length });
+    openResultModal("submit", quizScore, quizList.length);
   };
 
   const recordAnswerResult = (word, ok) => {
@@ -1318,13 +1398,9 @@ export default function VerbsPage({
       setQuizIndex((prev) => prev + 1);
     } else {
       setTimerRunning(false);
+      setIsQuizActive(false);
       setTimeLeft(null);
-      setScoreModal({
-        isOpen: true,
-        reason: "finish",
-        score: finalScore,
-        total: quizList.length,
-      });
+      openResultModal("finish", finalScore, quizList.length);
     }
   };
 
@@ -1374,6 +1450,27 @@ export default function VerbsPage({
   };
 
   // Pale green / red panel tint while answering
+  const resultPct = scoreModal.total > 0 ? (scoreModal.score / scoreModal.total) * 100 : 0;
+  const resultPassed = resultPct >= PASS_PERCENT;
+  const resultTheme =
+    scoreModal.reason === "timeup"
+      ? {
+          gif: alertGif, color: "#b91c1c", bg: "#fee2e2", border: "#fca5a5",
+          badge: "⏰ Time Is Up!", title: "Time's Expired!",
+          text: "The countdown clock reached zero. Here is how you did:",
+        }
+      : resultPassed
+      ? {
+          gif: successGif, color: "#166534", bg: "#dcfce7", border: "#86efac",
+          badge: "🎉 Quiz Passed!", title: "Great Job!",
+          text: `You reached the ${PASS_PERCENT}% pass mark. Well done!`,
+        }
+      : {
+          gif: alertGif, color: "#b91c1c", bg: "#fee2e2", border: "#fca5a5",
+          badge: "📚 Keep Practicing", title: "Not Quite There Yet",
+          text: `You need at least ${PASS_PERCENT}% to pass. Review the verbs and try again.`,
+        };
+
   const getQuizPanelStyle = () => {
     const baseStyle = {
       marginTop: "-6px",
@@ -1758,7 +1855,7 @@ export default function VerbsPage({
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
-              justifyContent: timerRunning ? "center" : "flex-start",
+              justifyContent: isQuizActive ? "center" : "flex-start",
               gap: "10px",
               width: "100%",
               maxWidth: "100%",
@@ -1770,7 +1867,7 @@ export default function VerbsPage({
               borderBottom: "1px solid var(--line-2, #ebdccb)",
             }}
           >
-            {!timerRunning ? (
+            {!isQuizActive ? (
               <>
                 {/* 1. Quiz Mode Dropdown (Case, Präteritum, Partizip II, Infinitive) */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -1831,7 +1928,7 @@ export default function VerbsPage({
                   }}
                 >
                   <span style={{ fontSize: "14px" }}>🔢</span>
-                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>Count:</span>
+                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>{quizMode === "flashrev" ? "Words:" : "Count:"}</span>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -1928,17 +2025,16 @@ export default function VerbsPage({
                   </button>
                 </div>
 
-                {/* Verbs Pool Count */}
-                <div
-                  style={{
-                    flexShrink: 0,
-                    fontSize: "13.5px",
-                    color: "var(--muted)",
-                    whiteSpace: "nowrap",
-                    paddingLeft: "4px",
-                  }}
-                >
-                  Verbs: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong>
+                {/* Quiz Pool Count */}
+                <div style={{ flexShrink: 0, fontSize: "13.5px", color: "var(--muted)", whiteSpace: "nowrap", paddingLeft: "4px" }}>
+                  {quizMode === "flashrev" ? (
+                    <>
+                      Words: <strong style={{ color: "var(--ink)" }}>{flashRevUniqueWords}</strong>
+                      <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{VERB_FLASHREV_STEPS}Q</span>
+                    </>
+                  ) : (
+                    <>Words: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong></>
+                  )}
                 </div>
 
                 {/* Clear Filters */}
@@ -1988,8 +2084,8 @@ export default function VerbsPage({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "10px",
-                  backgroundColor: timeLeft <= 5 ? "#fef2f2" : "#f0fdf4",
-                  border: `1.5px solid ${timeLeft <= 5 ? "#f87171" : "#86efac"}`,
+                  backgroundColor: !timerRunning ? "#fffbeb" : timeLeft <= 5 ? "#fef2f2" : "#f0fdf4",
+                  border: `1.5px solid ${!timerRunning ? "#fde68a" : timeLeft <= 5 ? "#f87171" : "#86efac"}`,
                   padding: "0 12px 0 16px",
                   borderRadius: "14px",
                   height: "44px",
@@ -1998,12 +2094,12 @@ export default function VerbsPage({
                   boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
                 }}
               >
-                <span style={{ fontSize: "16px" }}>{timeLeft <= 5 ? "🔥" : "⏳"}</span>
+                <span style={{ fontSize: "16px" }}>{!timerRunning ? "⏸️" : timeLeft <= 5 ? "🔥" : "⏳"}</span>
                 <span
                   style={{
                     fontSize: "15px",
                     fontWeight: 800,
-                    color: timeLeft <= 5 ? "#dc2626" : "#15803d",
+                    color: !timerRunning ? "#b45309" : timeLeft <= 5 ? "#dc2626" : "#15803d",
                     letterSpacing: "0.02em",
                   }}
                 >
@@ -2012,15 +2108,15 @@ export default function VerbsPage({
 
                 <button
                   type="button"
-                  onClick={handleStopTimer}
-                  title="Stop Timer"
+                  onClick={handleToggleTimer}
+                  title={timerRunning ? "Pause Timer" : "Resume Timer"}
                   style={{
                     width: "30px",
                     height: "30px",
                     borderRadius: "8px",
                     border: "1px solid #fca5a5",
                     backgroundColor: "#ffffff",
-                    color: "#dc2626",
+                    color: timerRunning ? "#dc2626" : "#15803d",
                     fontSize: "12px",
                     fontWeight: 700,
                     cursor: "pointer",
@@ -2031,7 +2127,32 @@ export default function VerbsPage({
                     marginLeft: "4px",
                   }}
                 >
-                  ⏸
+                  {timerRunning ? "⏸" : "▶"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSubmitQuiz}
+                  title="Submit Quiz"
+                  aria-label="Submit Quiz"
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "8px",
+                    border: "1px solid #fca5a5",
+                    backgroundColor: "#ffffff",
+                    color: "#dc2626",
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    marginLeft: "4px",
+                  }}
+                >
+                  ✓
                 </button>
               </div>
             )}
@@ -2075,7 +2196,16 @@ export default function VerbsPage({
               )}
             </div>
           ) : (
-            <div className="quiz">
+            <div
+              className="quiz"
+              style={{
+                position: "relative",
+                opacity: timerExpired ? 0.55 : 1,
+                pointerEvents: timerExpired ? "none" : "auto",
+                filter: timerExpired ? "grayscale(0.5)" : "none",
+                transition: "opacity 0.2s ease, filter 0.2s ease",
+              }}
+            >
               <style>{`
                 .quiz-submit-btn{height:45px;padding:0 14px;border:none;border-radius:999px;background:var(--brand,#b85c19);color:#fff;font-weight:800;cursor:pointer}
                 .flashrev-dots{display:flex;align-items:center;justify-content:center;gap:6px;margin:0 0 10px}
@@ -2090,7 +2220,6 @@ export default function VerbsPage({
                     ? <>Word {Math.floor(quizIndex / VERB_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{color:"var(--muted)",fontWeight:500}}> · Q{(quizIndex % VERB_FLASHREV_STEPS)+1}/{VERB_FLASHREV_STEPS}</span></>
                     : <>Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
-                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
                 <span style={{fontWeight:700,color:"var(--brand)"}}>Score: {quizScore}</span>
               </div>
 
@@ -2135,14 +2264,49 @@ export default function VerbsPage({
               )}
 
               {quizFeedback && (
-                <div style={{marginTop:20,textAlign:"center"}}>
-                  <p style={{fontSize:16,fontWeight:700,color:quizAnswerState==="correct"?"#15803d":"#dc2626"}}>{quizFeedback}</p>
-                  {quizAnswerState==="correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next question in 1 second...</span>}
-                  {quizAnswerState==="wrong" && <button type="button" className="btn btn-primary" onClick={handleForwardClick} style={{width:45,height:45,padding:0,borderRadius:14,fontSize:30,fontWeight:800}}>&gt;</button>}
-                </div>
-              )}
+  <div style={{ marginTop: 20, textAlign: "center" }}>
+    <p
+      style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: quizAnswerState === "correct" ? "#15803d" : "#dc2626",
+      }}
+    >
+      {quizFeedback}
+    </p>
+
+    {quizAnswerState === "correct" && (
+      <span
+        style={{
+          fontSize: 12,
+          color: "var(--muted)",
+        }}
+      >
+        Moving to next question in 1 second...
+      </span>
+    )}
+
+    {quizAnswerState === "wrong" && (
+      <button
+        type="button"
+        className="btn btn-primary"
+        onClick={handleForwardClick}
+        style={{
+          width: 100,
+          height: 20,
+          padding: 0,
+          borderRadius: 14,
+          fontSize: 14,
+          fontWeight: 600,
+          marginTop: 8,
+        }}
+      >
+        Next
+      </button>
+    )}
+  </div>
+)}
               <div style={{display:"flex",justifyContent:"center",marginTop:20}}>
-                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
               </div>
             </div>
           )}
@@ -2174,36 +2338,28 @@ export default function VerbsPage({
             }}
           >
             <img
-              src={scoreModal.reason === "timeup" ? alertGif : (scoreModal.score > 0 ? congratsGif : alertGif)}
+              src={resultTheme.gif}
               alt="Quiz Results"
               style={{ width: 95, height: 95, objectFit: "contain", marginBottom: 12 }}
             />
 
             <span
               style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                color: scoreModal.reason === "timeup" ? "#b91c1c" : "#b85c19",
-                backgroundColor: scoreModal.reason === "timeup" ? "#fee2e2" : "#fef3c7",
-                border: `1px solid ${scoreModal.reason === "timeup" ? "#fca5a5" : "#fde68a"}`,
-                padding: "4px 12px",
-                borderRadius: 20,
-                marginBottom: 8,
-                textTransform: "uppercase",
+                fontSize: 11, fontWeight: 800, letterSpacing: "0.08em",
+                color: resultTheme.color, backgroundColor: resultTheme.bg,
+                border: `1px solid ${resultTheme.border}`,
+                padding: "4px 12px", borderRadius: 20, marginBottom: 8, textTransform: "uppercase",
               }}
             >
-              {scoreModal.reason === "timeup" ? "⏰ Time Is Up!" : "🎉 Quiz Completed!"}
+              {resultTheme.badge}
             </span>
 
             <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>
-              {scoreModal.reason === "timeup" ? "Time's Expired!" : "Great Effort!"}
+              {resultTheme.title}
             </h3>
 
             <p style={{ color: "var(--muted)", margin: "0 0 16px", fontSize: 14 }}>
-              {scoreModal.reason === "timeup"
-                ? "The countdown clock reached zero. Here is how you did:"
-                : "You have reviewed all the questions in your pool!"}
+              {resultTheme.text}
             </p>
 
             <div
@@ -2240,8 +2396,8 @@ export default function VerbsPage({
                   border: "1px solid #ebdccb",
                 }}
               >
-                <div style={{ fontSize: "26px", fontWeight: 800, color: "#166534" }}>
-                  {scoreModal.total > 0 ? Math.round((scoreModal.score / scoreModal.total) * 100) : 0}%
+                <div style={{ fontSize: "26px", fontWeight: 800, color: resultPassed ? "#166534" : "#b91c1c" }}>
+                  {scoreModal.total > 0 ? Math.round(resultPct) : 0}%
                 </div>
                 <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted)", marginTop: 2, textTransform: "uppercase" }}>
                   Accuracy
@@ -2254,7 +2410,7 @@ export default function VerbsPage({
                 type="button"
                 className="btn btn-secondary"
                 style={{ flex: 1, justifyContent: "center" }}
-                onClick={() => setScoreModal((p) => ({ ...p, isOpen: false }))}
+                onClick={closeScoreModal}
               >
                 Close
               </button>
@@ -2263,12 +2419,15 @@ export default function VerbsPage({
                 className="btn btn-primary"
                 style={{ flex: 1, justifyContent: "center" }}
                 onClick={() => {
+                  stopGoalAchievedMusic();
                   setScoreModal((p) => ({ ...p, isOpen: false }));
                   handleShuffleQuiz();
                   const parsed = parseInt(timerInput, 10);
                   if (!isNaN(parsed) && parsed > 0) {
+                    setTimerExpired(false);
                     setTimeLeft(parsed);
                     setTimerRunning(true);
+                    setIsQuizActive(true);
                   }
                 }}
               >

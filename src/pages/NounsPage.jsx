@@ -1469,28 +1469,35 @@ export default function NounsPage({
       {viewMode === "list" && (
         <div className="section">
           <div className="stats-grid">
-            <div className="stat dark">
+            <div className="stat dark" style={{ minWidth: 0 }}>
               <div className="stat-head">
                 <span className="stat-label">TOTAL NOUNS</span>
-                <span style={{ display: "flex", gap: 6 }}>
-                  <span className="stat-pill dark">{nounsMastered} mastered</span>
-                  {nounsForgot > 0 && <span className="stat-pill dark">{nounsForgot} forgot</span>}
-                </span>
+                <span className="stat-pill dark">{nounsMastered} mastered</span>
               </div>
               <div className="stat-foot">
                 <span className="stat-value">{list.length}</span>
-                <span className="stat-note" style={{ color: "#a8a29e" }}>all genders</span>
+                {nounsForgot > 0 ? (
+                  <span
+                    className="stat-pill dark"
+                    title="Words that were Mastered and then answered wrong in a quiz"
+                    style={{ color: "#fecaca", background: "rgba(239, 68, 68, 0.2)" }}
+                  >
+                    ⚠ {nounsForgot} forgot
+                  </span>
+                ) : (
+                  <span className="stat-note" style={{ color: "#a8a29e" }}>all genders</span>
+                )}
               </div>
             </div>
-            <div className="stat">
+            <div className="stat" style={{ minWidth: 0 }}>
               <div className="stat-head"><span className="stat-label">MASCULINE</span><span className="stat-pill bg-der">der</span></div>
               <div className="stat-foot"><span className="stat-value c-der">{countNoun("der")}</span></div>
             </div>
-            <div className="stat">
+            <div className="stat" style={{ minWidth: 0 }}>
               <div className="stat-head"><span className="stat-label">FEMININE</span><span className="stat-pill bg-die">die</span></div>
               <div className="stat-foot"><span className="stat-value c-die">{countNoun("die")}</span></div>
             </div>
-            <div className="stat">
+            <div className="stat" style={{ minWidth: 0 }}>
               <div className="stat-head"><span className="stat-label">NEUTER</span><span className="stat-pill bg-das">das</span></div>
               <div className="stat-foot"><span className="stat-value c-das">{countNoun("das")}</span></div>
             </div>

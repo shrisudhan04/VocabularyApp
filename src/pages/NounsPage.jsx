@@ -2529,18 +2529,18 @@ export default function NounsPage({
                   {quizAnswerState === "wrong" && (
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      className="btn btn-primary quiz-next-symbol"
                       autoFocus
                       onClick={handleForwardClick}
-                      style={{ marginTop: 10, height: 44, padding: "0 22px", borderRadius: 12, fontWeight: 700 }}
+                      title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
                     >
-                      {quizIndex < quizList.length - 1 ? "Next ▶" : "Finish 🏁"}
+                      &gt;
                     </button>
                   )}
                 </div>
               )}
 
-              <div className="quiz-submit-bottom">
+              <div className="quiz-submit-bottom" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                 <button
                   type="button"
                   className="quiz-submit-btn"

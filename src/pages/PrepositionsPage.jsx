@@ -529,6 +529,12 @@ export default function PrepositionsPage({
   const [cardFlipped, setCardFlipped] = useState(false);
   const [flashOrder, setFlashOrder] = useState(null);
   const [touchStartX, setTouchStartX] = useState(null);
+
+  // Flashcard filters
+  const [flashCaseFilter, setFlashCaseFilter] = useState("all");
+  const [flashStatusFilter, setFlashStatusFilter] = useState("all");
+  const [flashDateMode, setFlashDateMode] = useState("all");
+  const [flashSpecificDate, setFlashSpecificDate] = useState("");
   const touchMovedRef = useRef(false);
 
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
@@ -664,13 +670,23 @@ export default function PrepositionsPage({
     if (changed) onCommitPreps?.(updated);
   };
 
+  const filteredFlashPool = useMemo(() => {
+    return list.filter((item) => {
+      const itemStatus = item.status || "In Progress";
+      const matchesCase = flashCaseFilter === "all" || item.caseType === flashCaseFilter;
+      const matchesStatus = flashStatusFilter === "all" || itemStatus === flashStatusFilter;
+      const matchesDate = matchesDateFilter(item.createdAt, flashDateMode, flashSpecificDate);
+      return matchesCase && matchesStatus && matchesDate;
+    });
+  }, [list, flashCaseFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
+
   const flashList = useMemo(() => {
-    if (!flashOrder) return list;
-    const byId = new Map(list.map((item) => [item.id, item]));
+    if (!flashOrder) return filteredFlashPool;
+    const byId = new Map(filteredFlashPool.map((item) => [item.id, item]));
     const ordered = flashOrder.map((id) => byId.get(id)).filter(Boolean);
     const seen = new Set(flashOrder);
-    return [...ordered, ...list.filter((item) => !seen.has(item.id))];
-  }, [list, flashOrder]);
+    return [...ordered, ...filteredFlashPool.filter((item) => !seen.has(item.id))];
+  }, [filteredFlashPool, flashOrder]);
 
   useEffect(() => {
     let interval = null;
@@ -1178,8 +1194,47 @@ export default function PrepositionsPage({
   };
 
   const handleShuffleFlashcards = () => {
-    if (list.length <= 1) return;
-    setFlashOrder(shuffleArray(list).map((item) => item.id));
+    if (filteredFlashPool.length <= 1) return;
+    setFlashOrder(shuffleArray(filteredFlashPool).map((item) => item.id));
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashCaseChange = (value) => {
+    setFlashCaseFilter(value);
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashStatusChange = (value) => {
+    setFlashStatusFilter(value);
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashDateModeChange = (value) => {
+    setFlashDateMode(value);
+    setFlashSpecificDate(value === "specific" ? flashSpecificDate : "");
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const handleFlashDateSelect = (date) => {
+    setFlashSpecificDate(date);
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+
+  const clearFlashFilters = () => {
+    setFlashCaseFilter("all");
+    setFlashStatusFilter("all");
+    setFlashDateMode("all");
+    setFlashSpecificDate("");
+    setFlashOrder(null);
     setCardIndex(0);
     setCardFlipped(false);
   };
@@ -1557,6 +1612,97 @@ export default function PrepositionsPage({
 
       {viewMode === "flashcards" && (
         <div className="panel">
+          <div
+            className="flash-filter-row"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "center",
+              gap: "10px",
+              width: "100%",
+              maxWidth: "100%",
+              overflowX: "auto",
+              overflowY: "visible",
+              WebkitOverflowScrolling: "touch",
+              padding: "4px 2px 14px 2px",
+              marginBottom: "16px",
+              borderBottom: "1px solid var(--line-2, #ebdccb)",
+            }}
+          >
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <CustomDropdown
+                icon="🎯"
+                value={flashCaseFilter}
+                options={CASE_FILTER_OPTIONS}
+                onChange={handleFlashCaseChange}
+              />
+            </div>
+
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <CustomDropdown
+                icon="📌"
+                value={flashStatusFilter}
+                options={STATUS_FILTER_OPTIONS}
+                onChange={handleFlashStatusChange}
+              />
+            </div>
+
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <CustomDropdown
+                icon="📅"
+                value={flashDateMode}
+                options={QUIZ_DATE_DROPDOWN_OPTIONS}
+                onChange={handleFlashDateModeChange}
+              />
+            </div>
+
+            {flashDateMode === "specific" && (
+              <RealCalendarPicker
+                selectedDate={flashSpecificDate}
+                onSelectDate={handleFlashDateSelect}
+              />
+            )}
+
+            <button
+              type="button"
+              onClick={handleShuffleFlashcards}
+              className="btn btn-secondary"
+              title="Shuffle filtered flashcards"
+              style={{
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                height: "40px",
+                borderRadius: "12px",
+                padding: "0 12px",
+              }}
+            >
+              🔀 Shuffle
+            </button>
+
+            <div style={{ flexShrink: 0, fontSize: "13.5px", color: "var(--muted)", whiteSpace: "nowrap" }}>
+              Cards: <strong style={{ color: "var(--ink)" }}>{flashList.length}</strong>
+            </div>
+
+            {(flashCaseFilter !== "all" || flashStatusFilter !== "all" || flashDateMode !== "all" || flashSpecificDate) && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={clearFlashFilters}
+                style={{
+                  flexShrink: 0,
+                  padding: "0 12px",
+                  fontSize: "12.5px",
+                  whiteSpace: "nowrap",
+                  height: "40px",
+                  borderRadius: "12px",
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+
           {!prepCard ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px" }}>
               <img src={noDataImg} alt="No Data" style={{ width: "160px", marginBottom: "12px" }} />

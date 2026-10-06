@@ -205,10 +205,10 @@ const QUIZ_DATE_DROPDOWN_OPTIONS = [
 ];
 
 const QUIZ_MODE_OPTIONS = [
-  { label: "Article (der/die/das)", value: "article" },
+  { label: "Article", value: "article" },
   { label: "English ➔ Noun", value: "english" },
   { label: "Plural Form", value: "plural" },
-  { label: "FlashRev (Flashcard Review)", value: "flashrev" },
+  { label: "FlashRev", value: "flashrev" },
 ];
 
 const EXCEL_ACTIONS = [

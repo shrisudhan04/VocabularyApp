@@ -23,6 +23,24 @@ const GEMINI_MODEL = "gemini-3.8-flash";
 // A quiz needs at least this percentage to count as passed
 const PASS_PERCENT = 70;
 
+// FlashRev asks each word several questions in a row, one per step.
+// Keep this order in sync with the step labels shown in the quiz UI
+// (["Case","Präteritum","Partizip II","Meaning"]).
+const VERB_FLASHREV_STEPS_LIST = ["case", "preterite", "participle", "meaning"];
+const VERB_FLASHREV_STEPS = VERB_FLASHREV_STEPS_LIST.length; // 4
+
+// Picks the question type for a word at a given step (0..VERB_FLASHREV_STEPS-1).
+// Falls back to "case" when the word has no data for that step, so the quiz
+// never asks for an answer that is empty.
+const getVerbFlashRevMode = (word, step = 0) => {
+  const mode = VERB_FLASHREV_STEPS_LIST[step] ?? "case";
+  if (!word) return "case";
+  if (mode === "preterite" && !word.preterite) return "case";
+  if (mode === "participle" && !word.participle) return "case";
+  if (mode === "meaning" && !word.meaning) return "case";
+  return mode;
+};
+
 const normalize = (s = "") =>
   String(s ?? "")
     .toLowerCase()

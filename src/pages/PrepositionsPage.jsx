@@ -2026,8 +2026,23 @@ export default function PrepositionsPage({
                 <div style={{marginTop:20,textAlign:"center"}}>
                   <p style={{fontSize:16,fontWeight:700,color:quizAnswerState === "correct" ? "#15803d" : "#dc2626"}}>{quizFeedback}</p>
                   {quizAnswerState === "correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next word in 1 second...</span>}
-                  {quizAnswerState === "wrong" && <button type="button" className="btn btn-primary" onClick={handleForwardClick} style={{width:45,height:45,padding:0,borderRadius:14,fontSize:30,fontWeight:800}}>&gt;</button>}
-                </div>
+<button
+                    type="button"
+                    className="btn btn-primary quiz-next-symbol"
+                    autoFocus
+                    onClick={handleForwardClick}
+                    title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
+                    style={{
+                      width: 100,
+                      height: 45,
+                      padding: 0,
+                      borderRadius: 14,
+                      fontSize: 16,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Next
+                  </button>                </div>
               )}
 
             </div>

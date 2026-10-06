@@ -194,6 +194,14 @@ const STATUS_FILTER_OPTIONS = [
   { label: "Forgot", value: "Forgot" },
 ];
 
+// Flashcard filters use the same custom dropdown/calendar style as Quiz.
+const FLASH_ARTICLE_FILTER_OPTIONS = [
+  { label: "Article", value: "all" },
+  { label: "der (Masculine)", value: "der" },
+  { label: "die (Feminine)", value: "die" },
+  { label: "das (Neuter)", value: "das" },
+];
+
 const QUIZ_DATE_DROPDOWN_OPTIONS = [
   { label: "All Dates", value: "all" },
   { label: "Today", value: "today" },
@@ -613,6 +621,12 @@ export default function NounsPage({
   const [flashOrder, setFlashOrder] = useState(null);
   const [touchStartX, setTouchStartX] = useState(null);
 
+  // Flashcard filters
+  const [flashArticleFilter, setFlashArticleFilter] = useState("all");
+  const [flashStatusFilter, setFlashStatusFilter] = useState("all");
+  const [flashDateMode, setFlashDateMode] = useState("all");
+  const [flashSpecificDate, setFlashSpecificDate] = useState("");
+
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -674,13 +688,29 @@ export default function NounsPage({
     return quizSessionIds.map((id) => byId.get(id)).filter(Boolean);
   }, [list, quizSessionIds]);
 
+  const flashFilteredList = useMemo(() => {
+    return list.filter((item) => {
+      const matchesArticle =
+        flashArticleFilter === "all" || item.article === flashArticleFilter;
+      const itemStatus = item.status || "In Progress";
+      const matchesStatus =
+        flashStatusFilter === "all" || itemStatus === flashStatusFilter;
+      const matchesDate = matchesDateFilter(
+        item.createdAt,
+        flashDateMode,
+        flashSpecificDate
+      );
+      return matchesArticle && matchesStatus && matchesDate;
+    });
+  }, [list, flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
+
   const flashList = useMemo(() => {
-    if (!flashOrder) return list;
-    const byId = new Map(list.map((item) => [item.id, item]));
+    if (!flashOrder) return flashFilteredList;
+    const byId = new Map(flashFilteredList.map((item) => [item.id, item]));
     const ordered = flashOrder.map((id) => byId.get(id)).filter(Boolean);
     const seen = new Set(flashOrder);
-    return [...ordered, ...list.filter((item) => !seen.has(item.id))];
-  }, [list, flashOrder]);
+    return [...ordered, ...flashFilteredList.filter((item) => !seen.has(item.id))];
+  }, [flashFilteredList, flashOrder]);
 
   const quizList = useMemo(() => {
     if (quizMode === "flashrev") {
@@ -818,11 +848,18 @@ export default function NounsPage({
   };
 
   const handleShuffleFlashcards = () => {
-    if (list.length <= 1) return;
-    setFlashOrder(shuffleArray(list).map((item) => item.id));
+    if (flashFilteredList.length <= 1) return;
+    setFlashOrder(shuffleArray(flashFilteredList).map((item) => item.id));
     setCardIndex(0);
     setCardFlipped(false);
   };
+
+  // Changing a flashcard filter starts that filtered set from the first card.
+  useEffect(() => {
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  }, [flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
 
   const handleFlashPrevious = () => {
     if (cardIndex <= 0) return;
@@ -1845,6 +1882,130 @@ export default function NounsPage({
 
       {viewMode === "flashcards" && (
         <div className="panel">
+          <div
+            className="flashcard-filter-row"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "center",
+              gap: "8px",
+              width: "100%",
+              maxWidth: "100%",
+              overflowX: "auto",
+              overflowY: "visible",
+              WebkitOverflowScrolling: "touch",
+              padding: "4px 2px 12px",
+              marginBottom: "8px",
+              borderBottom: "1px solid var(--line-2, #ebdccb)",
+              scrollbarWidth: "thin",
+            }}
+          >
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <CustomDropdown
+                icon="🎯"
+                value={flashArticleFilter}
+                options={FLASH_ARTICLE_FILTER_OPTIONS}
+                onChange={(val) => {
+                  setFlashArticleFilter(val);
+                }}
+              />
+            </div>
+
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <CustomDropdown
+                icon="📌"
+                value={flashStatusFilter}
+                options={STATUS_FILTER_OPTIONS}
+                onChange={(val) => {
+                  setFlashStatusFilter(val);
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <CustomDropdown
+                icon="🗓️"
+                value={flashDateMode}
+                options={QUIZ_DATE_DROPDOWN_OPTIONS}
+                onChange={(val) => {
+                  setFlashDateMode(val);
+                  if (val !== "specific") setFlashSpecificDate("");
+                }}
+              />
+              {flashDateMode === "specific" && (
+                <RealCalendarPicker
+                  selectedDate={flashSpecificDate}
+                  onSelectDate={(date) => setFlashSpecificDate(date)}
+                />
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleShuffleFlashcards}
+              className="btn btn-secondary"
+              disabled={flashFilteredList.length <= 1}
+              title="Shuffle the filtered flashcards"
+              style={{
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                height: "40px",
+                borderRadius: "12px",
+                padding: "0 14px",
+                opacity: flashFilteredList.length <= 1 ? 0.55 : 1,
+              }}
+            >
+              🔀 Shuffle
+            </button>
+
+            {(flashArticleFilter !== "all" ||
+              flashStatusFilter !== "all" ||
+              flashDateMode !== "all" ||
+              flashSpecificDate) && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
+                  height: "40px",
+                  borderRadius: "12px",
+                  padding: "0 12px",
+                  fontSize: "12.5px",
+                }}
+                onClick={() => {
+                  setFlashArticleFilter("all");
+                  setFlashStatusFilter("all");
+                  setFlashDateMode("all");
+                  setFlashSpecificDate("");
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
+
+            <span
+              style={{
+                flexShrink: 0,
+                color: "var(--muted)",
+                fontSize: "13px",
+                whiteSpace: "nowrap",
+                paddingLeft: "2px",
+              }}
+            >
+              Cards: <strong style={{ color: "var(--ink)" }}>{flashFilteredList.length}</strong>
+            </span>
+          </div>
+
           {!nounCard ? (
             <div
               style={{

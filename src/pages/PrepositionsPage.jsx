@@ -572,7 +572,13 @@ export default function PrepositionsPage({
     return quizMode === "flashrev"
       ? ordered.flatMap((item) => Array(PREP_FLASHREV_STEPS).fill(item.id))
       : ordered.map((item) => item.id);
-  }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
+    // The pool is frozen for the whole quiz session: it is only rebuilt when a
+    // filter/mode changes or resetQuizProgress() bumps quizSessionKey. `list` is
+    // intentionally NOT a dependency — otherwise mastering a word mid-quiz
+    // (flashRev -> false) would drop it from the pool and shift every index.
+    // list.length covers add/delete/import (e.g. data loading after mount).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
 
   const availableQuizWords = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
@@ -725,11 +731,33 @@ export default function PrepositionsPage({
     setQuizSessionKey((k) => k + 1);
   };
 
+  // Entering the quiz starts a fresh session (rebuilds the frozen question pool);
+  // leaving it stops any running timer.
+  const [lastViewMode, setLastViewMode] = useState(viewMode);
+  if (lastViewMode !== viewMode) {
+    setLastViewMode(viewMode);
+    if (lastViewMode === "quiz") {
+      setTimerRunning(false);
+      setTimerPaused(false);
+      setTimeLeft(null);
+    }
+    if (viewMode === "quiz") {
+      resetQuizProgress();
+    }
+  }
+
   // Hourly notifier
   useEffect(() => {
     let timerId = null;
     if (hourlyAlertsActive && list.length > 0) {
-      timerId = startHourlyNounNotifier(list);
+      // The notifier expects {article, noun, plural, meaning}; map preposition fields onto it
+      const formattedForNotifier = list.map((p) => ({
+        article: p.caseType,
+        noun: p.prep,
+        plural: "",
+        meaning: p.meaning,
+      }));
+      timerId = startHourlyNounNotifier(formattedForNotifier);
     }
     return () => {
       if (timerId) clearInterval(timerId);
@@ -758,8 +786,16 @@ export default function PrepositionsPage({
       const granted = await requestMobileNotificationPermission();
       if (!granted) return;
     }
-    const sample = list.length > 0 ? list[Math.floor(Math.random() * list.length)] : { article: "der", noun: "Tisch" };
-    await sendNounNotification({ article: sample.article || "der", noun: sample.prep || "Test", plural: "", meaning: sample.meaning || "" });
+    const sample =
+      list.length > 0
+        ? list[Math.floor(Math.random() * list.length)]
+        : { caseType: "Akkusativ", prep: "ohne", meaning: "without" };
+    await sendNounNotification({
+      article: sample.caseType,
+      noun: sample.prep,
+      plural: "",
+      meaning: sample.meaning || "",
+    });
   };
 
   const getGoalCounts = (items = []) => {
@@ -1087,12 +1123,20 @@ export default function PrepositionsPage({
   };
 
   const prepCard = flashList[cardIndex];
+
+  // Closing the result modal starts a fresh session so the pool reflects what changed
+  const closeScoreModal = () => {
+    setScoreModal((p) => ({ ...p, isOpen: false }));
+    resetQuizProgress();
+  };
+
   // Moves to the next question (or finishes the quiz)
   const goToNextQuestion = (finalScore) => {
     setQuizAnswerState("idle");
     setQuizFeedback(null);
     setQuizTextInput("");
-    setQuizSessionKey((k) => k + 1);
+    // NOTE: do not bump quizSessionKey here — it rebuilds (and reshuffles) the
+    // question pool, which must stay fixed while a quiz is running.
 
     if (quizIndex < quizList.length - 1) {
       setQuizIndex((prev) => prev + 1);
@@ -1545,15 +1589,12 @@ export default function PrepositionsPage({
               >
                 {!cardFlipped ? (
                   <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE &amp; CASE DOES THIS TAKE?</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH CASE DOES THIS TAKE?</span>
                     <h2>{prepCard.prep}</h2>
                     <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
                   </>
                 ) : (
                   <>
-                    <span className={`pill ${ARTICLE_CLASS[prepCard.article || "der"]}`} style={{ fontSize: 20, padding: "4px 16px", marginBottom: 8 }}>
-                      {prepCard.article || "der"}
-                    </span>
                     <span className={`pill ${PREP_CASE_CLASS[prepCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>
                       {prepCard.caseType === "Wechsel" ? "Wechselpräposition" : `+ ${prepCard.caseType}`}
                     </span>
@@ -1575,7 +1616,7 @@ export default function PrepositionsPage({
         </div>
       )}
 
-      {/* 🎯 QUIZ MODE: Article ONLY (der / die / das) */}
+      {/* 🎯 QUIZ MODE */}
       {viewMode === "quiz" && (
         <div className="panel" style={getQuizPanelStyle()}>
           <div
@@ -2052,7 +2093,7 @@ export default function PrepositionsPage({
 
       {/* 🏆 Score / Time-Up Modal */}
       {scoreModal.isOpen && (
-        <div className="overlay" style={{ zIndex: 1300 }} onClick={(e) => e.target === e.currentTarget && setScoreModal((p) => ({ ...p, isOpen: false }))}>
+        <div className="overlay" style={{ zIndex: 1300 }} onClick={(e) => e.target === e.currentTarget && closeScoreModal()}>
           <div className="modal" style={{ textAlign: "center", maxWidth: 360, padding: "26px 20px", display: "flex", flexDirection: "column", alignItems: "center", borderRadius: "20px" }}>
             <img src={scoreModal.reason === "timeup" ? alertGif : (scoreModal.score > 0 ? congratsGif : alertGif)} alt="Quiz Results" style={{ width: 95, height: 95, marginBottom: 12 }} />
             <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>
@@ -2073,7 +2114,7 @@ export default function PrepositionsPage({
               </div>
             </div>
             <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-              <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setScoreModal((p) => ({ ...p, isOpen: false }))}>
+              <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={closeScoreModal}>
                 Close
               </button>
               <button

@@ -2155,7 +2155,7 @@ export default function NounsPage({
                     letterSpacing: "0.02em",
                   }}
                 >
-                  {timeLeft}s remaining {!timerRunning && "(Paused)"}
+                  {timeLeft}s remaining
                 </span>
 
                 <button

@@ -2155,15 +2155,6 @@ export default function NounsPage({
             </div>
           ) : (
             <div className="quiz">
-              <div
-                className="quiz-head"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto 1fr",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
                 <style>{`
                   .quiz-submit-btn {
                     display: inline-flex;
@@ -2206,23 +2197,54 @@ export default function NounsPage({
                     background: rgba(255, 255, 255, 0.25);
                     font-size: 12px;
                   }
+
+                  /* Mobile: Submit sits at the bottom */
+                  .quiz-submit-bottom {
+                    display: flex;
+                    justify-content: center;
+                    margin-top: 28px;
+                  }
+                  .quiz-submit-top {
+                    display: none;
+                  }
+
+                  /* Web: Submit sits top-center, between the question count and the score */
+                  @media (min-width: 769px) {
+                    .quiz-head.quiz-head-with-submit {
+                      display: grid !important;
+                      grid-template-columns: 1fr auto 1fr;
+                      align-items: center;
+                      gap: 12px;
+                    }
+                    .quiz-head-with-submit .quiz-head-left {
+                      justify-self: start;
+                    }
+                    .quiz-head-with-submit .quiz-head-right {
+                      justify-self: end;
+                    }
+                    .quiz-submit-top {
+                      display: inline-flex;
+                    }
+                    .quiz-submit-bottom {
+                      display: none;
+                    }
+                  }
                 `}</style>
 
-                <span style={{ justifySelf: "start" }}>
-                  Question {quizIndex + 1} of {quizList.length}
-                </span>
+              <div className="quiz-head quiz-head-with-submit">
+                <span className="quiz-head-left">Question {quizIndex + 1} of {quizList.length}</span>
 
                 <button
                   type="button"
-                  className="quiz-submit-btn"
+                  className="quiz-submit-btn quiz-submit-top"
                   onClick={handleSubmitQuiz}
                   title="End the quiz now and see your result"
                 >
                   <span className="quiz-submit-tick">✓</span>
-                  Submit
+                  Submit Quiz
                 </button>
 
-                <span style={{ justifySelf: "end", fontWeight: 700, color: "var(--brand)" }}>
+                <span className="quiz-head-right" style={{ fontWeight: 700, color: "var(--brand)" }}>
                   Score: {quizScore}
                 </span>
               </div>
@@ -2412,6 +2434,17 @@ export default function NounsPage({
                   )}
                 </div>
               )}
+              <div className="quiz-submit-bottom">
+                <button
+                  type="button"
+                  className="quiz-submit-btn"
+                  onClick={handleSubmitQuiz}
+                  title="End the quiz now and see your result"
+                >
+                  <span className="quiz-submit-tick">✓</span>
+                  Submit Quiz
+                </button>
+              </div>
             </div>
           )}
         </div>

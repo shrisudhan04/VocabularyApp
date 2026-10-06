@@ -2546,12 +2546,12 @@ export default function NounsPage({
                     onClick={handleForwardClick}
                     title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
                     style={{
-                      width: 45,
+                      width: 100,
                       height: 45,
                       padding: 0,
                       borderRadius: 14,
-                      fontSize: 30,
-                      fontWeight: 800,
+                      fontSize: 16,
+                      fontWeight: 600,
                     }}
                   >
                     Next

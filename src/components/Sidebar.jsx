@@ -237,7 +237,7 @@ export default function Sidebar({
             }}
             aria-label="Close sidebar"
           >
-            ✕
+            ❌
           </button>
         </div>
 

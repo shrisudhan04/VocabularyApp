@@ -2554,7 +2554,7 @@ export default function NounsPage({
                       fontWeight: 800,
                     }}
                   >
-                    &gt;
+                    Next
                   </button>
                 </div>
               )}

@@ -2136,8 +2136,8 @@ export default function VerbsPage({
                   title="Submit Quiz"
                   aria-label="Submit Quiz"
                   style={{
-                    width: "38px",
-                    height: "38px",
+                    width: "30px",
+                    height: "30px",
                     borderRadius: "8px",
                     border: "1px solid #fca5a5",
                     backgroundColor: "#ffffff",

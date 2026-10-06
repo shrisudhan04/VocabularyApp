@@ -20,26 +20,22 @@ import "../App.css";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const CASES = ["Akkusativ", "Dativ", "Wechsel"];
-
-// ---- FlashRev quiz config ----
-const PREP_FLASHREV_STEPS = 3;
-const PREP_FLASHREV_MODES = ["case", "meaning", "example"];
-
-// Falls back to "case" if the word has no example sentence
-const getPrepFlashRevMode = (word, step) => {
-  const mode = PREP_FLASHREV_MODES[step % PREP_FLASHREV_STEPS];
-  if (mode === "example" && !word?.example) return "case";
-  return mode;
-};
-
 const QUIZ_MODE_OPTIONS = [
-  { label: "Normal Quiz", value: "normal" },
-  { label: "FlashRev Quiz", value: "flashrev" },
+  { label: "Case", value: "case" },
+  { label: "FlashRev", value: "flashrev" },
 ];
 
-// ---- Swipe config ----
-const SWIPE_MIN_DISTANCE = 50; // px needed to count as a swipe
-const SWIPE_MAX_VERTICAL_RATIO = 0.8; // ignore mostly-vertical gestures
+const PREP_FLASHREV_ROTATION = ["case", "meaning", "example"];
+const PREP_FLASHREV_STEPS = PREP_FLASHREV_ROTATION.length;
+
+const getPrepFlashRevMode = (word, subIndex) => {
+  const available = PREP_FLASHREV_ROTATION.filter((mode) =>
+    mode === "case" ||
+    (mode === "meaning" && Boolean(word?.meaning)) ||
+    (mode === "example" && Boolean(word?.example))
+  );
+  return available[subIndex % Math.max(available.length, 1)];
+};
 
 const normalize = (s = "") =>
   String(s ?? "")
@@ -248,7 +244,7 @@ function RealCalendarPicker({ selectedDate, onSelectDate }) {
 
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "July", "August", "September", "October", "November", "December"
   ];
   const dayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
@@ -473,9 +469,9 @@ export default function PrepositionsPage({
   const [customDate, setCustomDate] = useState("");
 
   // Quiz State
-  const [quizMode, setQuizMode] = useState("normal"); // 'normal' | 'flashrev'
-  const [quizTextInput, setQuizTextInput] = useState("");
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
+  const [quizMode, setQuizMode] = useState("case");
+  const [quizTextInput, setQuizTextInput] = useState("");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
   const [wordCountInput, setWordCountInput] = useState("");
@@ -531,10 +527,8 @@ export default function PrepositionsPage({
   const [cardIndex, setCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
   const [flashOrder, setFlashOrder] = useState(null);
-
-  // Swipe tracking (refs so touch moves don't cause re-renders)
-  const touchStartRef = useRef(null); // { x, y }
-  const swipedRef = useRef(false); // true right after a swipe, to block the follow-up tap
+  const [touchStartX, setTouchStartX] = useState(null);
+  const touchMovedRef = useRef(false);
 
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
@@ -577,7 +571,6 @@ export default function PrepositionsPage({
     return quizMode === "flashrev"
       ? ordered.flatMap((item) => Array(PREP_FLASHREV_STEPS).fill(item.id))
       : ordered.map((item) => item.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
 
   const availableQuizWords = useMemo(() => {
@@ -594,6 +587,75 @@ export default function PrepositionsPage({
     if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count);
     return availableQuizWords;
   }, [availableQuizWords, wordCountInput, quizMode]);
+
+  const handleQuizCaseSelect = (selectedCase) => {
+    if (quizFeedback !== null || !prepQuizWord) return;
+
+    const actual = prepQuizWord.caseType;
+    const isCorrect = selectedCase === actual;
+    if (isCorrect) setQuizScore((prev) => prev + 1);
+
+    setQuizFeedback(
+      isCorrect
+        ? "Correct! 🎉"
+        : `Wrong! "${prepQuizWord.prep}" takes "${actual}".`
+    );
+    recordAnswerResult(prepQuizWord, isCorrect);
+    triggerAutoAdvance(isCorrect);
+  };
+
+  const handleQuizTextSubmit = (e) => {
+    e?.preventDefault();
+    if (quizFeedback !== null || !prepQuizWord) return;
+
+    const entered = normalize(quizTextInput);
+    const target = effectivePrepMode === "meaning"
+      ? normalize(prepQuizWord.meaning)
+      : normalize(prepQuizWord.prep);
+    const label = effectivePrepMode === "meaning"
+      ? `The meaning is "${prepQuizWord.meaning || "—"}".`
+      : `The preposition is "${prepQuizWord.prep}".`;
+    const isCorrect = Boolean(target) && entered === target;
+
+    if (isCorrect) setQuizScore((prev) => prev + 1);
+    setQuizFeedback(isCorrect ? "Correct! 🎉" : `Incorrect. ${label}`);
+    recordAnswerResult(prepQuizWord, isCorrect);
+    triggerAutoAdvance(isCorrect);
+  };
+
+  const recordAnswerResult = (word, ok) => {
+    if (!word) return;
+
+    const isLastSubQuestion =
+      quizMode !== "flashrev" ||
+      quizIndex % PREP_FLASHREV_STEPS === PREP_FLASHREV_STEPS - 1;
+
+    let changed = false;
+    const updated = list.map((item) => {
+      if (item.id !== word.id) return item;
+      const next = { ...item };
+
+      if (ok) {
+        if (quizMode === "flashrev" && item.flashRev && isLastSubQuestion) {
+          next.flashRev = false;
+          changed = true;
+        }
+      } else {
+        if (!item.flashRev) {
+          next.flashRev = true;
+          changed = true;
+        }
+        if (item.status === "Mastered") {
+          next.status = "Forgot";
+          changed = true;
+        }
+      }
+
+      return next;
+    });
+
+    if (changed) onCommitPreps?.(updated);
+  };
 
   const flashList = useMemo(() => {
     if (!flashOrder) return list;
@@ -642,8 +704,8 @@ export default function PrepositionsPage({
     setQuizIndex(0);
     setQuizScore(0);
     setQuizFeedback(null);
-    setQuizTextInput("");
     setQuizAnswerState("idle");
+    setQuizTextInput("");
     setQuizSessionKey((k) => k + 1);
   };
 
@@ -833,6 +895,7 @@ export default function PrepositionsPage({
           const example = (rowLower.example || rowLower["example sentence"] || "").toString().trim();
           const status = (rowLower.status || "In Progress").toString().trim();
 
+
           if (prep) {
             const lower = prep.toLowerCase();
             if (existingSet.has(lower)) {
@@ -993,13 +1056,26 @@ export default function PrepositionsPage({
     }
   };
 
-  const prepCard = flashList[cardIndex];
+  const handleSubmitQuiz = () => {
+    if (!quizList.length) return;
+    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
+    setTimerRunning(false);
+    setTimeLeft(null);
+    setScoreModal({
+      isOpen: true,
+      reason: "submit",
+      score: quizScore,
+      total: quizList.length,
+    });
+  };
 
+  const prepCard = flashList[cardIndex];
   // Moves to the next question (or finishes the quiz)
   const goToNextQuestion = (finalScore) => {
     setQuizAnswerState("idle");
     setQuizFeedback(null);
     setQuizTextInput("");
+    setQuizSessionKey((k) => k + 1);
 
     if (quizIndex < quizList.length - 1) {
       setQuizIndex((prev) => prev + 1);
@@ -1042,19 +1118,6 @@ export default function PrepositionsPage({
     goToNextQuestion(quizScore);
   };
 
-  // Submit quiz early
-  const handleSubmitQuiz = () => {
-    if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
-    setTimerRunning(false);
-    setTimeLeft(null);
-    setScoreModal({
-      isOpen: true,
-      reason: "finish",
-      score: quizScore,
-      total: quizList.length,
-    });
-  };
-
   // Shuffle handlers
   const handleShuffleList = () => {
     if (list.length <= 1) return;
@@ -1085,55 +1148,33 @@ export default function PrepositionsPage({
     setCardFlipped(false);
   };
 
-  // ---- Swipe handlers (generic) ----
-  const handleSwipeStart = (e) => {
-    const t = e.touches?.[0];
-    if (!t) return;
-    touchStartRef.current = { x: t.clientX, y: t.clientY };
-    swipedRef.current = false;
+  const handleFlashTouchStart = (e) => {
+    const touch = e.touches?.[0];
+    touchMovedRef.current = false;
+    setTouchStartX(touch?.clientX ?? null);
   };
 
-  // Returns "left" | "right" | null
-  const getSwipeDirection = (e) => {
-    const start = touchStartRef.current;
-    touchStartRef.current = null;
-    const t = e.changedTouches?.[0];
-    if (!start || !t) return null;
+  const handleFlashTouchEnd = (e) => {
+    if (touchStartX === null) return;
+    const endX = e.changedTouches?.[0]?.clientX;
+    const dx = typeof endX === "number" ? endX - touchStartX : 0;
 
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-
-    if (Math.abs(dx) < SWIPE_MIN_DISTANCE) return null;
-    if (Math.abs(dy) > Math.abs(dx) * SWIPE_MAX_VERTICAL_RATIO) return null; // mostly vertical = scroll
-    return dx < 0 ? "left" : "right";
-  };
-
-  // Flashcards: swipe left = next, swipe right = previous
-  const handleFlashSwipeEnd = (e) => {
-    const dir = getSwipeDirection(e);
-    if (!dir) return;
-    swipedRef.current = true;
-    if (dir === "left") handleFlashNext();
-    else handleFlashPrevious();
-  };
-
-  // Quiz: swipe left after a wrong answer = next question
-  const handleQuizSwipeEnd = (e) => {
-    const dir = getSwipeDirection(e);
-    if (dir === "left" && quizAnswerState === "wrong") {
-      swipedRef.current = true;
-      handleForwardClick();
+    if (Math.abs(dx) >= 60) {
+      touchMovedRef.current = true;
+      if (dx < 0) handleFlashNext();
+      else handleFlashPrevious();
     }
+
+    setTouchStartX(null);
   };
 
   const handleFlipCard = () => {
-    // Ignore the tap that follows a swipe
-    if (swipedRef.current) {
-      swipedRef.current = false;
+    if (touchMovedRef.current) {
+      touchMovedRef.current = false;
       return;
     }
     if (!cardFlipped && prepCard && !prepCard.flashRev) {
-      onCommitPreps?.(list.map((item) => (item.id === prepCard.id ? { ...item, flashRev: true } : item)));
+      onCommitPreps?.(list.map((item) => item.id === prepCard.id ? { ...item, flashRev: true } : item));
     }
     setCardFlipped((f) => !f);
   };
@@ -1155,8 +1196,9 @@ export default function PrepositionsPage({
   };
 
   const prepQuizWord = quizList[quizIndex];
-  const effectivePrepMode =
-    quizMode === "flashrev" ? getPrepFlashRevMode(prepQuizWord, quizIndex % PREP_FLASHREV_STEPS) : "case";
+  const effectivePrepMode = quizMode === "flashrev"
+    ? getPrepFlashRevMode(prepQuizWord, quizIndex % PREP_FLASHREV_STEPS)
+    : "case";
   const flashRevCount = list.filter((p) => p.flashRev).length;
   const flashRevUniqueWords = quizMode === "flashrev" ? quizList.length / PREP_FLASHREV_STEPS : quizList.length;
 
@@ -1164,7 +1206,36 @@ export default function PrepositionsPage({
     <>
       {viewMode === "list" && (
         <div className="section">
-          <div className="stats-grid">
+          <style>{`
+            .prepositions-mobile-stats {
+              min-width: 0 !important;
+              grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            }
+            .prepositions-mobile-stats > .stat {
+              min-width: 0 !important;
+              overflow: hidden;
+            }
+            @media (max-width: 1024px) {
+              .prepositions-mobile-stats {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+              }
+            }
+            @media (max-width: 640px) {
+              .prepositions-mobile-stats { gap: 12px !important; width: 100% !important; }
+              .prepositions-mobile-stats > .stat {
+                padding: 14px 12px !important;
+                min-height: 112px !important;
+                border-radius: 16px !important;
+              }
+              .prepositions-mobile-stats .stat-head { min-width: 0; gap: 5px; }
+              .prepositions-mobile-stats .stat-label {
+                min-width: 0; overflow-wrap: anywhere; font-size: 10px; letter-spacing: .55px;
+              }
+              .prepositions-mobile-stats .stat-pill { flex-shrink: 0; max-width: 74px; text-align: center; }
+              .prepositions-mobile-stats .stat-value { font-size: 30px; }
+            }
+          `}</style>
+          <div className="stats-grid prepositions-mobile-stats">
             <div className="stat dark">
               <div className="stat-head">
                 <span className="stat-label">TOTAL PREPOSITIONS</span>
@@ -1364,6 +1435,7 @@ export default function PrepositionsPage({
               <div className="list-head preps-head">
                 <span style={{ textAlign: "center" }}>#</span>
                 <span>CASE</span>
+                <span>ARTICLE</span>
                 <span>PREPOSITION</span>
                 <span>MEANING</span>
                 <span>EXAMPLE SENTENCE</span>
@@ -1374,6 +1446,7 @@ export default function PrepositionsPage({
                 <div className={`row prep-row ${item.caseType}`} key={item.id}>
                   <div className="c-idx">{index + 1}</div>
                   <div className="c-case"><span className={`pill ${PREP_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
+                  <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article || "der"]}`}>{item.article || "der"}</span></div>
                   <div className="c-prep" style={{ fontWeight: 700 }}>{item.prep}</div>
                   <div className="c-mean">{item.meaning}</div>
                   <div className="c-eg">{item.example || "—"}</div>
@@ -1402,7 +1475,7 @@ export default function PrepositionsPage({
                         setPrepFormData({
                           prep: item.prep,
                           caseType: item.caseType,
-                          meaning: item.meaning,
+                                              meaning: item.meaning,
                           example: item.example || "",
                           status: item.status || "In Progress",
                         });
@@ -1445,23 +1518,24 @@ export default function PrepositionsPage({
             </div>
           ) : (
             <div className="flash-wrap">
-              {/* Swipe works anywhere on the card: left = next, right = previous */}
               <div
                 className="flash"
                 onClick={handleFlipCard}
-                onTouchStart={handleSwipeStart}
-                onTouchEnd={handleFlashSwipeEnd}
+                onTouchStart={handleFlashTouchStart}
+                onTouchEnd={handleFlashTouchEnd}
                 style={{ touchAction: "pan-y", userSelect: "none" }}
               >
                 {!cardFlipped ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>WHICH ARTICLE &amp; CASE DOES THIS TAKE?</span>
                     <h2>{prepCard.prep}</h2>
-                    <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip · Swipe to change card)</span>
+                    <span style={{ fontSize: 12, color: "var(--faint)" }}>(Tap to flip)</span>
                   </>
                 ) : (
                   <>
-                    
+                    <span className={`pill ${ARTICLE_CLASS[prepCard.article || "der"]}`} style={{ fontSize: 20, padding: "4px 16px", marginBottom: 8 }}>
+                      {prepCard.article || "der"}
+                    </span>
                     <span className={`pill ${PREP_CASE_CLASS[prepCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>
                       {prepCard.caseType === "Wechsel" ? "Wechselpräposition" : `+ ${prepCard.caseType}`}
                     </span>
@@ -1470,36 +1544,20 @@ export default function PrepositionsPage({
                   </>
                 )}
               </div>
-              <div
-                className="flash-controls"
-                onTouchStart={handleSwipeStart}
-                onTouchEnd={handleFlashSwipeEnd}
-                style={{ touchAction: "pan-y" }}
-              >
+              <div className="flash-controls">
                 <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex === 0} onClick={handleFlashPrevious}>◀ Previous</button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${prepCard.prep}. ${prepCard.example || ""}`)}>🔊 Pronounce</button>
                 <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex >= flashList.length - 1} onClick={handleFlashNext}>Next ▶</button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>
-                Preposition {cardIndex + 1} of {flashList.length} · {Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}% · {flashRevCount} queued for FlashRev
-              </span>
-              <div style={{ width: "100%", maxWidth: 520, height: 6, background: "#eee7df", borderRadius: 999, overflow: "hidden", marginTop: 8 }}>
-                <div
-                  style={{
-                    width: `${Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}%`,
-                    height: "100%",
-                    background: "var(--brand,#b85c19)",
-                    borderRadius: 999,
-                    transition: "width .2s ease",
-                  }}
-                />
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>Preposition {cardIndex + 1} of {flashList.length} · {Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}% · {flashRevCount} queued for FlashRev</span><div style={{width:"100%",maxWidth:520,height:6,background:"#eee7df",borderRadius:999,overflow:"hidden",marginTop:8}}>
+                <div style={{width:`${Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}%`,height:"100%",background:"var(--brand,#b85c19)",borderRadius:999,transition:"width .2s ease"}} />
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* 🎯 QUIZ MODE */}
+      {/* 🎯 QUIZ MODE: Article ONLY (der / die / das) */}
       {viewMode === "quiz" && (
         <div className="panel" style={getQuizPanelStyle()}>
           <div
@@ -1525,19 +1583,19 @@ export default function PrepositionsPage({
               <>
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
-                    icon="🧠"
-                    value={quizMode}
-                    options={QUIZ_MODE_OPTIONS}
-                    onChange={(v) => { setQuizMode(v); resetQuizProgress(); }}
+                    icon="📌"
+                    value={quizStatusFilter}
+                    options={STATUS_FILTER_OPTIONS}
+                    onChange={(v) => { setQuizStatusFilter(v); resetQuizProgress(); }}
                   />
                 </div>
 
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                   <CustomDropdown
-                    icon="📌"
-                    value={quizStatusFilter}
-                    options={STATUS_FILTER_OPTIONS}
-                    onChange={(v) => { setQuizStatusFilter(v); resetQuizProgress(); }}
+                    icon="🎯"
+                    value={quizMode}
+                    options={QUIZ_MODE_OPTIONS}
+                    onChange={(v) => { setQuizMode(v); resetQuizProgress(); }}
                   />
                 </div>
 
@@ -1744,63 +1802,54 @@ export default function PrepositionsPage({
           {!prepQuizWord ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "36px 16px", textAlign: "center" }}>
               <img src={noDataImg} alt="No Data" style={{ width: "160px", marginBottom: "12px" }} />
-              <p style={{ color: "var(--muted)", margin: "0 0 12px 0" }}>
-                {quizMode === "flashrev"
-                  ? "No FlashRev words yet. Flip some cards in Flashcards view first."
-                  : "No items match current filters."}
-              </p>
+              <p style={{ color: "var(--muted)", margin: "0 0 12px 0" }}>No items match current filters.</p>
             </div>
           ) : (
-            <div
-              className="quiz"
-              onTouchStart={handleSwipeStart}
-              onTouchEnd={handleQuizSwipeEnd}
-              style={{ touchAction: "pan-y" }}
-            >
+            <div className="quiz">
               <style>{`
-                .quiz-submit-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:56px; padding:0 30px; border:none; border-radius:999px; background:var(--brand,#b45319); color:#fff; font-size:16px; font-weight:600; cursor:pointer; box-shadow:0 10px 24px rgba(180,83,25,0.35); transition:transform .15s ease, box-shadow .15s ease; }
-                .quiz-next-btn { display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; padding:0; border:none; border-radius:18px; background:var(--brand,#b45319); color:#fff; font-size:30px; font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(180,83,25,0.35); transition:transform .15s ease, box-shadow .15s ease; }
-                .quiz-next-btn:active { transform:scale(0.97); box-shadow:0 4px 12px rgba(180,83,25,0.3); }
-                .quiz-submit-btn:active { transform:scale(0.97); box-shadow:0 4px 12px rgba(180,83,25,0.3); }
-                .quiz-opts { display:grid; grid-template-columns:repeat(3,1fr); gap:15px; width:100%; max-width:600px; margin:20px auto 0; }
-                .quiz-opts .quiz-opt { height:45px; padding:0; border:none; border-radius:10px; color:#fff; font-size:16px; font-weight:600; cursor:pointer; box-shadow:none; transition:transform .15s ease, filter .15s ease, opacity .15s ease; }
-                .quiz-opts .quiz-opt:hover:not(:disabled) { filter:brightness(1.08); }
-                .quiz-opts .quiz-opt:active:not(:disabled) { transform:scale(0.97); }
-                .quiz-opts .quiz-opt:disabled { cursor:default; opacity:0.55; }
-                .quiz-opts .quiz-opt.opt-Dativ { background:#0369a1; }
-                .quiz-opts .quiz-opt.opt-Akkusativ { background:#be123c; }
-                .quiz-opts .quiz-opt.opt-Wechsel { background:#15803d; }
-                .quiz-opts .quiz-opt.picked:disabled { opacity:1; }
+                .quiz-submit-btn { height:45px; padding:0 14px; border:none; border-radius:999px; background:var(--brand,#b45319); color:#fff; font-weight:800; cursor:pointer; }
+                .quiz-submit-top { display:inline-flex; align-items:center; justify-content:center; justify-self:center; }
+                .quiz-submit-bottom { display:none; align-items:center; justify-content:center; }
+                @media(max-width:768px){
+                  .quiz-submit-top{display:none!important;}
+                  .quiz-submit-bottom{display:inline-flex!important;}
+                }
+                @media(min-width:769px){
+                  .quiz-submit-bottom{display:none!important;}
+                }
                 .flashrev-dots { display:flex; align-items:center; justify-content:center; gap:6px; margin:0 0 10px; }
                 .flashrev-dot { width:8px; height:8px; border-radius:50%; background:#e2e8f0; }
                 .flashrev-dot.active { background:var(--brand,#b45319); transform:scale(1.3); }
                 .flashrev-dot.done { background:#86efac; }
                 @media(max-width:768px){ .flash-controls .flash-nav-btn{display:none!important;} }
               `}</style>
-              <div className="quiz-head">
-                <span>
-                  {quizMode === "flashrev" ? (
-                    <>
-                      Word {Math.floor(quizIndex / PREP_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}
-                      <span style={{ color: "var(--muted)", fontWeight: 500 }}> · Q{(quizIndex % PREP_FLASHREV_STEPS) + 1}/{PREP_FLASHREV_STEPS}</span>
-                    </>
-                  ) : (
-                    <>Question {quizIndex + 1} of {quizList.length}</>
-                  )}
+              <div
+                className="quiz-head"
+                style={{
+                  position: "relative",
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto 1fr",
+                  alignItems: "center",
+                  gap: "12px",
+                  width: "100%",
+                }}
+              >
+                <span style={{ justifySelf: "start" }}>
+                  {quizMode === "flashrev"
+                    ? <>Word {Math.floor(quizIndex / PREP_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{color:"var(--muted)",fontWeight:500}}> · Q{(quizIndex % PREP_FLASHREV_STEPS)+1}/{PREP_FLASHREV_STEPS}</span></>
+                    : <>Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
-                <span style={{ fontWeight: 700, color: "var(--brand)" }}>Score: {quizScore}</span>
+                <button type="button" className="quiz-submit-btn quiz-submit-top" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
+                <span style={{ fontWeight: 700, color: "var(--brand)", justifySelf: "end" }}>Score: {quizScore}</span>
               </div>
 
               {quizMode === "flashrev" && (
                 <div className="flashrev-dots">
-                  {Array.from({ length: PREP_FLASHREV_STEPS }).map((_, i) => (
-                    <span
-                      key={i}
-                      className={`flashrev-dot ${i < quizIndex % PREP_FLASHREV_STEPS ? "done" : i === quizIndex % PREP_FLASHREV_STEPS ? "active" : ""}`}
-                    />
+                  {Array.from({length:PREP_FLASHREV_STEPS}).map((_,i) => (
+                    <span key={i} className={`flashrev-dot ${i < quizIndex % PREP_FLASHREV_STEPS ? "done" : i === quizIndex % PREP_FLASHREV_STEPS ? "active" : ""}`} />
                   ))}
-                  <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 6 }}>
-                    {["Case", "Meaning", "Example"][quizIndex % PREP_FLASHREV_STEPS]}
+                  <span style={{fontSize:12,color:"var(--muted)",marginLeft:6}}>
+                    {["Case","Meaning","Example"][quizIndex % PREP_FLASHREV_STEPS]}
                   </span>
                 </div>
               )}
@@ -1808,22 +1857,22 @@ export default function PrepositionsPage({
               <div className="quiz-card">
                 {effectivePrepMode === "case" && (
                   <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct case:</span>
+                    <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Choose the correct case:</span>
                     <h1>{prepQuizWord.prep}</h1>
-                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong>{prepQuizWord.meaning}</strong></p>
+                    <p style={{color:"var(--muted)",margin:0,fontSize:15}}>Meaning: <strong>{prepQuizWord.meaning}</strong></p>
                   </>
                 )}
                 {effectivePrepMode === "meaning" && (
                   <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Type the English meaning:</span>
+                    <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the English meaning:</span>
                     <h1>{prepQuizWord.prep}</h1>
                   </>
                 )}
                 {effectivePrepMode === "example" && (
                   <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Type the German preposition used in this sentence:</span>
-                    <p style={{ fontSize: 18, lineHeight: 1.5, fontWeight: 700 }}>{prepQuizWord.example || "No example available"}</p>
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>Hint: {prepQuizWord.meaning || "Meaning not available"}</span>
+                    <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the German preposition used in this sentence:</span>
+                    <p style={{fontSize:18,lineHeight:1.5,fontWeight:700}}>{prepQuizWord.example || "No example available"}</p>
+                    <span style={{fontSize:12,color:"var(--muted)"}}>Hint: {prepQuizWord.meaning || "Meaning not available"}</span>
                   </>
                 )}
               </div>
@@ -1834,75 +1883,30 @@ export default function PrepositionsPage({
                     <button
                       key={opt}
                       disabled={quizAnswerState !== "idle"}
-                      className={`quiz-opt opt-${opt}${quizAnswerState !== "idle" && opt === prepQuizWord.caseType ? " picked" : ""}`}
-                      onClick={() => {
-                        const ok = opt === prepQuizWord.caseType;
-                        if (ok) setQuizScore((s) => s + 1);
-                        setQuizFeedback(ok ? "Correct! 🎉" : `Wrong! Correct case is "${prepQuizWord.caseType}".`);
-                        triggerAutoAdvance(ok);
-                      }}
+                      className="quiz-opt"
+                      onClick={() => handleQuizCaseSelect(opt)}
                     >
                       {opt}
                     </button>
                   ))}
                 </div>
               ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (quizAnswerState !== "idle" || !prepQuizWord) return;
-                    const entered = normalize(quizTextInput);
-                    const target = effectivePrepMode === "meaning" ? normalize(prepQuizWord.meaning) : normalize(prepQuizWord.prep);
-                    const ok = Boolean(target) && entered === target;
-                    if (ok) setQuizScore((s) => s + 1);
-                    setQuizFeedback(
-                      ok
-                        ? "Correct! 🎉"
-                        : `Incorrect. Correct answer is "${effectivePrepMode === "meaning" ? prepQuizWord.meaning : prepQuizWord.prep}".`
-                    );
-                    triggerAutoAdvance(ok);
-                  }}
-                  style={{ marginTop: 18, display: "flex", gap: 8, width: "100%", maxWidth: 420, marginInline: "auto" }}
-                >
-                  <input
-                    autoFocus
-                    disabled={quizAnswerState !== "idle"}
-                    value={quizTextInput}
-                    onChange={(e) => setQuizTextInput(e.target.value)}
-                    className="modal-input"
-                    placeholder={effectivePrepMode === "meaning" ? "Type English meaning..." : "Type German preposition..."}
-                    style={{ flex: 1, height: 46, fontSize: 16, fontWeight: 600, borderRadius: 12, padding: "0 14px" }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={quizAnswerState !== "idle" || !quizTextInput.trim()}
-                    className="btn btn-primary"
-                    style={{ height: 46, padding: "0 18px", borderRadius: 12 }}
-                  >
-                    Check
-                  </button>
+                <form onSubmit={handleQuizTextSubmit} style={{marginTop:18,display:"flex",gap:8,width:"100%",maxWidth:420,marginInline:"auto"}}>
+                  <input autoFocus disabled={quizAnswerState !== "idle"} value={quizTextInput} onChange={(e)=>setQuizTextInput(e.target.value)} className="modal-input" placeholder={effectivePrepMode === "meaning" ? "Type English meaning..." : "Type German preposition..."} style={{flex:1,height:46,fontSize:16,fontWeight:600,borderRadius:12,padding:"0 14px"}} />
+                  <button type="submit" disabled={quizAnswerState !== "idle" || !quizTextInput.trim()} className="btn btn-primary" style={{height:46,padding:"0 18px",borderRadius:12}}>Check</button>
                 </form>
               )}
 
               {quizFeedback && (
-                <div style={{ marginTop: 20, textAlign: "center" }}>
-                  <p style={{ fontSize: 16, fontWeight: 700, color: quizAnswerState === "correct" ? "#15803d" : "#dc2626" }}>{quizFeedback}</p>
-                  {quizAnswerState === "correct" && <span style={{ fontSize: 12, color: "var(--muted)" }}>Moving to next question in 1 second...</span>}
+                <div style={{marginTop:20,textAlign:"center"}}>
+                  <p style={{fontSize:16,fontWeight:700,color:quizAnswerState === "correct" ? "#15803d" : "#dc2626"}}>{quizFeedback}</p>
+                  {quizAnswerState === "correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next question in 1 second...</span>}
+                  {quizAnswerState === "wrong" && <button type="button" className="btn btn-primary" onClick={handleForwardClick} style={{width:45,height:45,padding:0,borderRadius:14,fontSize:30,fontWeight:800}}>&gt;</button>}
                 </div>
               )}
-
-              {/* Next (after a wrong answer) and Submit Quiz, side by side */}
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 32 }}>
-                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
-                {quizAnswerState === "wrong" && (
-                  <button type="button" className="quiz-next-btn" onClick={handleForwardClick} aria-label="Next question">
-                    &gt;
-                  </button>
-                )}
+              <div style={{display:"flex",justifyContent:"center",marginTop:20}}>
+                <button type="button" className="quiz-submit-btn quiz-submit-bottom" onClick={handleSubmitQuiz}>✓ Submit Quiz</button>
               </div>
-              {quizAnswerState === "wrong" && (
-                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8, textAlign: "center" }}>or swipe left</div>
-              )}
             </div>
           )}
         </div>
@@ -1912,7 +1916,7 @@ export default function PrepositionsPage({
       {scoreModal.isOpen && (
         <div className="overlay" style={{ zIndex: 1300 }} onClick={(e) => e.target === e.currentTarget && setScoreModal((p) => ({ ...p, isOpen: false }))}>
           <div className="modal" style={{ textAlign: "center", maxWidth: 360, padding: "26px 20px", display: "flex", flexDirection: "column", alignItems: "center", borderRadius: "20px" }}>
-            <img src={scoreModal.reason === "timeup" ? alertGif : scoreModal.score > 0 ? congratsGif : alertGif} alt="Quiz Results" style={{ width: 95, height: 95, marginBottom: 12 }} />
+            <img src={scoreModal.reason === "timeup" ? alertGif : (scoreModal.score > 0 ? congratsGif : alertGif)} alt="Quiz Results" style={{ width: 95, height: 95, marginBottom: 12 }} />
             <h3 style={{ margin: "4px 0 6px", fontSize: 22, color: "var(--ink)" }}>
               {scoreModal.reason === "timeup" ? "Time's Expired!" : "Quiz Finished!"}
             </h3>
@@ -1976,6 +1980,9 @@ export default function PrepositionsPage({
           <div className="modal">
             <h3>{editingPrepId ? "Edit Preposition" : "Add New Preposition"}</h3>
             <form onSubmit={handleSaveModal}>
+              <div>
+</div>
+
               <div>
                 <label className="modal-label">Required Case</label>
                 <div className="radios">

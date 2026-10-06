@@ -561,6 +561,7 @@ export default function NounsPage({
   const [timerInput, setTimerInput] = useState("30");
   const [timeLeft, setTimeLeft] = useState(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [timerExpired, setTimerExpired] = useState(false);
   // Keeps the active quiz banner UI displayed even when paused
   const [isQuizActive, setIsQuizActive] = useState(false);
 
@@ -707,6 +708,7 @@ export default function NounsPage({
     } else if (timerRunning && timeLeft === 0) {
       setTimerRunning(false);
       setIsQuizActive(false);
+      setTimerExpired(true);
       playDangerSound();
       setScoreModal({
         isOpen: true,
@@ -722,6 +724,7 @@ export default function NounsPage({
 
   const handleStartTimer = () => {
     if (timeLeft !== null && timeLeft > 0) {
+      setTimerExpired(false);
       setTimerRunning(true);
       setIsQuizActive(true);
       return;
@@ -729,6 +732,7 @@ export default function NounsPage({
 
     const parsed = parseInt(timerInput, 10);
     if (!isNaN(parsed) && parsed > 0) {
+      setTimerExpired(false);
       setTimeLeft(parsed);
       setTimerRunning(true);
       setIsQuizActive(true);
@@ -752,6 +756,7 @@ export default function NounsPage({
 
   const handleStopTimer = () => {
     setTimerRunning(false);
+    setTimerExpired(false);
     setIsQuizActive(false);
     setTimeLeft(null);
   };
@@ -766,6 +771,7 @@ export default function NounsPage({
     setQuizAnswerState("idle");
     setQuizTextInput("");
     setQuizSelectedArticle("");
+    setTimerExpired(false);
     setQuizSessionKey((k) => k + 1);
   };
 
@@ -2244,7 +2250,16 @@ export default function NounsPage({
               )}
             </div>
           ) : (
-            <div className="quiz">
+            <div
+              className="quiz"
+              style={{
+                position: "relative",
+                opacity: timerExpired ? 0.55 : 1,
+                pointerEvents: timerExpired ? "none" : "auto",
+                filter: timerExpired ? "grayscale(0.5)" : "none",
+                transition: "opacity 0.2s ease, filter 0.2s ease",
+              }}
+            >
               <style>{`
                 .quiz-submit-btn {
                   display: inline-flex;

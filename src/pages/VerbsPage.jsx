@@ -2301,23 +2301,7 @@ export default function VerbsPage({
                     </span>
                   )}
 
-                  {quizAnswerState === "wrong" && (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      autoFocus
-                      onClick={handleForwardClick}
-                      style={{
-                        marginTop: 10,
-                        height: 44,
-                        padding: "0 22px",
-                        borderRadius: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {quizIndex < quizList.length - 1 ? "Next ▶" : "Finish 🏁"}
-                    </button>
-                  )}
+                  
                 </div>
               )}
               <div className="quiz-submit-bottom" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 28 }}>

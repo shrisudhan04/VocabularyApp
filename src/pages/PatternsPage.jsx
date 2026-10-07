@@ -2085,6 +2085,29 @@ export default function PatternsPage({
                   </>
                 )}
               </div>
+
+              {/* Flashcard progress bar — matches the implementation in File 2 */}
+              <div style={{ width: "100%", marginBottom: "10px" }}>
+                <div
+                  style={{
+                    height: "6px",
+                    background: "var(--line-2, #ebdccb)",
+                    borderRadius: "999px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${flashList.length ? ((cardIndex + 1) / flashList.length) * 100 : 0}%`,
+                      height: "100%",
+                      background: "var(--brand, #b85c19)",
+                      borderRadius: "999px",
+                      transition: "width 0.25s ease",
+                    }}
+                  />
+                </div>
+              </div>
+
               <div className="flash-controls">
                 <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex === 0} onClick={handleFlashPrevious}>◀ Previous</button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(flashList[cardIndex].examples || flashList[cardIndex].ending)}>🔊 Hear Examples</button>

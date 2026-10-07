@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
+  stopHourlyNounNotifier,
   sendNounNotification,
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
@@ -18,6 +19,7 @@ import warningRedGif from "../assets/WarningRed.gif";
 import congratsAudio from "../assets/celebration.mp3";
 import noDataImg from "../assets/nodata.svg";
 import "../App.css";
+import { matchesStudyStatus, masteryPercent, countDueToday } from "../utils/studyHelpers";
 
 const GEMINI_MODEL = "gemini-3.8-flash";
 
@@ -365,6 +367,7 @@ const STATUS_FILTER_OPTIONS = [
   { label: "In Progress", value: "In Progress" },
   { label: "Mastered", value: "Mastered" },
   { label: "Forgot", value: "Forgot" },
+  { label: "Due Today", value: "due" },
 ];
 
 // Flashcard filters use the same custom dropdown/calendar style as Quiz.
@@ -718,9 +721,11 @@ function RealCalendarPicker({ selectedDate, onSelectDate }) {
 
 export default function NounsPage({
   viewMode = "list",
+  initialFlashStatusFilter = "all",
   vocabList = [],
   onCommitNouns,
   onRequestConfirm,
+  onRequestViewChange,
   // Optional: pass these from the parent to own categories there.
   // If omitted, categories are kept in this component and saved in localStorage.
   categories: categoriesProp,
@@ -814,7 +819,7 @@ export default function NounsPage({
 
   // Flashcard filters
   const [flashArticleFilter, setFlashArticleFilter] = useState("all");
-  const [flashStatusFilter, setFlashStatusFilter] = useState("all");
+  const [flashStatusFilter, setFlashStatusFilter] = useState(initialFlashStatusFilter);
   const [flashCategoryFilter, setFlashCategoryFilter] = useState([]);
   const [flashDateMode, setFlashDateMode] = useState("all");
   const [flashSpecificDate, setFlashSpecificDate] = useState("");
@@ -1052,8 +1057,7 @@ export default function NounsPage({
   const hasNouns = list.length > 0;
   const quizSessionIds = useMemo(() => {
     const filtered = list.filter((item) => {
-      const itemStatus = item.status || "In Progress";
-      const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
+      const matchesStatus = matchesStudyStatus(item, quizStatusFilter);
       const matchesCat = matchesCategory(item, quizCategoryFilter);
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
       const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
@@ -1077,9 +1081,8 @@ export default function NounsPage({
     return list.filter((item) => {
       const matchesArticle =
         flashArticleFilter === "all" || item.article === flashArticleFilter;
-      const itemStatus = item.status || "In Progress";
       const matchesStatus =
-        flashStatusFilter === "all" || itemStatus === flashStatusFilter;
+        matchesStudyStatus(item, flashStatusFilter);
       const matchesCat = matchesCategory(item, flashCategoryFilter);
       const matchesDate = matchesDateFilter(
         item.createdAt,
@@ -1348,7 +1351,7 @@ export default function NounsPage({
       timerId = startHourlyNounNotifier(list);
     }
     return () => {
-      if (timerId) clearInterval(timerId);
+      if (timerId) stopHourlyNounNotifier(timerId);
     };
   }, [hourlyAlertsActive, vocabList]);
 
@@ -1721,8 +1724,7 @@ export default function NounsPage({
       normalize(item.article).includes(q) ||
       normalize(categoryDisplay(item.category)).includes(q);
     const matchesArt = articleFilter === "all" || item.article === articleFilter;
-    const itemStatus = item.status || "In Progress";
-    const matchesStatus = nounStatusFilter === "all" || itemStatus === nounStatusFilter;
+    const matchesStatus = matchesStudyStatus(item, nounStatusFilter);
     return (
       matchesSearch &&
       matchesArt &&
@@ -2552,6 +2554,27 @@ export default function NounsPage({
                                 {count} word{count === 1 ? "" : "s"}
                               </span>
                             </div>
+                            <div style={{ minWidth: 110, flex: 1, maxWidth: 180 }}>
+                              <div className="category-study-progress"><div style={{ width: `${masteryPercent(list.filter((item) => toCategoryArray(item.category).some((c) => sameCategory(c, cat))))}%` }} /></div>
+                              <div className="category-study-meta">
+                                <span>{masteryPercent(list.filter((item) => toCategoryArray(item.category).some((c) => sameCategory(c, cat))))}% mastered</span>
+                                <strong>{countDueToday(list.filter((item) => toCategoryArray(item.category).some((c) => sameCategory(c, cat))))} due</strong>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{ height: 34, padding: "0 10px", whiteSpace: "nowrap", fontSize: 12 }}
+                              title="Study this category"
+                              disabled={count === 0}
+                              onClick={() => {
+                                setFlashCategoryFilter([cat]);
+                                setListTab("words");
+                                onRequestViewChange?.("flashcards");
+                              }}
+                            >
+                              🎴 Study
+                            </button>
                             <button
                               type="button"
                               className="icon-btn"

@@ -1032,7 +1032,7 @@ export default function Sidebar({
                   onClick={(e) => { e.currentTarget.blur(); onSelectCategory(cat.id); onClose(); }}
                 >
                   <span>{cat.icon} {cat.label || cat.id}</span>
-                  <span className="nav-count">{cat.count ?? 0}</span>
+                  <span className="nav-count">{cat.id === "Dashboard" ? "" : (cat.count ?? 0)}</span>
                 </button>
               );
             })}

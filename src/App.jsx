@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 import "./App.css";
 
@@ -33,14 +33,6 @@ import {
   writeToVaultDB,
 
 } from "./utils/db";
-
-import {
-
-  requestMobileNotificationPermission,
-
-  startHourlyNounNotifier,
-
-} from "./utils/hourlyWordNotifier";
 
 import { calculateStreak } from "./utils/streakHelper";
 
@@ -97,6 +89,8 @@ import PrepositionsPage from "./pages/PrepositionsPage";
 import TimePage from "./pages/TimePage";
 
 import GrammarPage from "./pages/GrammarPage";
+import DashboardPage from "./pages/DashboardPage";
+import { countDueToday } from "./utils/studyHelpers";
 
 
 
@@ -134,9 +128,11 @@ export default function App() {
 
   const [languageMode, setLanguageMode] = useState("EN");
 
-  const [mainCategory, setMainCategory] = useState("Nouns");
+  const [mainCategory, setMainCategory] = useState("Dashboard");
 
 
+
+  const [dueFocus, setDueFocus] = useState({});
 
   const [subViews, setSubViews] = useState({
 
@@ -544,56 +540,6 @@ export default function App() {
 
   // ---------------------------------------------------------------
 
-  const vocabRef = useRef(vocabList);
-
-  useEffect(() => {
-
-    vocabRef.current = vocabList;
-
-  }, [vocabList]);
-
-
-
-  const [notifPermission, setNotifPermission] = useState(
-
-    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
-
-  );
-
-
-
-  useEffect(() => {
-
-    const id = startHourlyNounNotifier(() => vocabRef.current);
-
-    return () => clearInterval(id);
-
-  }, []);
-
-
-
-  const handleEnableNotifications = async () => {
-
-    const granted = await requestMobileNotificationPermission();
-
-    setNotifPermission(
-
-      granted
-
-        ? "granted"
-
-        : typeof Notification !== "undefined"
-
-        ? Notification.permission
-
-        : "unsupported"
-
-    );
-
-  };
-
-
-
   const commitNouns = async (newList) => {
 
     setVocabList(newList);
@@ -662,6 +608,7 @@ export default function App() {
 
   const allCategoryItems = [
 
+    { id: "Dashboard", icon: "🏠", label: "Dashboard", count: 0 },
     { id: "Nouns", icon: "📑", label: "Nouns", count: vocabList.length },
 
     { id: "Patterns", icon: "📐", label: "Patterns", count: patternsList.length },
@@ -750,7 +697,7 @@ export default function App() {
 
         onClose={() => setGoalModalOpen(false)}
 
-        defaultCategory={mainCategory}
+        defaultCategory={mainCategory === "Dashboard" ? "Nouns" : mainCategory}
 
         categoryStats={categoryStats}
 
@@ -800,43 +747,52 @@ export default function App() {
 
         <div className="container">
 
-          {notifPermission === "default" && (
 
-            <button onClick={handleEnableNotifications}>
-
-              🔔 Enable hourly word notifications
-
-            </button>
-
+          {mainCategory === "Dashboard" && (
+            <DashboardPage
+              lists={{ Nouns: vocabList, Verbs: verbsList, Patterns: patternsList, Prepositions: prepsList, Time: timeList }}
+              onNavigate={(target, view = "list") => {
+                if (target === "Due Today") {
+                  const dueTargets = [["Nouns", vocabList], ["Verbs", verbsList], ["Patterns", patternsList], ["Prepositions", prepsList], ["Time", timeList]]
+                    .sort((a, b) => countDueToday(b[1]) - countDueToday(a[1]));
+                  const firstDue = dueTargets.find(([, items]) => countDueToday(items) > 0);
+                  if (firstDue) {
+                    setDueFocus((prev) => ({ ...prev, [firstDue[0]]: true }));
+                    setMainCategory(firstDue[0]);
+                    setSubViews((prev) => ({ ...prev, [firstDue[0]]: "flashcards" }));
+                  }
+                  return;
+                }
+                setMainCategory(target);
+                if (target !== "Dashboard") setSubViews((prev) => ({ ...prev, [target]: view }));
+              }}
+              onRestoreComplete={() => window.location.reload()}
+            />
           )}
 
-
-
-          <SubTabs
-
-            currentView={subViews[mainCategory]}
-
-            onChangeView={(view) =>
-
-              setSubViews((prev) => ({ ...prev, [mainCategory]: view }))
-
-            }
-
-          />
-
-
+          {mainCategory !== "Dashboard" && (
+            <SubTabs
+              currentView={subViews[mainCategory]}
+              onChangeView={(view) => {
+                setDueFocus((prev) => ({ ...prev, [mainCategory]: false }));
+                setSubViews((prev) => ({ ...prev, [mainCategory]: view }));
+              }}
+            />
+          )}
 
           {mainCategory === "Nouns" && (
 
             <NounsPage
 
               viewMode={subViews.Nouns}
+              initialFlashStatusFilter={dueFocus.Nouns ? "due" : "all"}
 
               vocabList={vocabList}
 
               onCommitNouns={commitNouns}
 
               onRequestConfirm={requestConfirmation}
+              onRequestViewChange={(view) => setSubViews((prev) => ({ ...prev, Nouns: view }))}
 
             />
 
@@ -849,6 +805,7 @@ export default function App() {
             <PatternsPage
 
               viewMode={subViews.Patterns}
+              initialFlashStatusFilter={dueFocus.Patterns ? "due" : "all"}
 
               patternsList={patternsList}
 
@@ -867,6 +824,7 @@ export default function App() {
             <VerbsPage
 
               viewMode={subViews.Verbs}
+              initialFlashStatusFilter={dueFocus.Verbs ? "due" : "all"}
 
               verbsList={verbsList}
 
@@ -885,6 +843,7 @@ export default function App() {
             <PrepositionsPage
 
               viewMode={subViews.Prepositions}
+              initialFlashStatusFilter={dueFocus.Prepositions ? "due" : "all"}
 
               prepsList={prepsList}
 
@@ -903,6 +862,7 @@ export default function App() {
             <TimePage
 
               viewMode={subViews.Time}
+              initialFlashStatusFilter={dueFocus.Time ? "due" : "all"}
 
               timeList={timeList}
 

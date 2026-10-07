@@ -64,20 +64,25 @@ export async function requestMobileNotificationPermission() {
   return (await Notification.requestPermission()) === "granted";
 }
 
-// Generates an image banner drawn with Poppins font
+// Generates a compact image banner drawn with Poppins font.
+// The "WORD OF THE HOUR" label now lives in the notification title,
+// so the banner is shorter and there is no empty strip above it.
 function createPoppinsNotificationImage(nounItem) {
+  const W = 600;
+  const H = 180;
   const canvas = document.createElement("canvas");
-  canvas.width = 600;
-  canvas.height = 240;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext("2d");
 
   // Rounded card background
-  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
   if (ctx.roundRect) {
-    ctx.roundRect(0, 0, 600, 240, 24);
+    ctx.roundRect(0, 0, W, H, 24);
   } else {
-    ctx.fillRect(0, 0, 600, 240);
+    ctx.rect(0, 0, W, H);
   }
+  ctx.fillStyle = "#ffffff";
   ctx.fill();
 
   // Subtle border
@@ -85,35 +90,21 @@ function createPoppinsNotificationImage(nounItem) {
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  // Badge pill
-  ctx.fillStyle = "#ffedd5";
-  if (ctx.roundRect) {
-    ctx.roundRect(32, 28, 170, 32, 16);
-  } else {
-    ctx.fillRect(32, 28, 170, 32);
-  }
-  ctx.fill();
-
-  // Badge Text
-  ctx.fillStyle = "#c2410c";
-  ctx.font = "700 13px 'Poppins', sans-serif";
-  ctx.fillText("WORD OF THE HOUR", 48, 50);
-
   // Main Word (Article + Noun)
   const article = nounItem.article || "";
   const noun = nounItem.noun || "";
   ctx.fillStyle = "#b45309";
-  ctx.font = "800 36px 'Poppins', sans-serif";
-  ctx.fillText(`${article} ${noun}`.trim(), 32, 120);
+  ctx.font = "800 38px 'Poppins', sans-serif";
+  ctx.fillText(`${article} ${noun}`.trim(), 32, 68);
 
-  // Details (Plural & Meaning)
+  // Details (Meaning & Plural)
   ctx.fillStyle = "#44403c";
   ctx.font = "600 20px 'Poppins', sans-serif";
-  ctx.fillText(`Meaning: ${nounItem.meaning || "—"}`, 32, 168);
+  ctx.fillText(`Meaning: ${nounItem.meaning || "—"}`, 32, 116);
 
   ctx.fillStyle = "#78716c";
   ctx.font = "500 16px 'Poppins', sans-serif";
-  ctx.fillText(`Plural: ${nounItem.plural || "—"}`, 32, 204);
+  ctx.fillText(`Plural: ${nounItem.plural || "—"}`, 32, 150);
 
   return canvas.toDataURL("image/png");
 }
@@ -123,10 +114,23 @@ export async function sendNounNotification(nounItem) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
 
+  // Make sure Poppins is ready before drawing on the canvas
+  try {
+    await Promise.all([
+      document.fonts.load("800 38px 'Poppins'"),
+      document.fonts.load("600 20px 'Poppins'"),
+      document.fonts.load("500 16px 'Poppins'"),
+    ]);
+  } catch {
+    // fall back to sans-serif
+  }
+
   const imageBanner = createPoppinsNotificationImage(nounItem);
 
+  const title = "Word of the Hour"; // fills the title row -> no blank gap
+
   const options = {
-    image: imageBanner, // Displays Poppins text in notification body
+    image: imageBanner,
     icon: "/icons.svg",
     badge: "/apple-touch-icon.png",
     vibrate: [150, 80, 150],
@@ -138,7 +142,7 @@ export async function sendNounNotification(nounItem) {
     try {
       const registration = await navigator.serviceWorker.getRegistration();
       if (registration) {
-        await registration.showNotification("\u200B", options);
+        await registration.showNotification(title, options);
         return;
       }
     } catch (err) {
@@ -147,7 +151,7 @@ export async function sendNounNotification(nounItem) {
   }
 
   try {
-    new Notification("\u200B", options);
+    new Notification(title, options);
   } catch (err) {
     console.warn("Standard notification failed:", err);
   }

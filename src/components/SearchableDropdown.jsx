@@ -8,18 +8,6 @@ const normalize = (s = "") =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
-/**
- * Searchable dropdown (same look as the other custom dropdowns).
- *
- * Props
- *  - value, options [{label, value}], onChange(value)
- *  - icon, placeholder, searchPlaceholder, emptyText
- *  - fullWidth: stretch to 100% (use inside modals)
- *  - allowCreate + onCreate(name): shows a '+ Create "text"' row when nothing matches exactly
- *
- * The panel is rendered in a portal with fixed positioning, so it is never
- * clipped by horizontally scrolling filter rows or modal containers.
- */
 export default function SearchableDropdown({
   value = "",
   options = [],
@@ -32,6 +20,7 @@ export default function SearchableDropdown({
   allowCreate = false,
   onCreate,
   maxPanelHeight = 260,
+  multi = false,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -43,7 +32,27 @@ export default function SearchableDropdown({
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
+  const selectedValues = multi
+    ? Array.isArray(value)
+      ? value
+      : value
+        ? [value]
+        : []
+    : [];
+
   const selected = options.find((o) => o.value === value);
+  const selectedMulti = multi
+    ? options.filter((o) => selectedValues.includes(o.value))
+    : [];
+
+  const displayText = multi
+    ? selectedMulti.length
+      ? selectedMulti.map((o) => o.label).join(" + ")
+      : placeholder
+    : selected
+      ? selected.label
+      : placeholder;
+
   const trimmed = query.trim();
 
   const filtered = useMemo(() => {
@@ -62,20 +71,31 @@ export default function SearchableDropdown({
     );
 
   const rows = useMemo(() => {
-    const base = filtered.map((o) => ({ type: "option", label: o.label, value: o.value }));
-    if (canCreate) base.push({ type: "create", label: `+ Create "${trimmed}"` });
+    const base = filtered.map((o) => ({
+      type: "option",
+      label: o.label,
+      value: o.value,
+    }));
+    if (canCreate) {
+      base.push({ type: "create", label: `+ Create "${trimmed}"` });
+    }
     return base;
   }, [filtered, canCreate, trimmed]);
 
   const updatePosition = () => {
     const el = triggerRef.current;
     if (!el) return;
+
     const rect = el.getBoundingClientRect();
     const panelHeight = maxPanelHeight + 64;
     const spaceBelow = window.innerHeight - rect.bottom;
     const openUp = spaceBelow < panelHeight && rect.top > spaceBelow;
     const width = Math.max(rect.width, 240);
-    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+    const left = Math.min(
+      Math.max(8, rect.left),
+      Math.max(8, window.innerWidth - width - 8)
+    );
+
     setPos({
       top: openUp ? undefined : rect.bottom + 6,
       bottom: openUp ? window.innerHeight - rect.top + 6 : undefined,
@@ -86,11 +106,10 @@ export default function SearchableDropdown({
 
   const openPanel = () => {
     setQuery("");
-    const idx = Math.max(
-      0,
-      options.findIndex((o) => o.value === value)
-    );
-    setActiveIndex(idx);
+    const currentIndex = multi
+      ? 0
+      : Math.max(0, options.findIndex((o) => o.value === value));
+    setActiveIndex(currentIndex);
     updatePosition();
     setIsOpen(true);
   };
@@ -110,17 +129,18 @@ export default function SearchableDropdown({
       window.removeEventListener("resize", handler);
       window.removeEventListener("scroll", handler, true);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
+
     const t = setTimeout(() => inputRef.current?.focus(), 0);
     const onDown = (e) => {
       if (triggerRef.current?.contains(e.target)) return;
       if (panelRef.current?.contains(e.target)) return;
       closePanel();
     };
+
     document.addEventListener("mousedown", onDown);
     return () => {
       clearTimeout(t);
@@ -140,11 +160,33 @@ export default function SearchableDropdown({
 
   const commit = (row) => {
     if (!row) return;
+
     if (row.type === "create") {
       onCreate?.(trimmed);
-    } else {
-      onChange?.(row.value);
+      closePanel();
+      triggerRef.current?.focus();
+      return;
     }
+
+    if (multi) {
+      const current = Array.isArray(value) ? value : value ? [value] : [];
+
+      // Selecting the empty option clears every category.
+      if (row.value === "") {
+        onChange?.([]);
+        return;
+      }
+
+      const exists = current.some((v) => v === row.value);
+      const next = exists
+        ? current.filter((v) => v !== row.value)
+        : [...current, row.value];
+
+      onChange?.(next);
+      return;
+    }
+
+    onChange?.(row.value);
     closePanel();
     triggerRef.current?.focus();
   };
@@ -169,7 +211,9 @@ export default function SearchableDropdown({
     }
   };
 
-  const isFiltered = value !== "" && value !== "all";
+  const isFiltered = multi
+    ? selectedValues.length > 0
+    : value !== "" && value !== "all";
 
   return (
     <div
@@ -193,11 +237,13 @@ export default function SearchableDropdown({
           gap: "8px",
           width: fullWidth ? "100%" : "auto",
           minWidth: fullWidth ? 0 : 130,
-          maxWidth: fullWidth ? "100%" : 240,
+          maxWidth: fullWidth ? "100%" : 300,
           height: fullWidth ? "42px" : "40px",
           padding: "0 14px",
           borderRadius: "12px",
-          border: isFiltered ? "1.5px solid #d97706" : "1px solid var(--line-2, #ebdccb)",
+          border: isFiltered
+            ? "1.5px solid #d97706"
+            : "1px solid var(--line-2, #ebdccb)",
           backgroundColor: isFiltered ? "#fffbeb" : "#ffffff",
           color: isFiltered ? "#92400e" : "var(--ink, #1f2937)",
           fontSize: "13.5px",
@@ -208,10 +254,23 @@ export default function SearchableDropdown({
           boxSizing: "border-box",
         }}
       >
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            minWidth: 0,
+          }}
+        >
           {icon && <span>{icon}</span>}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-            {selected ? selected.label : placeholder}
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {displayText}
           </span>
         </span>
         <span style={{ fontSize: "10px", opacity: 0.6 }}>▼</span>
@@ -259,14 +318,23 @@ export default function SearchableDropdown({
                 marginBottom: "6px",
               }}
             />
+
             <div ref={listRef} style={{ maxHeight: maxPanelHeight, overflowY: "auto" }}>
               {rows.length === 0 && (
-                <div style={{ padding: "10px 12px", fontSize: 13, color: "#9ca3af" }}>{emptyText}</div>
+                <div style={{ padding: "10px 12px", fontSize: 13, color: "#9ca3af" }}>
+                  {emptyText}
+                </div>
               )}
+
               {rows.map((row, i) => {
                 const isActive = i === activeIndex;
-                const isSelected = row.type === "option" && row.value === value;
+                const isSelected =
+                  row.type === "option" &&
+                  (multi
+                    ? selectedValues.includes(row.value)
+                    : row.value === value);
                 const isCreate = row.type === "create";
+
                 return (
                   <div
                     key={`${row.type}-${String(row.value ?? row.label)}`}

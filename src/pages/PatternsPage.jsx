@@ -6,6 +6,7 @@ import {
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import SearchableDropdown from "../components/SearchableDropdown";
 import GoalModal from "../components/GoalModal";
 import { ARTICLE_CLASS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
@@ -26,6 +27,38 @@ const normalize = (s = "") =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
+
+const CATEGORY_STORAGE_KEY = "noun_categories";
+const UNCATEGORIZED = "__none__";
+const cleanCategoryName = (s = "") => String(s ?? "").replace(/\s+/g, " ").trim();
+const sameCategory = (a, b) => normalize(cleanCategoryName(a)) === normalize(cleanCategoryName(b));
+const toCategoryArray = (value) => {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const result = [];
+  values.map(cleanCategoryName).filter(Boolean).forEach((c) => {
+    if (!result.some((x) => sameCategory(x, c))) result.push(c);
+  });
+  return result;
+};
+const categoryDisplay = (value) => toCategoryArray(value).join(" + ");
+const loadStoredCategories = () => {
+  try {
+    const raw = localStorage.getItem(CATEGORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(cleanCategoryName).filter(Boolean) : [];
+  } catch { return []; }
+};
+const saveStoredCategories = (categories) => {
+  try { localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(categories)); } catch {}
+};
+
+function PatternCategoryChips({ value }) {
+  const categories = toCategoryArray(value);
+  if (!categories.length) return null;
+  return <span style={{display:"inline-flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+    {categories.map((name) => <span key={name} style={{padding:"2px 9px",borderRadius:999,fontSize:11.5,fontWeight:700,color:"#7c2d12",background:"#fff7ed",border:"1px solid #fed7aa"}}>📁 {name}</span>)}
+  </span>;
+}
 
 // Fisher-Yates array shuffle helper
 const shuffleArray = (array) => {
@@ -218,6 +251,7 @@ const EMPTY_FORM = {
   rule: "",
   examples: "",
   status: "In Progress",
+  category: [],
 };
 
 function RealCalendarPicker({ selectedDate, onSelectDate }) {
@@ -541,6 +575,10 @@ export default function PatternsPage({
   const [search, setSearch] = useState("");
   const [articleFilter, setArticleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState([]);
+  const [flashCategoryFilter, setFlashCategoryFilter] = useState([]);
+  const [quizCategoryFilter, setQuizCategoryFilter] = useState([]);
+  const [patternCategories, setPatternCategories] = useState(loadStoredCategories);
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
 
@@ -620,6 +658,51 @@ export default function PatternsPage({
   const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
 
+  const allCategories = useMemo(() => {
+    const result = [...patternCategories];
+    list.forEach((item) => toCategoryArray(item.category).forEach((c) => {
+      if (!result.some((r) => sameCategory(r, c))) result.push(c);
+    }));
+    return result.sort((a,b) => a.localeCompare(b));
+  }, [patternCategories, list]);
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map();
+    let none = 0;
+    list.forEach((item) => {
+      const cats = toCategoryArray(item.category);
+      if (!cats.length) none += 1;
+      cats.forEach((c) => map.set(c, (map.get(c) || 0) + 1));
+    });
+    return { map, none };
+  }, [list]);
+
+  const categoryFilterOptions = useMemo(() => [
+    { label: `Uncategorized (${categoryCounts.none})`, value: UNCATEGORIZED },
+    ...allCategories.map((c) => ({ label: `${c} (${categoryCounts.map.get(c) || 0})`, value: c })),
+  ], [allCategories, categoryCounts]);
+
+  const addPatternCategory = (name) => {
+    const clean = cleanCategoryName(name);
+    if (!clean) return "";
+    const existing = allCategories.find((c) => sameCategory(c, clean));
+    const canonical = existing || clean;
+    if (!patternCategories.some((c) => sameCategory(c, canonical))) {
+      const next = [...patternCategories, canonical];
+      setPatternCategories(next);
+      saveStoredCategories(next);
+    }
+    return canonical;
+  };
+
+  const matchesCategory = (item, filter) => {
+    const selected = Array.isArray(filter) ? filter : (filter && filter !== "all" ? [filter] : []);
+    if (!selected.length) return true;
+    const cats = toCategoryArray(item.category);
+    if (selected.includes(UNCATEGORIZED) && cats.length === 0) return true;
+    return selected.filter((f) => f !== UNCATEGORIZED).some((f) => cats.some((c) => sameCategory(c, f)));
+  };
+
   const matchesDateFilter = (isoDate, mode, specificDate) => {
     if (!isoDate || mode === "all") return true;
     const itemDate = new Date(isoDate);
@@ -655,9 +738,10 @@ export default function PatternsPage({
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
+      const matchesCat = matchesCategory(item, quizCategoryFilter);
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
       const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
-      return matchesStatus && matchesDate && matchesMode;
+      return matchesStatus && matchesCat && matchesDate && matchesMode;
     });
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
     if (quizMode === "flashrev") {
@@ -679,12 +763,13 @@ export default function PatternsPage({
         flashArticleFilter === "all" || item.article === flashArticleFilter;
       const matchesStatus =
         flashStatusFilter === "all" || itemStatus === flashStatusFilter;
+      const matchesCat = matchesCategory(item, flashCategoryFilter);
       const matchesDate = matchesDateFilter(
         item.createdAt,
         flashDateMode,
         flashSpecificDate
       );
-      return matchesArticle && matchesStatus && matchesDate;
+      return matchesArticle && matchesStatus && matchesCat && matchesDate;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
@@ -989,6 +1074,7 @@ export default function PatternsPage({
       Ending: item.ending,
       Rule: item.rule || "",
       Examples: item.examples || "",
+      Category: categoryDisplay(item.category),
       Gender: GENDER_MAP[item.article] || "",
       Status: item.status || "In Progress",
       CreatedAt: item.createdAt || new Date().toISOString(),
@@ -1156,8 +1242,9 @@ export default function PatternsPage({
       normalize(item.article).includes(q);
     const matchesArt = articleFilter === "all" || item.article === articleFilter;
     const itemStatus = item.status || "In Progress";
-    const matchesStatus = statusFilter === "all" || itemStatus === statusFilter;
-    return matchesSearch && matchesArt && matchesStatus && matchesDateFilter(item.createdAt, dateFilter, customDate);
+     const matchesStatus = statusFilter === "all" || itemStatus === statusFilter;
+     const matchesCat = matchesCategory(item, categoryFilter);
+     return matchesSearch && matchesArt && matchesStatus && matchesCat && matchesDateFilter(item.createdAt, dateFilter, customDate);
   });
 
   const patternsMastered = list.filter((p) => p.status === "Mastered").length;
@@ -1179,6 +1266,7 @@ export default function PatternsPage({
       rule: rule.rule,
       examples: rule.examples || "",
       status: rule.status || "In Progress",
+      category: toCategoryArray(rule.category),
     });
     setModalOpen(true);
   };
@@ -1204,11 +1292,12 @@ export default function PatternsPage({
     }
 
     const isEditing = Boolean(editingPatternId);
+    const categories = toCategoryArray(patternFormData.category).map(addPatternCategory).filter(Boolean);
     let updated;
 
     if (isEditing) {
       updated = list.map((item) =>
-        item.id === editingPatternId ? { ...item, ...patternFormData, ending: cleanEnding } : item
+        item.id === editingPatternId ? { ...item, ...patternFormData, category: categories, ending: cleanEnding } : item
       );
     } else {
       updated = [
@@ -1216,6 +1305,7 @@ export default function PatternsPage({
         {
           id: `p-${Date.now()}`,
           ...patternFormData,
+          category: categories,
           ending: cleanEnding,
           gender: GENDER_MAP[patternFormData.article] || "",
           createdAt: new Date().toISOString(),
@@ -1276,6 +1366,18 @@ export default function PatternsPage({
     setFlashOrder(null);
     setCardIndex(0);
     setCardFlipped(false);
+  };
+
+  const handleCategoryFilterChange = (value) => setCategoryFilter(value);
+  const handleFlashCategoryChange = (value) => {
+    setFlashCategoryFilter(value);
+    setFlashOrder(null);
+    setCardIndex(0);
+    setCardFlipped(false);
+  };
+  const handleQuizCategoryChange = (value) => {
+    setQuizCategoryFilter(value);
+    resetQuizProgress();
   };
 
   const handleFlashStatusChange = (value) => {
@@ -1557,6 +1659,10 @@ export default function PatternsPage({
                 />
               </div>
 
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                <SearchableDropdown icon="📁" value={categoryFilter} options={categoryFilterOptions} multi onChange={handleCategoryFilterChange} placeholder="All Categories" searchPlaceholder="Search categories..." />
+              </div>
+
               <div style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
                 <CustomDropdown
                   icon="📅"
@@ -1684,11 +1790,11 @@ export default function PatternsPage({
                 No Patterns Found
               </h3>
               <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)", maxWidth: "340px", lineHeight: 1.5 }}>
-                {search || articleFilter !== "all" || statusFilter !== "all" || dateFilter !== "all"
+                {search || articleFilter !== "all" || statusFilter !== "all" || categoryFilter.length > 0 || dateFilter !== "all"
                   ? "We couldn't find any suffix patterns matching your current filters. Try changing or clearing them."
                   : "You haven't added any patterns yet. Add your first German suffix pattern to get started!"}
               </p>
-              {search || articleFilter !== "all" || statusFilter !== "all" || dateFilter !== "all" ? (
+              {search || articleFilter !== "all" || statusFilter !== "all" || categoryFilter.length > 0 || dateFilter !== "all" ? (
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -1835,6 +1941,9 @@ export default function PatternsPage({
                 options={STATUS_FILTER_OPTIONS}
                 onChange={handleFlashStatusChange}
               />
+            </div>
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <SearchableDropdown icon="📁" value={flashCategoryFilter} options={categoryFilterOptions} multi onChange={handleFlashCategoryChange} placeholder="All Categories" searchPlaceholder="Search categories..." />
             </div>
 
             <div
@@ -2031,6 +2140,9 @@ export default function PatternsPage({
                     options={STATUS_FILTER_OPTIONS}
                     onChange={handleQuizStatusChange}
                   />
+                </div>
+                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <SearchableDropdown icon="📁" value={quizCategoryFilter} options={categoryFilterOptions} multi onChange={handleQuizCategoryChange} placeholder="All Categories" searchPlaceholder="Search categories..." />
                 </div>
 
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -2598,6 +2710,25 @@ export default function PatternsPage({
                   placeholder="e.g. die Station, die Nation"
                   value={patternFormData.examples}
                   onChange={(e) => setPatternFormData({ ...patternFormData, examples: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="modal-label">Category</label>
+                <SearchableDropdown
+                  fullWidth
+                  multi
+                  icon="📁"
+                  value={patternFormData.category}
+                  options={allCategories.map((c) => ({ label: c, value: c }))}
+                  placeholder="No category"
+                  searchPlaceholder="Search or create category..."
+                  allowCreate
+                  onChange={(val) => setPatternFormData((p) => ({ ...p, category: val }))}
+                  onCreate={(name) => {
+                    const created = addPatternCategory(name);
+                    if (created) setPatternFormData((p) => ({ ...p, category: [...toCategoryArray(p.category), created] }));
+                  }}
                 />
               </div>
 

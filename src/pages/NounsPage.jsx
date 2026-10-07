@@ -54,6 +54,101 @@ const UNCATEGORIZED = "__none__";
 const cleanCategoryName = (s = "") => String(s ?? "").replace(/\s+/g, " ").trim();
 const sameCategory = (a, b) => normalize(cleanCategoryName(a)) === normalize(cleanCategoryName(b));
 
+// Categories are arrays. Old single-string category data is accepted automatically.
+const toCategoryArray = (value) => {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const result = [];
+  values.map(cleanCategoryName).filter(Boolean).forEach((c) => {
+    if (!result.some((x) => sameCategory(x, c))) result.push(c);
+  });
+  return result;
+};
+const categoryDisplay = (value) => toCategoryArray(value).join(" + ");
+function CategoryChips({ value, onClick }) {
+  const categories = toCategoryArray(value);
+  const [expanded, setExpanded] = useState(false);
+
+  if (!categories.length) return null;
+
+  const firstCategory = categories[0];
+  const extraCount = categories.length - 1;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        minWidth: 0,
+        flexWrap: "nowrap",
+      }}
+    >
+      {/* First category */}
+      <CategoryChip
+        name={firstCategory}
+        onClick={onClick}
+      />
+
+      {/* +N button */}
+      {extraCount > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(true);
+          }}
+          title={`Show all ${categories.length} categories`}
+          style={{
+            border: "1px solid #e5e7eb",
+            background: "#f9fafb",
+            color: "#6b7280",
+            borderRadius: 999,
+            padding: "2px 8px",
+            fontSize: 11.5,
+            fontWeight: 700,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          +{extraCount}
+        </button>
+      )}
+
+      {/* Show remaining categories after clicking +N */}
+      {expanded &&
+        categories.slice(1).map((name) => (
+          <CategoryChip
+            key={name}
+            name={name}
+            onClick={onClick}
+          />
+        ))}
+
+      {/* Collapse */}
+      {expanded && extraCount > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(false);
+          }}
+          title="Collapse categories"
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "#9ca3af",
+            fontSize: 11,
+            cursor: "pointer",
+            padding: "2px 4px",
+          }}
+        >
+          ×
+        </button>
+      )}
+    </span>
+  );
+}
+
 const loadStoredCategories = () => {
   try {
     const raw = localStorage.getItem(CATEGORY_STORAGE_KEY);
@@ -308,7 +403,7 @@ const EMPTY_FORM = {
   article: "der",
   meaning: "",
   status: "In Progress",
-  category: "",
+  category: [],
 };
 
 function RealCalendarPicker({ selectedDate, onSelectDate }) {
@@ -636,7 +731,7 @@ export default function NounsPage({
   const [search, setSearch] = useState("");
   const [articleFilter, setArticleFilter] = useState("all");
   const [nounStatusFilter, setNounStatusFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState([]);
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
 
@@ -653,7 +748,7 @@ export default function NounsPage({
 
   // Quiz Filters & Mode
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
-  const [quizCategoryFilter, setQuizCategoryFilter] = useState("all");
+  const [quizCategoryFilter, setQuizCategoryFilter] = useState([]);
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
   const [quizMode, setQuizMode] = useState("article");
@@ -720,7 +815,7 @@ export default function NounsPage({
   // Flashcard filters
   const [flashArticleFilter, setFlashArticleFilter] = useState("all");
   const [flashStatusFilter, setFlashStatusFilter] = useState("all");
-  const [flashCategoryFilter, setFlashCategoryFilter] = useState("all");
+  const [flashCategoryFilter, setFlashCategoryFilter] = useState([]);
   const [flashDateMode, setFlashDateMode] = useState("all");
   const [flashSpecificDate, setFlashSpecificDate] = useState("");
 
@@ -759,13 +854,12 @@ export default function NounsPage({
     }
   };
 
-  // Managed categories + any category already used by a noun (keeps things consistent)
+  // Managed categories + every category used by a noun.
   const allCategories = useMemo(() => {
     const result = [...managedCategories];
-    list.forEach((item) => {
-      const c = cleanCategoryName(item.category);
-      if (c && !result.some((r) => sameCategory(r, c))) result.push(c);
-    });
+    list.forEach((item) => toCategoryArray(item.category).forEach((c) => {
+      if (!result.some((r) => sameCategory(r, c))) result.push(c);
+    }));
     return result.sort((a, b) => a.localeCompare(b));
   }, [managedCategories, list]);
 
@@ -773,40 +867,32 @@ export default function NounsPage({
     const map = new Map();
     let none = 0;
     list.forEach((item) => {
-      const c = cleanCategoryName(item.category);
-      if (!c) none += 1;
-      else map.set(c, (map.get(c) || 0) + 1);
+      const cats = toCategoryArray(item.category);
+      if (!cats.length) none += 1;
+      cats.forEach((c) => map.set(c, (map.get(c) || 0) + 1));
     });
     return { map, none };
   }, [list]);
 
   const countForCategory = (name) => {
     let total = 0;
-    categoryCounts.map.forEach((count, key) => {
-      if (sameCategory(key, name)) total += count;
-    });
+    categoryCounts.map.forEach((count, key) => { if (sameCategory(key, name)) total += count; });
     return total;
   };
 
-  const categoryFilterOptions = useMemo(
-    () => [
-      { label: "All Categories", value: "all" },
-      { label: `Uncategorized (${categoryCounts.none})`, value: UNCATEGORIZED },
-      ...allCategories.map((c) => ({ label: `${c} (${countForCategory(c)})`, value: c })),
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allCategories, categoryCounts]
-  );
+  const categoryFilterOptions = useMemo(() => [
+    { label: `Uncategorized (${categoryCounts.none})`, value: UNCATEGORIZED },
+    ...allCategories.map((c) => ({ label: `${c} (${countForCategory(c)})`, value: c })),
+  ], [allCategories, categoryCounts]);
 
-  const categoryFormOptions = useMemo(
-    () => [{ label: "No category", value: "" }, ...allCategories.map((c) => ({ label: c, value: c }))],
-    [allCategories]
-  );
+  const categoryFormOptions = useMemo(() => allCategories.map((c) => ({ label:c, value:c })), [allCategories]);
 
   const matchesCategory = (item, filter) => {
-    if (!filter || filter === "all") return true;
-    if (filter === UNCATEGORIZED) return !cleanCategoryName(item.category);
-    return sameCategory(item.category, filter);
+    const selected = Array.isArray(filter) ? filter : (filter && filter !== "all" ? [filter] : []);
+    if (!selected.length) return true;
+    const cats = toCategoryArray(item.category);
+    if (selected.includes(UNCATEGORIZED) && cats.length === 0) return true;
+    return selected.filter((f) => f !== UNCATEGORIZED).some((f) => cats.some((c) => sameCategory(c, f)));
   };
 
   // Returns the stored (canonical) name; creates the category if it is new
@@ -839,7 +925,7 @@ export default function NounsPage({
       return;
     }
     const created = addCategory(clean);
-    setNounFormData((p) => ({ ...p, category: created }));
+    setNounFormData((p) => ({ ...p, category: [...toCategoryArray(p.category), created] }));
   };
 
   const openCategoriesTab = () => {
@@ -887,20 +973,19 @@ export default function NounsPage({
     const base = managedCategories.filter((c) => !sameCategory(c, oldName));
     commitCategories([...base, clean]);
 
-    if (list.some((i) => sameCategory(i.category, oldName))) {
-      onCommitNouns?.(
-        list.map((i) => (sameCategory(i.category, oldName) ? { ...i, category: clean } : i))
-      );
-    }
+    onCommitNouns?.(list.map((i) => ({
+      ...i,
+      category: toCategoryArray(i.category).map((c) => sameCategory(c, oldName) ? clean : c),
+    })));
 
-    if (categoryFilter !== "all" && sameCategory(categoryFilter, oldName)) setCategoryFilter(clean);
-    if (flashCategoryFilter !== "all" && sameCategory(flashCategoryFilter, oldName))
-      setFlashCategoryFilter(clean);
-    if (quizCategoryFilter !== "all" && sameCategory(quizCategoryFilter, oldName))
-      setQuizCategoryFilter(clean);
-    if (sameCategory(nounFormData.category, oldName)) {
-      setNounFormData((p) => ({ ...p, category: clean }));
-    }
+    const renameFilter = (value, setter) => {
+      const values = toCategoryArray(value);
+      setter(values.map((c) => sameCategory(c, oldName) ? clean : c));
+    };
+    renameFilter(categoryFilter, setCategoryFilter);
+    renameFilter(flashCategoryFilter, setFlashCategoryFilter);
+    renameFilter(quizCategoryFilter, setQuizCategoryFilter);
+    setNounFormData((p) => ({ ...p, category: toCategoryArray(p.category).map((c) => sameCategory(c, oldName) ? clean : c) }));
 
     setRenamingCategory(null);
     setRenameValue("");
@@ -913,20 +998,15 @@ export default function NounsPage({
     const perform = () => {
       commitCategories(managedCategories.filter((c) => !sameCategory(c, name)));
       if (count > 0) {
-        onCommitNouns?.(
-          list.map((i) => (sameCategory(i.category, name) ? { ...i, category: "" } : i))
-        );
+        onCommitNouns?.(list.map((i) => ({ ...i, category: toCategoryArray(i.category).filter((c) => !sameCategory(c, name)) })));
       }
-      if (categoryFilter !== "all" && sameCategory(categoryFilter, name)) setCategoryFilter("all");
-      if (flashCategoryFilter !== "all" && sameCategory(flashCategoryFilter, name))
-        setFlashCategoryFilter("all");
-      if (quizCategoryFilter !== "all" && sameCategory(quizCategoryFilter, name)) {
-        setQuizCategoryFilter("all");
-        resetQuizProgress();
-      }
-      if (sameCategory(nounFormData.category, name)) {
-        setNounFormData((p) => ({ ...p, category: "" }));
-      }
+      const removeFromFilter = (value, setter) => setter(toCategoryArray(value).filter((c) => !sameCategory(c, name)));
+      removeFromFilter(categoryFilter, setCategoryFilter);
+      removeFromFilter(flashCategoryFilter, setFlashCategoryFilter);
+      const nextQuiz = toCategoryArray(quizCategoryFilter).filter((c) => !sameCategory(c, name));
+      if (nextQuiz.length !== toCategoryArray(quizCategoryFilter).length) resetQuizProgress();
+      setQuizCategoryFilter(nextQuiz);
+      setNounFormData((p) => ({ ...p, category: toCategoryArray(p.category).filter((c) => !sameCategory(c, name)) }));
     };
 
     const message =
@@ -1150,14 +1230,14 @@ export default function NounsPage({
 
   const quizHasFilters =
     quizStatusFilter !== "all" ||
-    quizCategoryFilter !== "all" ||
+    quizCategoryFilter.length > 0 ||
     quizDateMode !== "all" ||
     Boolean(quizSpecificDate) ||
     Boolean(wordCountInput);
 
   const clearQuizFilters = () => {
     setQuizStatusFilter("all");
-    setQuizCategoryFilter("all");
+    setQuizCategoryFilter([]);
     setQuizDateMode("all");
     setQuizSpecificDate("");
     setWordCountInput("");
@@ -1167,14 +1247,14 @@ export default function NounsPage({
   const flashHasFilters =
     flashArticleFilter !== "all" ||
     flashStatusFilter !== "all" ||
-    flashCategoryFilter !== "all" ||
+    flashCategoryFilter.length > 0 ||
     flashDateMode !== "all" ||
     Boolean(flashSpecificDate);
 
   const clearFlashFilters = () => {
     setFlashArticleFilter("all");
     setFlashStatusFilter("all");
-    setFlashCategoryFilter("all");
+    setFlashCategoryFilter([]);
     setFlashDateMode("all");
     setFlashSpecificDate("");
   };
@@ -1183,14 +1263,14 @@ export default function NounsPage({
     Boolean(search) ||
     articleFilter !== "all" ||
     nounStatusFilter !== "all" ||
-    categoryFilter !== "all" ||
+    categoryFilter.length > 0 ||
     dateFilter !== "all";
 
   const clearListFilters = () => {
     setSearch("");
     setArticleFilter("all");
     setNounStatusFilter("all");
-    setCategoryFilter("all");
+    setCategoryFilter([]);
     setDateFilter("all");
     setCustomDate("");
   };
@@ -1431,7 +1511,7 @@ export default function NounsPage({
       Noun: item.noun,
       Plural: item.plural || "",
       Meaning: item.meaning || "",
-      Category: item.category || "",
+      Category: categoryDisplay(item.category),
       Gender: item.gender || GENDER_MAP[item.article] || "",
       Status: item.status || "In Progress",
       CreatedAt: item.createdAt || new Date().toISOString(),
@@ -1517,7 +1597,7 @@ export default function NounsPage({
                 noun,
                 plural,
                 meaning,
-                category: resolveCategory(rawCategory),
+                category: rawCategory.split(/\s*\+\s*|\s*[,;]\s*/).map(resolveCategory).filter(Boolean),
                 gender: GENDER_MAP[article] || "",
                 status:
                   status.toLowerCase() === "mastered"
@@ -1581,7 +1661,7 @@ export default function NounsPage({
 
       const ai = new GoogleGenAI({ apiKey });
 
-      const wantsCategory = allCategories.length > 0 && !cleanCategoryName(nounFormData.category);
+      const wantsCategory = allCategories.length > 0 && toCategoryArray(nounFormData.category).length === 0;
       const categoryPrompt = wantsCategory
         ? ` Also pick the single best matching category for this word from this exact list: ${JSON.stringify(
             allCategories
@@ -1622,7 +1702,7 @@ export default function NounsPage({
         article: parsed.article,
         noun: parsed.noun,
         plural: parsed.plural,
-        category: suggested || prev.category,
+        category: suggested ? [addCategory(suggested)] : prev.category,
       }));
     } catch (err) {
       setAiError(err.message || "Failed to generate noun.");
@@ -1639,7 +1719,7 @@ export default function NounsPage({
       normalize(item.plural).includes(q) ||
       normalize(item.meaning).includes(q) ||
       normalize(item.article).includes(q) ||
-      normalize(item.category).includes(q);
+      normalize(categoryDisplay(item.category)).includes(q);
     const matchesArt = articleFilter === "all" || item.article === articleFilter;
     const itemStatus = item.status || "In Progress";
     const matchesStatus = nounStatusFilter === "all" || itemStatus === nounStatusFilter;
@@ -1660,8 +1740,7 @@ export default function NounsPage({
     setEditingNounId(null);
     setAiError("");
     // Pre-select the category currently being viewed so new words land in it
-    const presetCategory =
-      categoryFilter !== "all" && categoryFilter !== UNCATEGORIZED ? categoryFilter : "";
+    const presetCategory = categoryFilter.length > 0 && !categoryFilter.includes(UNCATEGORIZED) ? [...categoryFilter] : [];
     setNounFormData({ ...EMPTY_FORM, category: presetCategory });
     setModalOpen(true);
   };
@@ -1675,7 +1754,7 @@ export default function NounsPage({
       article: item.article,
       meaning: item.meaning,
       status: item.status || "In Progress",
-      category: item.category || "",
+      category: toCategoryArray(item.category),
     });
     setModalOpen(true);
   };
@@ -1702,7 +1781,7 @@ export default function NounsPage({
     }
 
     const gender = GENDER_MAP[nounFormData.article] || "";
-    const category = addCategory(nounFormData.category);
+    const category = toCategoryArray(nounFormData.category).map(addCategory).filter(Boolean);
     const isEditing = Boolean(editingNounId);
     let updated;
 
@@ -2123,6 +2202,7 @@ export default function NounsPage({
                       icon="📁"
                       value={categoryFilter}
                       options={categoryFilterOptions}
+                      multi
                       onChange={(val) => setCategoryFilter(val)}
                       placeholder="All Categories"
                       searchPlaceholder="Search categories..."
@@ -2236,47 +2316,12 @@ export default function NounsPage({
               </div>
 
               {/* Active category filter bar (click a chip in the list to get here) */}
-              {categoryFilter !== "all" && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 8,
-                    margin: "4px 0 10px",
-                    fontSize: 13.5,
-                    color: "var(--muted)",
-                  }}
-                >
-                  <span>Showing category:</span>
-                  {categoryFilter === UNCATEGORIZED ? (
-                    <span
-                      style={{
-                        padding: "2px 10px",
-                        borderRadius: 999,
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        color: "#4b5563",
-                        backgroundColor: "#f3f4f6",
-                        border: "1px solid #e5e7eb",
-                      }}
-                    >
-                      Uncategorized
-                    </span>
-                  ) : (
-                    <CategoryChip name={categoryFilter} />
-                  )}
-                  <strong style={{ color: "var(--ink)" }}>
-                    {filteredNouns.length} word{filteredNouns.length === 1 ? "" : "s"}
-                  </strong>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ height: 30, padding: "0 10px", fontSize: 12.5 }}
-                    onClick={() => setCategoryFilter("all")}
-                  >
-                    ✕ Clear
-                  </button>
+              {categoryFilter.length > 0 && (
+                <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:8, margin:"4px 0 10px", fontSize:13.5, color:"var(--muted)" }}>
+                  <span>Showing categories:</span>
+                  {categoryFilter.map((cat) => cat === UNCATEGORIZED ? <span key={cat} style={{padding:"2px 10px",borderRadius:999,fontSize:11.5,fontWeight:700,color:"#4b5563",backgroundColor:"#f3f4f6",border:"1px solid #e5e7eb"}}>Uncategorized</span> : <CategoryChip key={cat} name={cat} />)}
+                  <strong style={{color:"var(--ink)"}}>{filteredNouns.length} word{filteredNouns.length===1?"":"s"}</strong>
+                  <button type="button" className="btn btn-secondary" style={{height:30,padding:"0 10px",fontSize:12.5}} onClick={() => setCategoryFilter([])}>✕ Clear</button>
                 </div>
               )}
 
@@ -2349,20 +2394,20 @@ export default function NounsPage({
                   {filteredNouns.map((item, index) => (
                     <div className={`row noun-row ${item.article}`} key={item.id}>
                       <div className="c-idx">{index + 1}</div>
-                      <div className={`c-art ${item.category ? "has-cat" : ""}`}>
+                      <div className={`c-art ${toCategoryArray(item.category).length ? "has-cat" : ""}`}>
                         <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span>
-                        {item.category && (
+                        {toCategoryArray(item.category).length > 0 && (
                           <span className="cat-mobile">
-                            <CategoryChip name={item.category} onClick={(name) => setCategoryFilter(name)} />
+                            <CategoryChips value={item.category} onClick={(name) => setCategoryFilter((prev) => [...toCategoryArray(prev), name])} />
                           </span>
                         )}
                       </div>
-                      <div className={`c-noun ${item.category ? "has-cat" : ""}`}>
+                      <div className={`c-noun ${toCategoryArray(item.category).length ? "has-cat" : ""}`}>
                         <div className="noun-wrap">
                           <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
-                          {item.category && (
+                          {toCategoryArray(item.category).length > 0 && (
                             <span className="cat-desktop">
-                              <CategoryChip name={item.category} onClick={(name) => setCategoryFilter(name)} />
+                              <CategoryChips value={item.category} onClick={(name) => setCategoryFilter((prev) => [...toCategoryArray(prev), name])} />
                             </span>
                           )}
                           <span className="gender">({item.gender})</span>
@@ -2611,6 +2656,7 @@ export default function NounsPage({
                 icon="📁"
                 value={flashCategoryFilter}
                 options={categoryFilterOptions}
+                multi
                 onChange={(val) => setFlashCategoryFilter(val)}
                 placeholder="All Categories"
                 searchPlaceholder="Search categories..."
@@ -2752,9 +2798,9 @@ export default function NounsPage({
                   ↻
                 </button>
 
-                {nounCard.category && (
+                {toCategoryArray(nounCard.category).length > 0 && (
                   <div style={{ position: "absolute", top: 12, left: 12, zIndex: 3, maxWidth: "60%" }}>
-                    <CategoryChip name={nounCard.category} />
+                    <CategoryChips value={nounCard.category} />
                   </div>
                 )}
 
@@ -2853,6 +2899,7 @@ export default function NounsPage({
                     icon="📁"
                     value={quizCategoryFilter}
                     options={categoryFilterOptions}
+                    multi
                     onChange={handleQuizCategoryChange}
                     placeholder="All Categories"
                     searchPlaceholder="Search categories..."
@@ -3260,9 +3307,9 @@ export default function NounsPage({
               )}
 
               <div className="quiz-card">
-                {nounQuizWord.category && (
+                {toCategoryArray(nounQuizWord.category).length > 0 && (
                   <div style={{ marginBottom: 6 }}>
-                    <CategoryChip name={nounQuizWord.category} />
+                    <CategoryChips value={nounQuizWord.category} />
                   </div>
                 )}
 
@@ -3626,6 +3673,7 @@ export default function NounsPage({
                   icon="📁"
                   value={nounFormData.category}
                   options={categoryFormOptions}
+                  multi
                   placeholder="No category"
                   searchPlaceholder="Search or type a new category..."
                   allowCreate

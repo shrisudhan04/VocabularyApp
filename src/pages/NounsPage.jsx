@@ -6,6 +6,7 @@ import {
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import SearchableDropdown from "../components/SearchableDropdown";
 import GoalModal from "../components/GoalModal";
 import { ARTICLE_CLASS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
@@ -27,18 +28,95 @@ const normalize = (s = "") =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
-// Fisher-Yates array shuffle helper
+// Fisher-Yates array shuffle helper (fixed swap)
 const shuffleArray = (array) => {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [arr[j], arr[i]] = [arr[j], arr[i]];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
 };
 
+// Collision-safe id generator
+const makeId = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 // A quiz needs at least this percentage to count as passed
 const PASS_PERCENT = 70;
+
+// ---------- Category helpers ----------
+const CATEGORY_STORAGE_KEY = "noun_categories";
+const UNCATEGORIZED = "__none__";
+
+const cleanCategoryName = (s = "") => String(s ?? "").replace(/\s+/g, " ").trim();
+const sameCategory = (a, b) => normalize(cleanCategoryName(a)) === normalize(cleanCategoryName(b));
+
+const loadStoredCategories = () => {
+  try {
+    const raw = localStorage.getItem(CATEGORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(cleanCategoryName).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+const hashString = (s = "") => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+};
+
+// Stable color per category name (no extra storage needed)
+const categoryChipStyle = (name) => {
+  const hue = hashString(normalize(name)) % 360;
+  return {
+    color: `hsl(${hue}, 55%, 26%)`,
+    backgroundColor: `hsl(${hue}, 80%, 93%)`,
+    border: `1px solid hsl(${hue}, 60%, 80%)`,
+  };
+};
+
+function CategoryChip({ name, onClick, title }) {
+  const clickable = typeof onClick === "function";
+  return (
+    <button
+      type="button"
+      onClick={
+        clickable
+          ? (e) => {
+              e.stopPropagation();
+              onClick(name);
+            }
+          : undefined
+      }
+      title={title || (clickable ? `Show all words in "${name}"` : name)}
+      style={{
+        ...categoryChipStyle(name),
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "2px 10px",
+        borderRadius: 999,
+        fontSize: 11.5,
+        fontWeight: 700,
+        lineHeight: 1.5,
+        cursor: clickable ? "pointer" : "default",
+        whiteSpace: "nowrap",
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      📁 {name}
+    </button>
+  );
+}
 
 const foldGerman = (s = "") =>
   String(s ?? "")
@@ -230,6 +308,7 @@ const EMPTY_FORM = {
   article: "der",
   meaning: "",
   status: "In Progress",
+  category: "",
 };
 
 function RealCalendarPicker({ selectedDate, onSelectDate }) {
@@ -547,17 +626,34 @@ export default function NounsPage({
   vocabList = [],
   onCommitNouns,
   onRequestConfirm,
+  // Optional: pass these from the parent to own categories there.
+  // If omitted, categories are kept in this component and saved in localStorage.
+  categories: categoriesProp,
+  onCommitCategories,
 }) {
   const list = Array.isArray(vocabList) ? vocabList : [];
 
   const [search, setSearch] = useState("");
   const [articleFilter, setArticleFilter] = useState("all");
   const [nounStatusFilter, setNounStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
 
+  // List page tabs: "words" | "categories"
+  const [listTab, setListTab] = useState("words");
+
+  // Categories (managed list)
+  const [localCategories, setLocalCategories] = useState(loadStoredCategories);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [renamingCategory, setRenamingCategory] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [categoryError, setCategoryError] = useState("");
+  const [catDupModal, setCatDupModal] = useState({ open: false, name: "" });
+
   // Quiz Filters & Mode
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
+  const [quizCategoryFilter, setQuizCategoryFilter] = useState("all");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
   const [quizMode, setQuizMode] = useState("article");
@@ -624,6 +720,7 @@ export default function NounsPage({
   // Flashcard filters
   const [flashArticleFilter, setFlashArticleFilter] = useState("all");
   const [flashStatusFilter, setFlashStatusFilter] = useState("all");
+  const [flashCategoryFilter, setFlashCategoryFilter] = useState("all");
   const [flashDateMode, setFlashDateMode] = useState("all");
   const [flashSpecificDate, setFlashSpecificDate] = useState("");
 
@@ -637,6 +734,212 @@ export default function NounsPage({
       }
     };
   }, []);
+
+  // ---------- Categories: data + actions ----------
+  const managedCategories = Array.isArray(categoriesProp) ? categoriesProp : localCategories;
+
+  const commitCategories = (next) => {
+    const unique = [];
+    next
+      .map(cleanCategoryName)
+      .filter(Boolean)
+      .forEach((c) => {
+        if (!unique.some((u) => sameCategory(u, c))) unique.push(c);
+      });
+
+    if (onCommitCategories) onCommitCategories(unique);
+
+    if (!Array.isArray(categoriesProp)) {
+      setLocalCategories(unique);
+      try {
+        localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(unique));
+      } catch (e) {
+        console.warn("Failed to save categories:", e);
+      }
+    }
+  };
+
+  // Managed categories + any category already used by a noun (keeps things consistent)
+  const allCategories = useMemo(() => {
+    const result = [...managedCategories];
+    list.forEach((item) => {
+      const c = cleanCategoryName(item.category);
+      if (c && !result.some((r) => sameCategory(r, c))) result.push(c);
+    });
+    return result.sort((a, b) => a.localeCompare(b));
+  }, [managedCategories, list]);
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map();
+    let none = 0;
+    list.forEach((item) => {
+      const c = cleanCategoryName(item.category);
+      if (!c) none += 1;
+      else map.set(c, (map.get(c) || 0) + 1);
+    });
+    return { map, none };
+  }, [list]);
+
+  const countForCategory = (name) => {
+    let total = 0;
+    categoryCounts.map.forEach((count, key) => {
+      if (sameCategory(key, name)) total += count;
+    });
+    return total;
+  };
+
+  const categoryFilterOptions = useMemo(
+    () => [
+      { label: "All Categories", value: "all" },
+      { label: `Uncategorized (${categoryCounts.none})`, value: UNCATEGORIZED },
+      ...allCategories.map((c) => ({ label: `${c} (${countForCategory(c)})`, value: c })),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allCategories, categoryCounts]
+  );
+
+  const categoryFormOptions = useMemo(
+    () => [{ label: "No category", value: "" }, ...allCategories.map((c) => ({ label: c, value: c }))],
+    [allCategories]
+  );
+
+  const matchesCategory = (item, filter) => {
+    if (!filter || filter === "all") return true;
+    if (filter === UNCATEGORIZED) return !cleanCategoryName(item.category);
+    return sameCategory(item.category, filter);
+  };
+
+  // Returns the stored (canonical) name; creates the category if it is new
+  const addCategory = (name) => {
+    const clean = cleanCategoryName(name);
+    if (!clean) return "";
+    const existing = allCategories.find((c) => sameCategory(c, clean));
+    if (existing) {
+      if (!managedCategories.some((c) => sameCategory(c, existing))) {
+        commitCategories([...managedCategories, existing]);
+      }
+      return existing;
+    }
+    commitCategories([...managedCategories, clean]);
+    return clean;
+  };
+
+  // Shows the "already exists" popup (nothing is added)
+  const showCategoryDuplicate = (name) => {
+    playDuplicateSound();
+    setCatDupModal({ open: true, name });
+  };
+
+  // Used by the Add/Edit noun form's "+ Create" row
+  const handleCreateCategoryFromForm = (name) => {
+    const clean = cleanCategoryName(name);
+    if (!clean) return;
+    if (allCategories.some((c) => sameCategory(c, clean))) {
+      showCategoryDuplicate(clean);
+      return;
+    }
+    const created = addCategory(clean);
+    setNounFormData((p) => ({ ...p, category: created }));
+  };
+
+  const openCategoriesTab = () => {
+    setNewCategoryName("");
+    setRenamingCategory(null);
+    setRenameValue("");
+    setCategoryError("");
+    setListTab("categories");
+  };
+
+  const handleAddCategoryFromManager = (e) => {
+    e.preventDefault();
+    const clean = cleanCategoryName(newCategoryName);
+    if (!clean) return;
+    if (allCategories.some((c) => sameCategory(c, clean))) {
+      showCategoryDuplicate(clean);
+      return;
+    }
+    addCategory(clean);
+    setNewCategoryName("");
+    setCategoryError("");
+  };
+
+  const startRenameCategory = (name) => {
+    setRenamingCategory(name);
+    setRenameValue(name);
+    setCategoryError("");
+  };
+
+  const handleRenameCategory = (e) => {
+    e?.preventDefault();
+    const oldName = renamingCategory;
+    const clean = cleanCategoryName(renameValue);
+
+    if (!oldName) return;
+    if (!clean) {
+      setCategoryError("Category name cannot be empty.");
+      return;
+    }
+    if (allCategories.some((c) => !sameCategory(c, oldName) && sameCategory(c, clean))) {
+      showCategoryDuplicate(clean);
+      return;
+    }
+
+    const base = managedCategories.filter((c) => !sameCategory(c, oldName));
+    commitCategories([...base, clean]);
+
+    if (list.some((i) => sameCategory(i.category, oldName))) {
+      onCommitNouns?.(
+        list.map((i) => (sameCategory(i.category, oldName) ? { ...i, category: clean } : i))
+      );
+    }
+
+    if (categoryFilter !== "all" && sameCategory(categoryFilter, oldName)) setCategoryFilter(clean);
+    if (flashCategoryFilter !== "all" && sameCategory(flashCategoryFilter, oldName))
+      setFlashCategoryFilter(clean);
+    if (quizCategoryFilter !== "all" && sameCategory(quizCategoryFilter, oldName))
+      setQuizCategoryFilter(clean);
+    if (sameCategory(nounFormData.category, oldName)) {
+      setNounFormData((p) => ({ ...p, category: clean }));
+    }
+
+    setRenamingCategory(null);
+    setRenameValue("");
+    setCategoryError("");
+  };
+
+  const handleDeleteCategory = (name) => {
+    const count = countForCategory(name);
+
+    const perform = () => {
+      commitCategories(managedCategories.filter((c) => !sameCategory(c, name)));
+      if (count > 0) {
+        onCommitNouns?.(
+          list.map((i) => (sameCategory(i.category, name) ? { ...i, category: "" } : i))
+        );
+      }
+      if (categoryFilter !== "all" && sameCategory(categoryFilter, name)) setCategoryFilter("all");
+      if (flashCategoryFilter !== "all" && sameCategory(flashCategoryFilter, name))
+        setFlashCategoryFilter("all");
+      if (quizCategoryFilter !== "all" && sameCategory(quizCategoryFilter, name)) {
+        setQuizCategoryFilter("all");
+        resetQuizProgress();
+      }
+      if (sameCategory(nounFormData.category, name)) {
+        setNounFormData((p) => ({ ...p, category: "" }));
+      }
+    };
+
+    const message =
+      count > 0
+        ? `Delete category "${name}"? ${count} word${count === 1 ? "" : "s"} will become Uncategorized (no words are deleted).`
+        : `Delete the empty category "${name}"?`;
+
+    if (onRequestConfirm) {
+      onRequestConfirm("Delete Category", message, perform);
+    } else if (window.confirm(message)) {
+      perform();
+    }
+  };
 
   const matchesDateFilter = (isoDate, mode, specificDate) => {
     if (!isoDate || mode === "all") return true;
@@ -671,9 +974,10 @@ export default function NounsPage({
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
+      const matchesCat = matchesCategory(item, quizCategoryFilter);
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
       const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
-      return matchesStatus && matchesDate && matchesMode;
+      return matchesStatus && matchesCat && matchesDate && matchesMode;
     });
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
 
@@ -681,7 +985,8 @@ export default function NounsPage({
       return ordered.flatMap((item) => Array(FLASHREV_STEPS).fill(item.id));
     }
     return ordered.map((item) => item.id);
-  }, [hasNouns, viewMode, quizMode, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasNouns, viewMode, quizMode, quizStatusFilter, quizCategoryFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
 
   const availableQuizPool = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
@@ -695,14 +1000,16 @@ export default function NounsPage({
       const itemStatus = item.status || "In Progress";
       const matchesStatus =
         flashStatusFilter === "all" || itemStatus === flashStatusFilter;
+      const matchesCat = matchesCategory(item, flashCategoryFilter);
       const matchesDate = matchesDateFilter(
         item.createdAt,
         flashDateMode,
         flashSpecificDate
       );
-      return matchesArticle && matchesStatus && matchesDate;
+      return matchesArticle && matchesStatus && matchesCat && matchesDate;
     });
-  }, [list, flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, flashArticleFilter, flashStatusFilter, flashCategoryFilter, flashDateMode, flashSpecificDate]);
 
   const flashList = useMemo(() => {
     if (!flashOrder) return flashFilteredList;
@@ -823,6 +1130,11 @@ export default function NounsPage({
     resetQuizProgress();
   };
 
+  const handleQuizCategoryChange = (val) => {
+    setQuizCategoryFilter(val);
+    resetQuizProgress();
+  };
+
   const handleQuizDateModeChange = (val) => {
     setQuizDateMode(val);
     if (val !== "specific") {
@@ -834,6 +1146,53 @@ export default function NounsPage({
   const handleQuizCalendarDateSelect = (dateStr) => {
     setQuizSpecificDate(dateStr);
     resetQuizProgress();
+  };
+
+  const quizHasFilters =
+    quizStatusFilter !== "all" ||
+    quizCategoryFilter !== "all" ||
+    quizDateMode !== "all" ||
+    Boolean(quizSpecificDate) ||
+    Boolean(wordCountInput);
+
+  const clearQuizFilters = () => {
+    setQuizStatusFilter("all");
+    setQuizCategoryFilter("all");
+    setQuizDateMode("all");
+    setQuizSpecificDate("");
+    setWordCountInput("");
+    resetQuizProgress();
+  };
+
+  const flashHasFilters =
+    flashArticleFilter !== "all" ||
+    flashStatusFilter !== "all" ||
+    flashCategoryFilter !== "all" ||
+    flashDateMode !== "all" ||
+    Boolean(flashSpecificDate);
+
+  const clearFlashFilters = () => {
+    setFlashArticleFilter("all");
+    setFlashStatusFilter("all");
+    setFlashCategoryFilter("all");
+    setFlashDateMode("all");
+    setFlashSpecificDate("");
+  };
+
+  const listHasFilters =
+    Boolean(search) ||
+    articleFilter !== "all" ||
+    nounStatusFilter !== "all" ||
+    categoryFilter !== "all" ||
+    dateFilter !== "all";
+
+  const clearListFilters = () => {
+    setSearch("");
+    setArticleFilter("all");
+    setNounStatusFilter("all");
+    setCategoryFilter("all");
+    setDateFilter("all");
+    setCustomDate("");
   };
 
   const handleShuffleList = () => {
@@ -859,7 +1218,7 @@ export default function NounsPage({
     setFlashOrder(null);
     setCardIndex(0);
     setCardFlipped(false);
-  }, [flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
+  }, [flashArticleFilter, flashStatusFilter, flashCategoryFilter, flashDateMode, flashSpecificDate]);
 
   const handleFlashPrevious = () => {
     if (cardIndex <= 0) return;
@@ -1072,6 +1431,7 @@ export default function NounsPage({
       Noun: item.noun,
       Plural: item.plural || "",
       Meaning: item.meaning || "",
+      Category: item.category || "",
       Gender: item.gender || GENDER_MAP[item.article] || "",
       Status: item.status || "In Progress",
       CreatedAt: item.createdAt || new Date().toISOString(),
@@ -1115,8 +1475,20 @@ export default function NounsPage({
 
         const newEntries = [];
         const duplicateWords = [];
+        const createdCategories = [];
 
-        rawJson.forEach((row, i) => {
+        const resolveCategory = (rawName) => {
+          const clean = cleanCategoryName(rawName);
+          if (!clean) return "";
+          const known =
+            allCategories.find((c) => sameCategory(c, clean)) ||
+            createdCategories.find((c) => sameCategory(c, clean));
+          if (known) return known;
+          createdCategories.push(clean);
+          return clean;
+        };
+
+        rawJson.forEach((row) => {
           const rowLower = {};
           Object.keys(row).forEach((k) => {
             rowLower[k.trim().toLowerCase()] = row[k];
@@ -1127,6 +1499,7 @@ export default function NounsPage({
           const plural = (rowLower.plural || rowLower["plural (die)"] || "").toString().trim();
           const meaning = (rowLower.meaning || rowLower["english meaning"] || "").toString().trim();
           const status = (rowLower.status || "In Progress").toString().trim();
+          const rawCategory = (rowLower.category || "").toString();
 
           if (!["der", "die", "das"].includes(article)) {
             article = "der";
@@ -1139,11 +1512,12 @@ export default function NounsPage({
             } else {
               existingNounSet.add(lowerNoun);
               newEntries.push({
-                id: Date.now() + i,
+                id: makeId(),
                 article,
                 noun,
                 plural,
                 meaning,
+                category: resolveCategory(rawCategory),
                 gender: GENDER_MAP[article] || "",
                 status:
                   status.toLowerCase() === "mastered"
@@ -1156,6 +1530,10 @@ export default function NounsPage({
             }
           }
         });
+
+        if (createdCategories.length > 0) {
+          commitCategories([...managedCategories, ...createdCategories]);
+        }
 
         if (newEntries.length > 0) {
           const updatedList = [...list, ...newEntries];
@@ -1173,10 +1551,11 @@ export default function NounsPage({
           added: newEntries.length,
           duplicates: duplicateWords.length,
           duplicateWords,
+          newCategories: createdCategories,
         });
       } catch (err) {
         console.error("Import error:", err);
-        alert("Failed to parse Excel file. Please ensure it has proper column headers (Article, Noun, Plural, Meaning).");
+        alert("Failed to parse Excel file. Please ensure it has proper column headers (Article, Noun, Plural, Meaning, Category).");
       }
     };
 
@@ -1202,18 +1581,30 @@ export default function NounsPage({
 
       const ai = new GoogleGenAI({ apiKey });
 
+      const wantsCategory = allCategories.length > 0 && !cleanCategoryName(nounFormData.category);
+      const categoryPrompt = wantsCategory
+        ? ` Also pick the single best matching category for this word from this exact list: ${JSON.stringify(
+            allCategories
+          )}. If none of them fits well, return an empty string for category. Never invent a new category.`
+        : "";
+
+      const properties = {
+        article: { type: Type.STRING, enum: ["der", "die", "das"] },
+        noun: { type: Type.STRING },
+        plural: { type: Type.STRING },
+      };
+      if (wantsCategory) {
+        properties.category = { type: Type.STRING };
+      }
+
       const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
-        contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.`,
+        contents: `Translate the English noun "${nounFormData.meaning.trim()}" into German. Provide the definite nominative singular article (der, die, or das), singular noun, and full plural form including article.${categoryPrompt}`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
-            properties: {
-              article: { type: Type.STRING, enum: ["der", "die", "das"] },
-              noun: { type: Type.STRING },
-              plural: { type: Type.STRING },
-            },
+            properties,
             required: ["article", "noun", "plural"],
           },
         },
@@ -1221,11 +1612,17 @@ export default function NounsPage({
 
       const parsed = JSON.parse(response.text);
 
+      // Only accept a category that already exists (prevents "Food" / "Foods" duplicates)
+      const suggested = wantsCategory
+        ? allCategories.find((c) => sameCategory(c, parsed.category)) || ""
+        : "";
+
       setNounFormData((prev) => ({
         ...prev,
         article: parsed.article,
         noun: parsed.noun,
         plural: parsed.plural,
+        category: suggested || prev.category,
       }));
     } catch (err) {
       setAiError(err.message || "Failed to generate noun.");
@@ -1241,11 +1638,18 @@ export default function NounsPage({
       normalize(item.noun).includes(q) ||
       normalize(item.plural).includes(q) ||
       normalize(item.meaning).includes(q) ||
-      normalize(item.article).includes(q);
+      normalize(item.article).includes(q) ||
+      normalize(item.category).includes(q);
     const matchesArt = articleFilter === "all" || item.article === articleFilter;
     const itemStatus = item.status || "In Progress";
     const matchesStatus = nounStatusFilter === "all" || itemStatus === nounStatusFilter;
-    return matchesSearch && matchesArt && matchesStatus && matchesDateFilter(item.createdAt, dateFilter, customDate);
+    return (
+      matchesSearch &&
+      matchesArt &&
+      matchesStatus &&
+      matchesCategory(item, categoryFilter) &&
+      matchesDateFilter(item.createdAt, dateFilter, customDate)
+    );
   });
 
   const nounsMastered = list.filter((i) => i.status === "Mastered").length;
@@ -1255,7 +1659,10 @@ export default function NounsPage({
   const openAddModal = () => {
     setEditingNounId(null);
     setAiError("");
-    setNounFormData(EMPTY_FORM);
+    // Pre-select the category currently being viewed so new words land in it
+    const presetCategory =
+      categoryFilter !== "all" && categoryFilter !== UNCATEGORIZED ? categoryFilter : "";
+    setNounFormData({ ...EMPTY_FORM, category: presetCategory });
     setModalOpen(true);
   };
 
@@ -1268,6 +1675,7 @@ export default function NounsPage({
       article: item.article,
       meaning: item.meaning,
       status: item.status || "In Progress",
+      category: item.category || "",
     });
     setModalOpen(true);
   };
@@ -1294,21 +1702,25 @@ export default function NounsPage({
     }
 
     const gender = GENDER_MAP[nounFormData.article] || "";
+    const category = addCategory(nounFormData.category);
     const isEditing = Boolean(editingNounId);
     let updated;
 
     if (isEditing) {
       updated = list.map((item) =>
-        item.id === editingNounId ? { ...item, ...nounFormData, noun: cleanNoun, gender } : item
+        item.id === editingNounId
+          ? { ...item, ...nounFormData, noun: cleanNoun, gender, category }
+          : item
       );
     } else {
       updated = [
         ...list,
         {
-          id: Date.now(),
+          id: makeId(),
           ...nounFormData,
           noun: cleanNoun,
           gender,
+          category,
           createdAt: new Date().toISOString(),
         },
       ];
@@ -1612,271 +2024,510 @@ export default function NounsPage({
             </div>
           </div>
 
-          <div className="toolbar">
-            <div className="search">
-              <span>🔍</span>
-              <input
-                type="search"
-                placeholder="Search noun, plural, or meaning..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
+          {/* Tabs: Words | Categories */}
+          <div style={{ display: "flex", gap: 8, margin: "4px 0 12px", flexWrap: "wrap" }}>
+            {[
+              { id: "words", label: `📝 Words (${list.length})` },
+              { id: "categories", label: `📂 Categories (${allCategories.length})` },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => (t.id === "categories" ? openCategoriesTab() : setListTab("words"))}
+                className="btn btn-secondary"
+                style={{
+                  height: 40,
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  ...(listTab === t.id
+                    ? {
+                        background: "var(--brand, #b85c19)",
+                        color: "#ffffff",
+                        borderColor: "var(--brand, #b85c19)",
+                      }
+                    : {}),
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-            <div
-              className="filters-cluster"
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                flexWrap: "nowrap",
-                alignItems: "center",
-                gap: "8px",
-                width: "100%",
-                maxWidth: "100%",
-                overflowX: "auto",
-                overflowY: "hidden",
-                WebkitOverflowScrolling: "touch",
-                padding: "4px 2px 8px 2px",
-              }}
-            >
-              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                <CustomDropdown
-                  icon="👤"
-                  value={articleFilter}
-                  options={GENDER_OPTIONS}
-                  onChange={(val) => setArticleFilter(val)}
-                />
-              </div>
-
-              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                <CustomDropdown
-                  icon="📌"
-                  value={nounStatusFilter}
-                  options={STATUS_FILTER_OPTIONS}
-                  onChange={(val) => setNounStatusFilter(val)}
-                />
-              </div>
-
-              <div style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
-                <CustomDropdown
-                  icon="📅"
-                  value={dateFilter}
-                  options={QUIZ_DATE_DROPDOWN_OPTIONS}
-                  onChange={(val) => setDateFilter(val)}
-                />
-                {dateFilter === "specific" && (
-                  <RealCalendarPicker
-                    selectedDate={customDate}
-                    onSelectDate={(date) => setCustomDate(date)}
+          {listTab === "words" && (
+            <>
+              <div className="toolbar">
+                <div className="search">
+                  <span>🔍</span>
+                  <input
+                    type="search"
+                    placeholder="Search noun, plural, meaning, or category..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
                   />
+                </div>
+
+                <div
+                  className="filters-cluster"
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    flexWrap: "nowrap",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    maxWidth: "100%",
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    WebkitOverflowScrolling: "touch",
+                    padding: "4px 2px 8px 2px",
+                  }}
+                >
+                  <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                    <CustomDropdown
+                      icon="👤"
+                      value={articleFilter}
+                      options={GENDER_OPTIONS}
+                      onChange={(val) => setArticleFilter(val)}
+                    />
+                  </div>
+
+                  <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                    <CustomDropdown
+                      icon="📌"
+                      value={nounStatusFilter}
+                      options={STATUS_FILTER_OPTIONS}
+                      onChange={(val) => setNounStatusFilter(val)}
+                    />
+                  </div>
+
+                  <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                    <SearchableDropdown
+                      icon="📁"
+                      value={categoryFilter}
+                      options={categoryFilterOptions}
+                      onChange={(val) => setCategoryFilter(val)}
+                      placeholder="All Categories"
+                      searchPlaceholder="Search categories..."
+                    />
+                  </div>
+
+                  <div style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
+                    <CustomDropdown
+                      icon="📅"
+                      value={dateFilter}
+                      options={QUIZ_DATE_DROPDOWN_OPTIONS}
+                      onChange={(val) => setDateFilter(val)}
+                    />
+                    {dateFilter === "specific" && (
+                      <RealCalendarPicker
+                        selectedDate={customDate}
+                        onSelectDate={(date) => setCustomDate(date)}
+                      />
+                    )}
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: "none" }}
+                    accept=".xlsx, .xls, .csv"
+                    onChange={importFromExcel}
+                  />
+
+                  <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                    <CustomDropdown
+                      icon="📊"
+                      value=""
+                      options={EXCEL_ACTIONS}
+                      onChange={(val) => {
+                        if (val === "import") handleImportButtonClick();
+                        if (val === "export") exportToExcel();
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openCategoriesTab}
+                    className="btn btn-secondary"
+                    title="Create, rename or delete categories"
+                    style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+                  >
+                    📂 Categories
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleShuffleList}
+                    className="btn btn-secondary"
+                    title="Shuffle noun list order"
+                    style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+                  >
+                    🔀 Shuffle
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleHourlyNotifications}
+                    className="btn btn-secondary"
+                    title="Toggle Hourly Word Notification"
+                    style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+                  >
+                    {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleTestNotification}
+                    className="btn btn-secondary"
+                    title="Send a word notification now"
+                    style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+                  >
+                    📨 Notify Now
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setGoalModalOpen(true)}
+                    className="btn btn-secondary"
+                    title="Configure Daily & Weekly Goals"
+                    style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+                  >
+                    🎯 Goals
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playDangerSound();
+                      setResetModalOpen(true);
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      flexShrink: 0,
+                      whiteSpace: "nowrap",
+                      color: "#dc2626",
+                      borderColor: "#fca5a5",
+                      backgroundColor: "#fef2f2",
+                    }}
+                    title="Reset all nouns"
+                  >
+                    🔄 Reset
+                  </button>
+                </div>
+              </div>
+
+              {/* Active category filter bar (click a chip in the list to get here) */}
+              {categoryFilter !== "all" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    margin: "4px 0 10px",
+                    fontSize: 13.5,
+                    color: "var(--muted)",
+                  }}
+                >
+                  <span>Showing category:</span>
+                  {categoryFilter === UNCATEGORIZED ? (
+                    <span
+                      style={{
+                        padding: "2px 10px",
+                        borderRadius: 999,
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: "#4b5563",
+                        backgroundColor: "#f3f4f6",
+                        border: "1px solid #e5e7eb",
+                      }}
+                    >
+                      Uncategorized
+                    </span>
+                  ) : (
+                    <CategoryChip name={categoryFilter} />
+                  )}
+                  <strong style={{ color: "var(--ink)" }}>
+                    {filteredNouns.length} word{filteredNouns.length === 1 ? "" : "s"}
+                  </strong>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ height: 30, padding: "0 10px", fontSize: 12.5 }}
+                    onClick={() => setCategoryFilter("all")}
+                  >
+                    ✕ Clear
+                  </button>
+                </div>
+              )}
+
+              {filteredNouns.length === 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "48px 20px",
+                    background: "var(--card)",
+                    borderRadius: "14px",
+                    border: "1px dashed var(--line-2)",
+                    textAlign: "center",
+                    marginTop: "8px",
+                  }}
+                >
+                  <img
+                    src={noDataImg}
+                    alt="No Data Found"
+                    style={{
+                      width: "200px",
+                      maxWidth: "80%",
+                      height: "auto",
+                      objectFit: "contain",
+                      marginBottom: "16px",
+                      opacity: 0.9,
+                    }}
+                  />
+                  <h3 style={{ margin: "0 0 8px", fontSize: 19, fontWeight: 700, color: "var(--ink)" }}>
+                    No Nouns Found
+                  </h3>
+                  <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)", maxWidth: "340px", lineHeight: 1.5 }}>
+                    {listHasFilters
+                      ? "We couldn't find any nouns matching your current filters. Try changing or clearing them."
+                      : "You haven't added any nouns yet. Add your first German word to get started!"}
+                  </p>
+                  {listHasFilters ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ marginTop: "16px" }}
+                      onClick={clearListFilters}
+                    >
+                      Clear Filters
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ marginTop: "16px" }}
+                      onClick={openAddModal}
+                    >
+                      + Add First Noun
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="list">
+                  <div className="list-head nouns-head">
+                    <span style={{ textAlign: "center" }}>#</span>
+                    <span>ARTICLE</span>
+                    <span>GERMAN NOUN</span>
+                    <span>PLURAL (DIE)</span>
+                    <span>ENGLISH MEANING</span>
+                    <span>STATUS</span>
+                    <span style={{ textAlign: "right" }}>ACTIONS</span>
+                  </div>
+                  {filteredNouns.map((item, index) => (
+                    <div className={`row noun-row ${item.article}`} key={item.id}>
+                      <div className="c-idx">{index + 1}</div>
+                      <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span></div>
+                      <div className="c-noun">
+                        <div className="noun-wrap">
+                          <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
+                          <span className="gender">({item.gender})</span>
+                        </div>
+                        {item.category && (
+                          <div style={{ marginTop: 5 }}>
+                            <CategoryChip name={item.category} onClick={(name) => setCategoryFilter(name)} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="c-plural">{item.plural || "—"}</div>
+                      <div className="c-mean">{item.meaning}</div>
+                      <div className="c-status">
+                        <button
+                          onClick={() => toggleStatus(item.id)}
+                          className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
+                          style={
+                            item.status === "Forgot"
+                              ? { color: "#b91c1c", backgroundColor: "#fee2e2", borderColor: "#fca5a5" }
+                              : undefined
+                          }
+                          title={item.status === "Forgot" ? "Set automatically after a wrong quiz answer. Click to mark Mastered again." : undefined}
+                        >
+                          {item.status === "Mastered"
+                            ? "✔ Mastered"
+                            : item.status === "Forgot"
+                            ? "⚠ Forgot"
+                            : "☐ In Progress"}
+                        </button>
+                      </div>
+                      <div className="actions">
+                        <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
+                        <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
+                        <button
+                          onClick={() =>
+                            onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
+                              onCommitNouns?.(list.filter((i) => i.id !== item.id))
+                            )
+                          }
+                          className="icon-btn"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 📂 Categories tab */}
+          {listTab === "categories" && (
+            <div className="panel" style={{ maxWidth: 560 }}>
+              <form
+                onSubmit={handleAddCategoryFromManager}
+                style={{ display: "flex", gap: 8, marginBottom: 10 }}
+              >
+                <input
+                  className="modal-input"
+                  style={{ flex: 1 }}
+                  type="text"
+                  placeholder="New category (e.g. Food)"
+                  value={newCategoryName}
+                  onChange={(e) => {
+                    setNewCategoryName(e.target.value);
+                    setCategoryError("");
+                  }}
+                />
+                <button type="submit" className="btn btn-primary" disabled={!newCategoryName.trim()}>
+                  Add
+                </button>
+              </form>
+
+              {categoryError && (
+                <p style={{ color: "#dc2626", fontSize: 13, margin: "0 0 10px", fontWeight: 600 }}>
+                  ⚠ {categoryError}
+                </p>
+              )}
+
+              <div
+                style={{
+                  border: "1px solid var(--line-2, #ebdccb)",
+                  borderRadius: 12,
+                }}
+              >
+                {allCategories.length === 0 ? (
+                  <p style={{ margin: 0, padding: "18px 14px", color: "var(--muted)", fontSize: 14, textAlign: "center" }}>
+                    No categories yet. Add your first one above.
+                  </p>
+                ) : (
+                  allCategories.map((cat, i) => {
+                    const count = countForCategory(cat);
+                    const isRenaming = renamingCategory !== null && sameCategory(renamingCategory, cat);
+
+                    return (
+                      <div
+                        key={cat}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 12px",
+                          borderTop: i === 0 ? "none" : "1px solid var(--line-2, #f1e7da)",
+                        }}
+                      >
+                        {isRenaming ? (
+                          <form onSubmit={handleRenameCategory} style={{ display: "flex", gap: 6, flex: 1 }}>
+                            <input
+                              className="modal-input"
+                              style={{ flex: 1, height: 34 }}
+                              type="text"
+                              autoFocus
+                              value={renameValue}
+                              onChange={(e) => {
+                                setRenameValue(e.target.value);
+                                setCategoryError("");
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape") {
+                                  e.stopPropagation();
+                                  setRenamingCategory(null);
+                                  setCategoryError("");
+                                }
+                              }}
+                            />
+                            <button type="submit" className="btn btn-primary" style={{ height: 34, padding: "0 12px" }}>
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ height: 34, padding: "0 12px" }}
+                              onClick={() => {
+                                setRenamingCategory(null);
+                                setCategoryError("");
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                              <CategoryChip name={cat} />
+                              <span style={{ fontSize: 12.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                                {count} word{count === 1 ? "" : "s"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Show words in this category"
+                              disabled={count === 0}
+                              onClick={() => {
+                                setCategoryFilter(cat);
+                                setListTab("words");
+                              }}
+                            >
+                              👁
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Rename category"
+                              onClick={() => startRenameCategory(cat)}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Delete category"
+                              onClick={() => handleDeleteCategory(cat)}
+                            >
+                              🗑
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
-              <input
-                type="file"
-                ref={fileInputRef}
-                style={{ display: "none" }}
-                accept=".xlsx, .xls, .csv"
-                onChange={importFromExcel}
-              />
-
-              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                <CustomDropdown
-                  icon="📊"
-                  value=""
-                  options={EXCEL_ACTIONS}
-                  onChange={(val) => {
-                    if (val === "import") handleImportButtonClick();
-                    if (val === "export") exportToExcel();
-                  }}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleShuffleList}
-                className="btn btn-secondary"
-                title="Shuffle noun list order"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                🔀 Shuffle
-              </button>
-
-              <button
-                type="button"
-                onClick={handleToggleHourlyNotifications}
-                className="btn btn-secondary"
-                title="Toggle Hourly Word Notification"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleTestNotification}
-                className="btn btn-secondary"
-                title="Send a word notification now"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                📨 Notify Now
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setGoalModalOpen(true)}
-                className="btn btn-secondary"
-                title="Configure Daily & Weekly Goals"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                🎯 Goals
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  playDangerSound();
-                  setResetModalOpen(true);
-                }}
-                className="btn btn-secondary"
-                style={{
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                  color: "#dc2626",
-                  borderColor: "#fca5a5",
-                  backgroundColor: "#fef2f2",
-                }}
-                title="Reset all nouns"
-              >
-                🔄 Reset
-              </button>
-            </div>
-          </div>
-
-          {filteredNouns.length === 0 ? (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "48px 20px",
-                background: "var(--card)",
-                borderRadius: "14px",
-                border: "1px dashed var(--line-2)",
-                textAlign: "center",
-                marginTop: "8px",
-              }}
-            >
-              <img
-                src={noDataImg}
-                alt="No Data Found"
-                style={{
-                  width: "200px",
-                  maxWidth: "80%",
-                  height: "auto",
-                  objectFit: "contain",
-                  marginBottom: "16px",
-                  opacity: 0.9,
-                }}
-              />
-              <h3 style={{ margin: "0 0 8px", fontSize: "19px", fontWeight: 700, color: "var(--ink)" }}>
-                No Nouns Found
-              </h3>
-              <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)", maxWidth: "340px", lineHeight: 1.5 }}>
-                {search || articleFilter !== "all" || nounStatusFilter !== "all" || dateFilter !== "all"
-                  ? "We couldn't find any nouns matching your current filters. Try changing or clearing them."
-                  : "You haven't added any nouns yet. Add your first German word to get started!"}
+              <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--muted)" }}>
+                Deleting a category never deletes words. They simply become Uncategorized
+                ({categoryCounts.none} right now).
               </p>
-              {search || articleFilter !== "all" || nounStatusFilter !== "all" || dateFilter !== "all" ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ marginTop: "16px" }}
-                  onClick={() => {
-                    setSearch("");
-                    setArticleFilter("all");
-                    setNounStatusFilter("all");
-                    setDateFilter("all");
-                    setCustomDate("");
-                  }}
-                >
-                  Clear Filters
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  style={{ marginTop: "16px" }}
-                  onClick={openAddModal}
-                >
-                  + Add First Noun
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="list">
-              <div className="list-head nouns-head">
-                <span style={{ textAlign: "center" }}>#</span>
-                <span>ARTICLE</span>
-                <span>GERMAN NOUN</span>
-                <span>PLURAL (DIE)</span>
-                <span>ENGLISH MEANING</span>
-                <span>STATUS</span>
-                <span style={{ textAlign: "right" }}>ACTIONS</span>
-              </div>
-              {filteredNouns.map((item, index) => (
-                <div className={`row noun-row ${item.article}`} key={item.id}>
-                  <div className="c-idx">{index + 1}</div>
-                  <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span></div>
-                  <div className="c-noun">
-                    <div className="noun-wrap">
-                      <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
-                      <span className="gender">({item.gender})</span>
-                    </div>
-                  </div>
-                  <div className="c-plural">{item.plural || "—"}</div>
-                  <div className="c-mean">{item.meaning}</div>
-                  <div className="c-status">
-                    <button
-                      onClick={() => toggleStatus(item.id)}
-                      className={`status ${item.status === "Mastered" ? "done" : "todo"}`}
-                      style={
-                        item.status === "Forgot"
-                          ? { color: "#b91c1c", backgroundColor: "#fee2e2", borderColor: "#fca5a5" }
-                          : undefined
-                      }
-                      title={item.status === "Forgot" ? "Set automatically after a wrong quiz answer. Click to mark Mastered again." : undefined}
-                    >
-                      {item.status === "Mastered"
-                        ? "✔ Mastered"
-                        : item.status === "Forgot"
-                        ? "⚠ Forgot"
-                        : "☐ In Progress"}
-                    </button>
-                  </div>
-                  <div className="actions">
-                    <button onClick={() => speakGerman(`${item.article} ${item.noun}. ${item.plural || ""}`)} className="icon-btn">🔊</button>
-                    <button onClick={() => openEditModal(item)} className="icon-btn">✏️</button>
-                    <button
-                      onClick={() =>
-                        onRequestConfirm?.("Delete Noun", `Are you sure you want to delete "${item.article} ${item.noun}"?`, () =>
-                          onCommitNouns?.(list.filter((i) => i.id !== item.id))
-                        )
-                      }
-                      className="icon-btn"
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </div>
-              ))}
             </div>
           )}
         </div>
       )}
 
-      {viewMode === "list" && (
+      {viewMode === "list" && listTab === "words" && (
         <button
           onClick={openAddModal}
           className="fab-btn"
@@ -1930,6 +2581,17 @@ export default function NounsPage({
               />
             </div>
 
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <SearchableDropdown
+                icon="📁"
+                value={flashCategoryFilter}
+                options={categoryFilterOptions}
+                onChange={(val) => setFlashCategoryFilter(val)}
+                placeholder="All Categories"
+                searchPlaceholder="Search categories..."
+              />
+            </div>
+
             <div
               style={{
                 flexShrink: 0,
@@ -1974,10 +2636,7 @@ export default function NounsPage({
               🔀 Shuffle
             </button>
 
-            {(flashArticleFilter !== "all" ||
-              flashStatusFilter !== "all" ||
-              flashDateMode !== "all" ||
-              flashSpecificDate) && (
+            {flashHasFilters && (
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1989,12 +2648,7 @@ export default function NounsPage({
                   padding: "0 12px",
                   fontSize: "12.5px",
                 }}
-                onClick={() => {
-                  setFlashArticleFilter("all");
-                  setFlashStatusFilter("all");
-                  setFlashDateMode("all");
-                  setFlashSpecificDate("");
-                }}
+                onClick={clearFlashFilters}
               >
                 Clear Filters
               </button>
@@ -2072,6 +2726,12 @@ export default function NounsPage({
                 >
                   ↻
                 </button>
+
+                {nounCard.category && (
+                  <div style={{ position: "absolute", top: 12, left: 12, zIndex: 3, maxWidth: "60%" }}>
+                    <CategoryChip name={nounCard.category} />
+                  </div>
+                )}
 
                 {!cardFlipped ? (
                   <>
@@ -2160,6 +2820,17 @@ export default function NounsPage({
                     value={quizStatusFilter}
                     options={STATUS_FILTER_OPTIONS}
                     onChange={handleQuizStatusChange}
+                  />
+                </div>
+
+                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <SearchableDropdown
+                    icon="📁"
+                    value={quizCategoryFilter}
+                    options={categoryFilterOptions}
+                    onChange={handleQuizCategoryChange}
+                    placeholder="All Categories"
+                    searchPlaceholder="Search categories..."
                   />
                 </div>
 
@@ -2321,18 +2992,12 @@ export default function NounsPage({
                   )}
                 </div>
 
-                {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
+                {quizHasFilters && (
                   <button
                     type="button"
                     className="btn btn-secondary"
                     style={{ flexShrink: 0, padding: "0 12px", fontSize: "12.5px", whiteSpace: "nowrap", height: "40px", borderRadius: "12px" }}
-                    onClick={() => {
-                      setQuizStatusFilter("all");
-                      setQuizDateMode("all");
-                      setQuizSpecificDate("");
-                      setWordCountInput("");
-                      resetQuizProgress();
-                    }}
+                    onClick={clearQuizFilters}
                   >
                     Clear Filters
                   </button>
@@ -2433,19 +3098,13 @@ export default function NounsPage({
                   ? "Add nouns to start quiz."
                   : quizMode === "flashrev"
                   ? "No FlashRev words yet. Flip some flashcards, or miss a question in another quiz mode, and those words will show up here (or relax your filters)."
-                  : "No nouns match the selected status, date, or count filters."}
+                  : "No nouns match the selected status, category, date, or count filters."}
               </p>
-              {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
+              {quizHasFilters && (
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => {
-                    setQuizStatusFilter("all");
-                    setQuizDateMode("all");
-                    setQuizSpecificDate("");
-                    setWordCountInput("");
-                    resetQuizProgress();
-                  }}
+                  onClick={clearQuizFilters}
                 >
                   Reset Quiz Filters
                 </button>
@@ -2576,6 +3235,12 @@ export default function NounsPage({
               )}
 
               <div className="quiz-card">
+                {nounQuizWord.category && (
+                  <div style={{ marginBottom: 6 }}>
+                    <CategoryChip name={nounQuizWord.category} />
+                  </div>
+                )}
+
                 {effectiveMode === "article" && (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
@@ -2930,6 +3595,21 @@ export default function NounsPage({
               </div>
 
               <div>
+                <label className="modal-label">Category</label>
+                <SearchableDropdown
+                  fullWidth
+                  icon="📁"
+                  value={nounFormData.category}
+                  options={categoryFormOptions}
+                  placeholder="No category"
+                  searchPlaceholder="Search or type a new category..."
+                  allowCreate
+                  onChange={(val) => setNounFormData((p) => ({ ...p, category: val }))}
+                  onCreate={handleCreateCategoryFromForm}
+                />
+              </div>
+
+              <div>
                 <label className="modal-label">Status</label>
                 <CustomDropdown
                   fullWidth
@@ -2956,6 +3636,37 @@ export default function NounsPage({
         </div>
       )}
 
+      {/* Duplicate Category Popup */}
+      {catDupModal.open && (
+        <div
+          className="overlay"
+          style={{ zIndex: 1400 }}
+          onClick={(e) => e.target === e.currentTarget && setCatDupModal({ open: false, name: "" })}
+        >
+          <div
+            className="modal"
+            style={{
+              textAlign: "center", maxWidth: 360, padding: "24px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center",
+            }}
+          >
+            <img src={alertGif} alt="Alert" style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 16 }} />
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "var(--ink)" }}>Category Already Exists!</h3>
+            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
+              <strong>"{catDupModal.name}"</strong> is already in your categories, so it was not added.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setCatDupModal({ open: false, name: "" })}
+            >
+              Understood
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Reset Confirmation Modal */}
       {resetModalOpen && (
         <div
@@ -2974,7 +3685,7 @@ export default function NounsPage({
             <img src={warningRedGif} alt="Warning" style={{ width: 90, height: 90, objectFit: "contain", marginBottom: 16 }} />
             <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>Reset All Nouns?</h3>
             <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
-              Are you sure you want to delete all nouns? This action will permanently remove your entire vocabulary list and cannot be undone.
+              Are you sure you want to delete all nouns? This action will permanently remove your entire vocabulary list and cannot be undone. Your categories will be kept.
             </p>
             <div style={{ display: "flex", gap: 10, width: "100%" }}>
               <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setResetModalOpen(false)}>
@@ -3138,6 +3849,22 @@ export default function NounsPage({
                 <div style={{ fontSize: 12, textTransform: "uppercase", marginTop: 4, letterSpacing: 0.5 }}>Duplicates</div>
               </div>
             </div>
+            {importSummary.newCategories?.length > 0 && (
+              <div
+                style={{
+                  fontSize: 12.5, color: "#1e3a8a", backgroundColor: "#eff6ff",
+                  border: "1px solid #bfdbfe", borderRadius: 8,
+                  padding: "8px 12px", width: "100%", boxSizing: "border-box",
+                  marginBottom: 12, textAlign: "left",
+                }}
+              >
+                <strong>
+                  {importSummary.newCategories.length} new categor
+                  {importSummary.newCategories.length === 1 ? "y" : "ies"} created:
+                </strong>{" "}
+                {importSummary.newCategories.join(", ")}
+              </div>
+            )}
             {importSummary.duplicateWords.length > 0 && (
               <div
                 style={{

@@ -68,11 +68,31 @@ const genderFromArticle = (a) =>
   a === "der" ? "Masculine" : a === "die" ? "Feminine" : "Neuter";
 
 // ---------------------------------------------------------------
+// Noun category helpers (same storage key NounsPage uses)
+// ---------------------------------------------------------------
+
+const NOUN_CATEGORY_KEY = "noun_categories";
+
+const cleanCat = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+const foldCat = (s) =>
+  cleanCat(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const sameCat = (a, b) => foldCat(a) === foldCat(b);
+
+const loadStoredNounCategories = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(NOUN_CATEGORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.map(cleanCat).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+// ---------------------------------------------------------------
 // Import sheet configs
 // The GERMAN WORD is the unique key (keyOf) and is never treated as
 // a changed field. If it already exists, every other field that is
 // filled in the Excel (English meaning, example, Präteritum,
-// Partizip II, auxiliary, case, status) is updated when different.
+// Partizip II, auxiliary, case, category, status) is updated when different.
 // ---------------------------------------------------------------
 
 const GERMAN_KEY_HEADERS = ["German", "Deutsch", "Word", "Wort"];
@@ -82,11 +102,12 @@ const EXAMPLE_HEADERS = ["Example", "Examples", "Example Sentence", "Beispiel", 
 const buildImportConfigs = ({
   vocabList, verbsList, patternsList, prepsList, timeList,
   onCommitNouns, onCommitVerbs, onCommitPatterns, onCommitPreps, onCommitTimes,
+  resolveCategory,
 }) => [
   {
     id: "Nouns", label: "Nouns", sheet: "Nouns",
     list: vocabList, commit: onCommitNouns,
-    fields: ["article", "plural", "meaning", "status"],
+    fields: ["article", "plural", "meaning", "category", "status"],
     keyOf: (i) => lc(i.noun),
     display: (i) => i.noun,
     parse: (row) => {
@@ -98,6 +119,7 @@ const buildImportConfigs = ({
         article: rawArticle ? normalizeArticle(rawArticle) : "",
         plural: str(row, "Plural", "Plural (die)", "Mehrzahl"),
         meaning: str(row, ...MEANING_HEADERS),
+        category: resolveCategory(str(row, "Category", "Kategorie")),
         status: statusOf(row),
       };
     },
@@ -195,7 +217,7 @@ const buildImportConfigs = ({
 ];
 
 const FIELD_LABELS = {
-  article: "Article", plural: "Plural", meaning: "English", status: "Status",
+  article: "Article", plural: "Plural", meaning: "English", category: "Category", status: "Status",
   rule: "Rule", examples: "Examples", case: "Case", preterite: "Präteritum",
   participle: "Partizip II", auxiliary: "Auxiliary", example: "Example",
   caseType: "Case", formal: "Formal", informal: "Informal",
@@ -453,6 +475,11 @@ export default function Sidebar({
   onCommitPatterns,
   onCommitPreps,
   onCommitTimes,
+
+  // Optional: noun category list owned by the parent (same props as NounsPage).
+  // If omitted, categories are read from / saved to localStorage ("noun_categories").
+  nounCategories,
+  onCommitNounCategories,
 }) {
   const [localLang, setLocalLang] = useState(languageMode);
   const currentLang = onToggleLanguage ? languageMode : localLang;
@@ -482,13 +509,27 @@ export default function Sidebar({
 
   const versionLabel = BUILD_VERSION ? BUILD_VERSION : `v${version}`;
 
+  // All known noun categories: managed list + any category already used by a noun
+  const getKnownNounCategories = () => {
+    const known = [
+      ...(Array.isArray(nounCategories) ? nounCategories : loadStoredNounCategories()),
+    ]
+      .map(cleanCat)
+      .filter(Boolean);
+    vocabList.forEach((i) => {
+      const c = cleanCat(i.category);
+      if (c && !known.some((k) => sameCat(k, c))) known.push(c);
+    });
+    return known;
+  };
+
   // ---------------------------------------------------------------
   // Import  (parse -> confirmation page -> apply -> report)
   // ---------------------------------------------------------------
 
   const fileInputRef = useRef(null);
-  const [pending, setPending]     = useState(null); // { fileName, sheets }
-  const [report, setReport]       = useState(null); // { fileName, sheets }
+  const [pending, setPending]     = useState(null); // { fileName, sheets, newCategories }
+  const [report, setReport]       = useState(null); // { fileName, sheets, newCategories }
   const [applying, setApplying]   = useState(false);
 
   const handleImportClick = () => {
@@ -515,9 +556,24 @@ export default function Sidebar({
         return i === -1 ? null : workbook.SheetNames[i];
       };
 
+      // Reuse existing categories (case/accent-insensitive); unknown ones are collected
+      const known = getKnownNounCategories();
+      const createdCategories = [];
+      const resolveCategory = (raw) => {
+        const clean = cleanCat(raw);
+        if (!clean) return "";
+        const hit =
+          known.find((c) => sameCat(c, clean)) ||
+          createdCategories.find((c) => sameCat(c, clean));
+        if (hit) return hit;
+        createdCategories.push(clean);
+        return clean;
+      };
+
       const configs = buildImportConfigs({
         vocabList, verbsList, patternsList, prepsList, timeList,
         onCommitNouns, onCommitVerbs, onCommitPatterns, onCommitPreps, onCommitTimes,
+        resolveCategory,
       });
 
       const sheets = configs
@@ -533,7 +589,16 @@ export default function Sidebar({
         return;
       }
 
-      setPending({ fileName: file.name, sheets });
+      // Only keep new categories that a noun will actually use
+      const nounSheet = sheets.find((s) => s.id === "Nouns");
+      const newCategories = createdCategories.filter(
+        (c) =>
+          nounSheet &&
+          (nounSheet.newItems.some((i) => sameCat(i.category, c)) ||
+            nounSheet.updates.some((u) => sameCat(u.item.category, c)))
+      );
+
+      setPending({ fileName: file.name, sheets, newCategories });
       onClose?.(); // close the sidebar so the confirmation page is front and centre
     } catch (err) {
       console.error("Excel import error:", err);
@@ -547,13 +612,32 @@ export default function Sidebar({
     if (!pending || applying) return;
     setApplying(true);
     try {
+      // Save newly created categories (only after the user confirmed)
+      if (pending.newCategories?.length) {
+        const merged = [];
+        [...getKnownNounCategories(), ...pending.newCategories].forEach((c) => {
+          if (!merged.some((m) => sameCat(m, c))) merged.push(c);
+        });
+        if (onCommitNounCategories) {
+          onCommitNounCategories(merged);
+        } else {
+          try {
+            localStorage.setItem(NOUN_CATEGORY_KEY, JSON.stringify(merged));
+          } catch { /* noop */ }
+        }
+      }
+
       for (const sheet of pending.sheets) {
         const hasChanges = sheet.newItems.length || sheet.updates.length;
         if (hasChanges && typeof sheet.commit === "function") {
           await sheet.commit(sheet.finalList);
         }
       }
-      setReport({ fileName: pending.fileName, sheets: pending.sheets });
+      setReport({
+        fileName: pending.fileName,
+        sheets: pending.sheets,
+        newCategories: pending.newCategories || [],
+      });
       setPending(null);
     } catch (err) {
       console.error("Excel import apply error:", err);
@@ -580,19 +664,20 @@ export default function Sidebar({
       XLSX.utils.book_append_sheet(
         wb,
         createStyledSheet(
-          ["#", "Article", "Noun", "Plural", "Meaning", "Gender", "Status", "Date Added"],
+          ["#", "Article", "Noun", "Plural", "Meaning", "Category", "Gender", "Status", "Date Added"],
           vocabList.map((item, i) => [
             i + 1,
             item.article  || "",
             item.noun     || "",
             item.plural   || "",
             item.meaning  || "",
+            item.category || "",
             item.gender   || genderFromArticle(item.article),
             item.status   || "In Progress",
             item.createdAt || nowIso,
           ]),
-          [6, 12, 24, 24, 28, 16, 16, 22],
-          [0, 1, 5, 6]
+          [6, 12, 24, 24, 28, 22, 16, 16, 22],
+          [0, 1, 6, 7]
         ),
         "Nouns"
       );
@@ -686,7 +771,7 @@ export default function Sidebar({
     } catch (err) {
       console.error("Excel export error:", err);
       alert(
-        "Failed to export.\n\nMake sure xlsx-js-style is installed:\nnpm install xlsx-js-style"
+        "Failed to export.\n\nMake sure this is installed:\nnpm install xlsx-js-style"
       );
     }
   };
@@ -1051,6 +1136,16 @@ export default function Sidebar({
                 overwrite existing data. Nothing is saved until you confirm.
               </p>
 
+              {pending.newCategories?.length > 0 && (
+                <p className="imp-note">
+                  <strong>
+                    {pending.newCategories.length} new categor
+                    {pending.newCategories.length === 1 ? "y" : "ies"} will be created:
+                  </strong>{" "}
+                  {pending.newCategories.join(", ")}
+                </p>
+              )}
+
               {pending.sheets.map((s) => (
                 <SheetDetails key={s.id} sheet={s} showUnchanged />
               ))}
@@ -1103,6 +1198,16 @@ export default function Sidebar({
                 </div>
               </div>
 
+              {report.newCategories?.length > 0 && (
+                <p className="imp-note">
+                  <strong>
+                    {report.newCategories.length} new categor
+                    {report.newCategories.length === 1 ? "y" : "ies"} created:
+                  </strong>{" "}
+                  {report.newCategories.join(", ")}
+                </p>
+              )}
+
               {report.sheets.map((s) => (
                 <SheetDetails key={s.id} sheet={s} showUnchanged />
               ))}
@@ -1118,4 +1223,4 @@ export default function Sidebar({
       )}
     </>
   );
-}
+} 

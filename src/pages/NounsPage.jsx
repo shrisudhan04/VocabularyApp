@@ -2055,6 +2055,24 @@ export default function NounsPage({
 
           {listTab === "words" && (
             <>
+              <style>{`
+                /* Category chip placement: beside the word on web, beside the article on mobile */
+                .cat-mobile { display: none; }
+                .cat-desktop { display: inline-flex; align-items: center; }
+                .noun-row .has-cat .gender { display: none; }
+                @media (max-width: 768px) {
+                  .cat-desktop { display: none !important; }
+                  .cat-mobile { display: inline-flex; align-items: center; min-width: 0; }
+                  .noun-row .c-art.has-cat {
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                  }
+                  .noun-row .has-cat .gender { display: inline; }
+                }
+              `}</style>
               <div className="toolbar">
                 <div className="search">
                   <span>🔍</span>
@@ -2331,17 +2349,24 @@ export default function NounsPage({
                   {filteredNouns.map((item, index) => (
                     <div className={`row noun-row ${item.article}`} key={item.id}>
                       <div className="c-idx">{index + 1}</div>
-                      <div className="c-art"><span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span></div>
-                      <div className="c-noun">
+                      <div className={`c-art ${item.category ? "has-cat" : ""}`}>
+                        <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.article}</span>
+                        {item.category && (
+                          <span className="cat-mobile">
+                            <CategoryChip name={item.category} onClick={(name) => setCategoryFilter(name)} />
+                          </span>
+                        )}
+                      </div>
+                      <div className={`c-noun ${item.category ? "has-cat" : ""}`}>
                         <div className="noun-wrap">
                           <span className={`pill ${ARTICLE_CLASS[item.article]}`}>{item.noun}</span>
+                          {item.category && (
+                            <span className="cat-desktop">
+                              <CategoryChip name={item.category} onClick={(name) => setCategoryFilter(name)} />
+                            </span>
+                          )}
                           <span className="gender">({item.gender})</span>
                         </div>
-                        {item.category && (
-                          <div style={{ marginTop: 5 }}>
-                            <CategoryChip name={item.category} onClick={(name) => setCategoryFilter(name)} />
-                          </div>
-                        )}
                       </div>
                       <div className="c-plural">{item.plural || "—"}</div>
                       <div className="c-mean">{item.meaning}</div>

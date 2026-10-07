@@ -1253,10 +1253,10 @@ textarea:focus-visible {
 .quiz-opt {
   color: #fff;
   border: none;
-  padding: 14px;
+  padding: 12px;
   border-radius: 10px;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   min-height: 48px;
   background: var(--brand);
   cursor: pointer;

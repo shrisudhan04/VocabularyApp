@@ -14,8 +14,14 @@ const BUILD_COMMIT =
 // Excel helpers
 // ---------------------------------------------------------------
 
+// Lowercase, strip accents (ä -> a), drop spaces/underscores/dashes/dots/brackets/slashes
 const normalizeExcelHeader = (value) =>
-  String(value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_\-./()]+/g, "");
 
 const getExcelValue = (row, ...names) => {
   const normalizedRow = {};
@@ -49,7 +55,9 @@ const statusOf = (row) => {
 };
 
 const str = (row, ...names) => String(getExcelValue(row, ...names)).trim();
-const lc = (v) => String(v || "").trim().toLowerCase();
+
+// Unique-key normalizer: trim, collapse inner spaces, lowercase
+const lc = (v) => String(v || "").trim().replace(/\s+/g, " ").toLowerCase();
 
 const normalizeArticle = (value) => {
   const a = String(value || "").trim().toLowerCase();
@@ -61,10 +69,15 @@ const genderFromArticle = (a) =>
 
 // ---------------------------------------------------------------
 // Import sheet configs
-// Each config describes how to parse a sheet, how to identify an
-// existing entry (keyOf), which fields get updated, and defaults
-// for brand-new entries.
+// The GERMAN WORD is the unique key (keyOf) and is never treated as
+// a changed field. If it already exists, every other field that is
+// filled in the Excel (English meaning, example, Präteritum,
+// Partizip II, auxiliary, case, status) is updated when different.
 // ---------------------------------------------------------------
+
+const GERMAN_KEY_HEADERS = ["German", "Deutsch", "Word", "Wort"];
+const MEANING_HEADERS = ["Meaning", "English Meaning", "English", "Translation"];
+const EXAMPLE_HEADERS = ["Example", "Examples", "Example Sentence", "Beispiel", "Beispiele"];
 
 const buildImportConfigs = ({
   vocabList, verbsList, patternsList, prepsList, timeList,
@@ -77,14 +90,14 @@ const buildImportConfigs = ({
     keyOf: (i) => lc(i.noun),
     display: (i) => i.noun,
     parse: (row) => {
-      const noun = str(row, "Noun", "German Noun");
+      const noun = str(row, "Noun", "German Noun", "Nomen", ...GERMAN_KEY_HEADERS);
       if (!noun) return null;
-      const rawArticle = str(row, "Article");
+      const rawArticle = str(row, "Article", "Artikel");
       return {
         noun,
         article: rawArticle ? normalizeArticle(rawArticle) : "",
-        plural: str(row, "Plural", "Plural (die)"),
-        meaning: str(row, "Meaning", "English Meaning"),
+        plural: str(row, "Plural", "Plural (die)", "Mehrzahl"),
+        meaning: str(row, ...MEANING_HEADERS),
         status: statusOf(row),
       };
     },
@@ -98,13 +111,13 @@ const buildImportConfigs = ({
     keyOf: (i) => `${lc(i.article)}|${lc(i.ending)}`,
     display: (i) => `${i.article} -${i.ending}`,
     parse: (row) => {
-      const ending = str(row, "Ending", "Suffix", "Pattern");
+      const ending = str(row, "Ending", "Suffix", "Pattern", "Endung");
       if (!ending) return null;
       return {
-        article: normalizeArticle(getExcelValue(row, "Article")),
+        article: normalizeArticle(getExcelValue(row, "Article", "Artikel")),
         ending,
-        rule: str(row, "Rule", "Explanation"),
-        examples: str(row, "Examples", "Example"),
+        rule: str(row, "Rule", "Explanation", "Regel"),
+        examples: str(row, ...EXAMPLE_HEADERS),
         status: statusOf(row),
       };
     },
@@ -118,16 +131,20 @@ const buildImportConfigs = ({
     keyOf: (i) => lc(i.verb),
     display: (i) => i.verb,
     parse: (row) => {
-      const verb = str(row, "Verb");
+      const verb = str(row, "Verb", "German Verb", "Infinitiv", "Infinitive", ...GERMAN_KEY_HEADERS);
       if (!verb) return null;
       return {
         verb,
-        case: str(row, "Case"),
-        preterite: str(row, "Präteritum", "Preterite"),
-        participle: str(row, "Partizip II", "Participle"),
-        auxiliary: str(row, "Auxiliary"),
-        meaning: str(row, "Meaning"),
-        example: str(row, "Example"),
+        case: str(row, "Case", "Kasus"),
+        preterite: str(
+          row, "Präteritum", "Preterite", "Praeteritum", "Past", "Past Tense", "Simple Past"
+        ),
+        participle: str(
+          row, "Partizip II", "Partizip 2", "Participle", "Past Participle", "Perfekt", "Partizip"
+        ),
+        auxiliary: str(row, "Auxiliary", "Hilfsverb", "Aux"),
+        meaning: str(row, ...MEANING_HEADERS),
+        example: str(row, ...EXAMPLE_HEADERS),
         status: statusOf(row),
       };
     },
@@ -141,13 +158,13 @@ const buildImportConfigs = ({
     keyOf: (i) => lc(i.prep),
     display: (i) => i.prep,
     parse: (row) => {
-      const prep = str(row, "Preposition", "Prep");
+      const prep = str(row, "Preposition", "Prep", "Präposition", ...GERMAN_KEY_HEADERS);
       if (!prep) return null;
       return {
         prep,
-        caseType: str(row, "Case", "CaseType", "Required Case").toLowerCase(),
-        meaning: str(row, "Meaning", "English Meaning"),
-        example: str(row, "Example", "Example Sentence"),
+        caseType: str(row, "Case", "CaseType", "Required Case", "Kasus").toLowerCase(),
+        meaning: str(row, ...MEANING_HEADERS),
+        example: str(row, ...EXAMPLE_HEADERS),
         status: statusOf(row),
       };
     },
@@ -168,7 +185,7 @@ const buildImportConfigs = ({
         digital,
         formal: str(row, "Formal (24h)", "Formal", "Offiziell"),
         informal: str(row, "Informal (12h)", "Informal", "Umgangssprachlich"),
-        rule: str(row, "Rule / Pattern", "Rule", "Explanation"),
+        rule: str(row, "Rule / Pattern", "Rule", "Pattern", "Explanation"),
         status: statusOf(row),
       };
     },
@@ -178,7 +195,7 @@ const buildImportConfigs = ({
 ];
 
 const FIELD_LABELS = {
-  article: "Article", plural: "Plural", meaning: "Meaning", status: "Status",
+  article: "Article", plural: "Plural", meaning: "English", status: "Status",
   rule: "Rule", examples: "Examples", case: "Case", preterite: "Präteritum",
   participle: "Partizip II", auxiliary: "Auxiliary", example: "Example",
   caseType: "Case", formal: "Formal", informal: "Informal",
@@ -209,6 +226,7 @@ const planSheet = (cfg, workbook, findSheet) => {
   incomingMap.forEach((inc, key) => {
     const ex = existingMap.get(key);
 
+    // Not found by its German key -> brand-new entry
     if (!ex) {
       if (cfg.isValidNew && !cfg.isValidNew(inc)) { skipped++; return; }
       const base = cfg.defaults(inc);
@@ -224,14 +242,15 @@ const planSheet = (cfg, workbook, findSheet) => {
       return;
     }
 
-    // Existing entry -> only overwrite fields that are filled in the file and differ
+    // Same German word -> only overwrite fields that are filled in the file and differ.
+    // The key field itself (noun / verb / prep / digital) is never in cfg.fields.
     const changes = [];
     const patch = {};
     cfg.fields.forEach((f) => {
       const next = inc[f];
       if (next === undefined || next === "") return;
       const prev = ex[f] ?? "";
-      if (String(prev) !== String(next)) {
+      if (String(prev).trim() !== String(next).trim()) {
         changes.push({ field: f, from: String(prev), to: String(next) });
         patch[f] = next;
       }
@@ -1027,9 +1046,9 @@ export default function Sidebar({
               </div>
 
               <p className="imp-note">
-                Words that already exist are updated with the values from your file.
-                Empty cells in the file never overwrite existing data. Nothing is saved
-                until you confirm.
+                The German word is the unique key. Words that already exist are updated
+                with the changed values from your file. Empty cells in the file never
+                overwrite existing data. Nothing is saved until you confirm.
               </p>
 
               {pending.sheets.map((s) => (

@@ -604,7 +604,7 @@ export default function PrepositionsPage({
   const handleQuizCaseSelect = (selectedCase) => {
     if (quizFeedback !== null || !prepQuizWord) return;
 
-    const actual = prepQuizWord.caseType;
+    const actual = normalizeCase(prepQuizWord.caseType);
     const isCorrect = selectedCase === actual;
     if (isCorrect) setQuizScore((prev) => prev + 1);
 
@@ -673,7 +673,8 @@ export default function PrepositionsPage({
   const filteredFlashPool = useMemo(() => {
     return list.filter((item) => {
       const itemStatus = item.status || "In Progress";
-      const matchesCase = flashCaseFilter === "all" || item.caseType === flashCaseFilter;
+      const matchesCase =
+        flashCaseFilter === "all" || normalizeCase(item.caseType) === flashCaseFilter;
       const matchesStatus = flashStatusFilter === "all" || itemStatus === flashStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, flashDateMode, flashSpecificDate);
       return matchesCase && matchesStatus && matchesDate;
@@ -908,7 +909,7 @@ export default function PrepositionsPage({
 
     const exportData = list.map((item, index) => ({
       "#": index + 1,
-      Case: item.caseType,
+      Case: normalizeCase(item.caseType),
       Preposition: item.prep,
       Meaning: item.meaning || "",
       Example: item.example || "",
@@ -1062,13 +1063,15 @@ export default function PrepositionsPage({
       normalize(item.meaning).includes(q) ||
       normalize(item.example).includes(q) ||
       normalize(item.caseType).includes(q);
-    const matchesCase = prepFilter === "all" || item.caseType === prepFilter;
+    const matchesCase =
+      prepFilter === "all" || normalizeCase(item.caseType) === prepFilter;
     const matchesStatus = prepStatusFilter === "all" || (item.status || "In Progress") === prepStatusFilter;
     return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt, dateFilter, customDate);
   });
 
   const prepsMastered = list.filter((i) => i.status === "Mastered").length;
-  const countPrep = (c) => list.filter((i) => i.caseType === c).length;
+  const countPrep = (c) =>
+    list.filter((i) => normalizeCase(i.caseType) === c).length;
 
   const openAddModal = () => {
     setEditingPrepId(null);
@@ -1098,7 +1101,14 @@ export default function PrepositionsPage({
 
     if (isEditing) {
       updated = list.map((item) =>
-        item.id === editingPrepId ? { ...item, ...prepFormData, prep: cleanPrep } : item
+        item.id === editingPrepId
+        ? {
+            ...item,
+            ...prepFormData,
+            prep: cleanPrep,
+            caseType: normalizeCase(prepFormData.caseType),
+          }
+        : item
       );
     } else {
       updated = [
@@ -1107,6 +1117,7 @@ export default function PrepositionsPage({
           id: Date.now(),
           ...prepFormData,
           prep: cleanPrep,
+          caseType: normalizeCase(prepFormData.caseType),
           createdAt: new Date().toISOString(),
         },
       ];
@@ -1119,7 +1130,11 @@ export default function PrepositionsPage({
     setModalOpen(false);
 
     if (!reachedGoal) {
-      setSuccessWordInfo({ prep: cleanPrep, caseType: prepFormData.caseType, isEdit: isEditing });
+      setSuccessWordInfo({
+        prep: cleanPrep,
+        caseType: normalizeCase(prepFormData.caseType),
+        isEdit: isEditing,
+      });
       setSuccessModalOpen(true);
     }
   };
@@ -1552,9 +1567,9 @@ export default function PrepositionsPage({
                 <span style={{ textAlign: "right" }}>ACTIONS</span>
               </div>
               {filteredPreps.map((item, index) => (
-                <div className={`row prep-row ${item.caseType}`} key={item.id}>
+                <div className={`row prep-row ${normalizeCase(item.caseType)}`} key={item.id}>
                   <div className="c-idx">{index + 1}</div>
-                  <div className="c-case"><span className={`pill ${PREP_CASE_CLASS[item.caseType] || "bg-both"}`}>{item.caseType}</span></div>
+                  <div className="c-case"><span className={`pill ${PREP_CASE_CLASS[normalizeCase(item.caseType)] || "bg-both"}`}>{normalizeCase(item.caseType)}</span></div>
                   <div className="c-prep" style={{ fontWeight: 700 }}>{item.prep}</div>
                   <div className="c-mean">{item.meaning}</div>
                   <div className="c-eg">{item.example || "—"}</div>
@@ -1582,8 +1597,8 @@ export default function PrepositionsPage({
                         setAiError("");
                         setPrepFormData({
                           prep: item.prep,
-                          caseType: item.caseType,
-                                              meaning: item.meaning,
+                          caseType: normalizeCase(item.caseType),
+                          meaning: item.meaning,
                           example: item.example || "",
                           status: item.status || "In Progress",
                         });
@@ -1767,8 +1782,8 @@ export default function PrepositionsPage({
                   </>
                 ) : (
                   <>
-                    <span className={`pill ${PREP_CASE_CLASS[prepCard.caseType] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>
-                      {prepCard.caseType === "Wechsel" ? "Wechselpräposition" : `+ ${prepCard.caseType}`}
+                    <span className={`pill ${PREP_CASE_CLASS[normalizeCase(prepCard.caseType)] || "bg-both"}`} style={{ fontSize: 20, padding: "6px 20px" }}>
+                      {normalizeCase(prepCard.caseType) === "Wechsel" ? "Wechselpräposition" : `+ ${normalizeCase(prepCard.caseType)}`}
                     </span>
                     <h3 style={{ fontSize: 22, margin: "14px 0 6px", color: "var(--ink-2)" }}>{prepCard.meaning}</h3>
                     {prepCard.example && <p style={{ color: "var(--muted)", margin: 0, fontSize: 14, fontStyle: "italic" }}>"{prepCard.example}"</p>}

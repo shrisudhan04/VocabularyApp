@@ -355,7 +355,7 @@ function RealCalendarPicker({ selectedDate, onSelectDate }) {
           boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
         }}
       >
-        <span>🗓️️</span>
+        <span>🗓️</span>
         <span>
           {selectedDate
             ? new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, {
@@ -664,6 +664,7 @@ export default function PatternsPage({
       return ordered.flatMap((item) => Array(FLASHREV_STEPS).fill(item.id));
     }
     return ordered.map((item) => item.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasPatterns, viewMode, quizMode, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
 
   const availableQuizPool = useMemo(() => {
@@ -685,6 +686,7 @@ export default function PatternsPage({
       );
       return matchesArticle && matchesStatus && matchesDate;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
 
   const flashList = useMemo(() => {
@@ -804,6 +806,7 @@ export default function PatternsPage({
     }
 
     lastViewModeRef.current = viewMode;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
 
   useEffect(() => {
@@ -1112,7 +1115,7 @@ export default function PatternsPage({
 
       const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
-        
+
         contents: `For the German noun ending/suffix "${patternFormData.ending.trim()}", give the grammatical article it most reliably indicates (der, die, or das), a short one-sentence rule explaining the pattern (mention notable exceptions only if important), and 3 to 4 example nouns written with their article, separated by commas (e.g. "die Station, die Nation").`,
         config: {
           responseMimeType: "application/json",
@@ -1249,8 +1252,6 @@ export default function PatternsPage({
           : p
       )
     );
-
-  const patternCard = list[cardIndex];
 
   // Shuffle handlers
   const handleShuffleList = () => {
@@ -1436,7 +1437,7 @@ export default function PatternsPage({
   const handlePatternTextSubmit = (e) => {
     e?.preventDefault();
     if (quizAnswerState !== "idle" || !patternQuizWord || !quizTextInput.trim()) return;
-    const expected = effectiveMode === "examples" ? patternQuizWord.ending : patternQuizWord.ending;
+    const expected = patternQuizWord.ending;
     const ok = foldGerman(quizTextInput) === foldGerman(expected);
     if (ok) setQuizScore((prev) => prev + 1);
     setQuizFeedback(ok ? "Correct! 🎉" : `Incorrect. The correct suffix is "${expected}".`);
@@ -1460,6 +1461,7 @@ export default function PatternsPage({
     return baseStyle;
   };
 
+  const patternCard = list[cardIndex];
   const patternQuizWord = quizList[quizIndex];
   const effectiveMode = quizMode === "flashrev"
     ? getFlashRevMode(patternQuizWord, quizIndex % FLASHREV_STEPS)
@@ -2236,7 +2238,7 @@ export default function PatternsPage({
                   onClick={handleSubmitQuiz}
                   title="Submit Quiz"
                   aria-label="Submit Quiz"
-                   style={{
+                  style={{
                     width: "30px",
                     height: "30px",
                     borderRadius: "8px",
@@ -2279,27 +2281,6 @@ export default function PatternsPage({
           width: 0;
           height: 0;
         }
-                .timer-submit-mobile {
-                  width: 48px;
-                  height: 30px;
-                  border-radius: 8px;
-                  border: 1px solid #fca5a5;
-                  background: #fff;
-                  color: #dc2626;
-                  font-size: 18px;
-                  font-weight: 700;
-                  cursor: pointer;
-                  display: none;
-                  align-items: center;
-                  justify-content: center;
-                  padding: 0;
-                  margin-left: 2px;
-                  line-height: 1;
-                }
-                .timer-submit-mobile:hover {
-                  background: #fff7f7;
-                }
-
                 .quiz-submit-btn {
                   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
                   height: 45px; padding: 0 12px; border: none; border-radius: 999px;
@@ -2311,20 +2292,15 @@ export default function PatternsPage({
                 .quiz-submit-btn:active { transform: translateY(0) scale(0.97); box-shadow: 0 3px 8px rgba(180, 83, 9, 0.3); }
                 .quiz-submit-btn:focus-visible { outline: 3px solid rgba(180, 83, 9, 0.35); outline-offset: 2px; }
                 .quiz-submit-btn .quiz-submit-tick { display: inline-flex; align-items: center; justify-content: center; width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); font-size: 12px; }
-                .quiz-submit-bottom { display: flex; justify-content: center; margin-top: 28px; }
                 .quiz-submit-top { display: none; }
                 @media (max-width: 768px) {
-                  .timer-submit-mobile { display: inline-flex; }
                   .quiz-submit-top { display: none !important; }
-                  .quiz-submit-bottom { display: none !important; }
                 }
                 @media (min-width: 769px) {
                   .quiz-head.quiz-head-with-submit { display: grid !important; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
                   .quiz-head-with-submit .quiz-head-left { justify-self: start; }
                   .quiz-head-with-submit .quiz-head-right { justify-self: end; }
                   .quiz-submit-top { display: inline-flex; }
-                  .quiz-submit-bottom { display: none; }
-                  .timer-submit-mobile { display: none !important; }
                 }
                 .flashrev-dots { display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:10px; }
                 .flashrev-dot { width:8px; height:8px; border-radius:50%; background:var(--line-2,#e2e8f0); transition:background .2s ease,transform .2s ease; }
@@ -2369,9 +2345,55 @@ export default function PatternsPage({
               {effectiveMode === "article" ? (
                 <div className="quiz-opts">{["der","die","das"].map((opt)=><button key={opt} disabled={quizAnswerState!=="idle"} className={`quiz-opt ${opt}`} onClick={()=>handleArticleOptionSelect(opt)}>{opt}</button>)}</div>
               ) : (
-                <form onSubmit={handlePatternTextSubmit} style={{marginTop:18,display:"flex",flexDirection:"column",alignItems:"center",gap:12,width:"100%",maxWidth:420,marginInline:"auto"}}>
-                  <input autoFocus type="text" value={quizTextInput} disabled={quizAnswerState!=="idle"} onChange={(e)=>setQuizTextInput(e.target.value)} placeholder="Type your answer..." style={{width:"100%",height:46,borderRadius:12,border:"2px solid #ebdccb",padding:"0 14px",fontSize:16,outline:"none",textAlign:"center"}} />
-                  <button type="submit" disabled={quizAnswerState!=="idle" || !quizTextInput.trim()} className="btn btn-primary" style={{minWidth:130,justifyContent:"center"}}>Check</button>
+                <form
+                  onSubmit={handlePatternTextSubmit}
+                  style={{
+                    marginTop: 18,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 12,
+                    width: "100%",
+                    maxWidth: 420,
+                    marginInline: "auto",
+                  }}
+                >
+                  <div style={{ display: "flex", width: "100%", gap: 8 }}>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={quizTextInput}
+                      disabled={quizAnswerState !== "idle"}
+                      onChange={(e) => setQuizTextInput(e.target.value)}
+                      placeholder="Type your answer..."
+                      className="modal-input"
+                      style={{
+                        flex: 1,
+                        height: 46,
+                        fontSize: 16,
+                        fontWeight: 600,
+                        borderRadius: 12,
+                        border: "1.5px solid var(--line-2, #ebdccb)",
+                        padding: "0 14px",
+                        outline: "none",
+                        textAlign: "center",
+                        backgroundColor: "#ffffff",
+                        color: "#1f2937",
+                        WebkitTextFillColor: "#1f2937",
+                        caretColor: "#1f2937",
+                        colorScheme: "light",
+                        marginTop: 0,
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={quizAnswerState !== "idle" || !quizTextInput.trim()}
+                      className="btn btn-primary"
+                      style={{ height: 46, padding: "0 18px", borderRadius: 12 }}
+                    >
+                      Check
+                    </button>
+                  </div>
                 </form>
               )}
 
@@ -2380,10 +2402,37 @@ export default function PatternsPage({
                 {quizAnswerState==="correct" && <span style={{fontSize:12,color:"var(--muted)"}}>{quizMode==="flashrev" && quizIndex%FLASHREV_STEPS<FLASHREV_STEPS-1 ? "Next sub-question in 1 second..." : "Moving to next word in 1 second..."}</span>}
               </div>}
 
-              <div className="quiz-submit-bottom" style={{alignItems:"center",justifyContent:"center",gap:12,marginTop:16}}>
-                <button type="button" className="quiz-submit-btn" onClick={handleSubmitQuiz}><span className="quiz-submit-tick">✓</span> Submit Quiz</button>
-                {quizAnswerState === "wrong" && <button type="button" className="btn btn-primary quiz-next-symbol" autoFocus onClick={handleForwardClick} title={quizIndex<quizList.length-1?"Next question":"Finish quiz"} style={{width:45,height:45,padding:0,borderRadius:14,fontSize:30,fontWeight:800}}>&gt;</button>}
-              </div>
+              {/* Next button — shown after a wrong answer (same style as Nouns quiz) */}
+              {quizAnswerState === "wrong" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 12,
+                    marginTop: 28,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-primary quiz-next-symbol"
+                    autoFocus
+                    onClick={handleForwardClick}
+                    title={quizIndex < quizList.length - 1 ? "Next question" : "Finish quiz"}
+                    style={{
+                      width: 100,
+                      height: 45,
+                      padding: 0,
+                      borderRadius: 14,
+                      fontSize: 16,
+                      fontWeight: 600,
+                      justifyContent: "center",
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

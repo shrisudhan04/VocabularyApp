@@ -255,6 +255,7 @@ export default function SearchableDropdown({
                 fontSize: "13.5px",
                 outline: "none",
                 boxSizing: "border-box",
+                color: "#1f2937",
                 marginBottom: "6px",
               }}
             />

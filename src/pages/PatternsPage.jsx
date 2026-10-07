@@ -2359,32 +2359,33 @@ export default function PatternsPage({
                   }}
                 >
                   <div style={{ display: "flex", width: "100%", gap: 8 }}>
-                    <input
-                      autoFocus
-                      type="text"
-                      value={quizTextInput}
-                      disabled={quizAnswerState !== "idle"}
-                      onChange={(e) => setQuizTextInput(e.target.value)}
-                      placeholder="Type your answer..."
-                      className="modal-input"
-                      style={{
-                        flex: 1,
-                        height: 46,
-                        fontSize: 16,
-                        fontWeight: 600,
-                        borderRadius: 12,
-                        border: "1.5px solid var(--line-2, #ebdccb)",
-                        padding: "0 14px",
-                        outline: "none",
-                        textAlign: "center",
-                        backgroundColor: "#ffffff",
-                        color: "#1f2937",
-                        WebkitTextFillColor: "#1f2937",
-                        caretColor: "#1f2937",
-                        colorScheme: "light",
-                        marginTop: 0,
-                      }}
-                    />
+                   <input
+  autoFocus
+  type="text"
+  value={quizTextInput}
+  disabled={quizAnswerState !== "idle"}
+  onChange={(e) => setQuizTextInput(e.target.value)}
+  placeholder="Type your answer..."
+  className="modal-input quiz-answer-input"
+  style={{
+    flex: 1,
+    height: 46,
+    fontSize: 16,
+    fontWeight: 600,
+    borderRadius: 12,
+    border: "1.5px solid var(--line-2, #ebdccb)",
+    padding: "0 14px",
+    outline: "none",
+    textAlign: "center",
+    backgroundColor: "#ffffff",
+    color: "#1f2937",                 // typed text color
+    WebkitTextFillColor: "#1f2937",   // keep in sync with color
+    placeholderColor: "#9ca3af",        // placeholder text color
+    caretColor: "#1f2937",
+    colorScheme: "light",
+    marginTop: 0,
+  }}
+/>
                     <button
                       type="submit"
                       disabled={quizAnswerState !== "idle" || !quizTextInput.trim()}

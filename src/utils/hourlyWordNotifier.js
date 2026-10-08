@@ -1,68 +1,119 @@
 // src/utils/hourlyWordNotifier.js
-//
-// Native (Capacitor): hourly words are scheduled as LOCAL notifications on the phone,
-//                     so they fire with the app closed and with no internet / no server.
-// Web (browser/PWA): falls back to setInterval (works only while the tab is alive).
-//
-// Install:  npm i @capacitor/core @capacitor/app @capacitor/local-notifications
 
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
 const STORAGE_KEY = "hourlyNounNotifier";
-const MAX_SCHEDULED = 60; // iOS allows 64 pending; stay below it everywhere
+
+const MAX_SCHEDULED = 60;
 const CHANNEL_ID = "hourly-words";
 const SMALL_ICON = "ic_stat_word";
 const TEST_ID = 999999;
 
+// ============================================================
+// PLATFORM DETECTION
+// ============================================================
+
 export const isNative = () => {
   try {
+    const platform = Capacitor.getPlatform();
+
+    // Android / iOS Capacitor app
+    // MUST use LocalNotifications.
+    if (platform === "android" || platform === "ios") {
+      return true;
+    }
+
     return Capacitor.isNativePlatform();
-  } catch {
+  } catch (err) {
+    console.warn("Could not detect Capacitor platform:", err);
     return false;
   }
 };
 
-const isInProgress = (w) =>
-  String(w?.status || "")
+export const getNotificationPlatform = () => {
+  try {
+    return {
+      platform: Capacitor.getPlatform(),
+      isNative: isNative(),
+    };
+  } catch {
+    return {
+      platform: "unknown",
+      isNative: false,
+    };
+  }
+};
+
+// ============================================================
+// WORD HELPERS
+// ============================================================
+
+const isInProgress = (word) =>
+  String(word?.status || "")
     .toLowerCase()
     .replace(/[\s_-]/g, "") === "inprogress";
 
-const getId = (w) => String(w.id ?? `${w.article || ""}-${w.noun || ""}`);
+const getId = (word) =>
+  String(
+    word?.id ??
+      `${word?.article || ""}-${word?.noun || ""}`
+  );
 
-const shuffle = (arr) => {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
+const shuffle = (array) => {
+  const result = [...array];
+
+  for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+
+    [result[i], result[j]] = [result[j], result[i]];
   }
-  return a;
+
+  return result;
 };
 
-// Changes whenever an eligible word is added, removed or edited.
+// ============================================================
+// WORD SIGNATURE
+// ============================================================
+
 export const getWordsSignature = (vocabList) =>
   (vocabList || [])
     .filter(isInProgress)
-    .map((w) =>
-      [getId(w), w.article || "", w.noun || "", w.plural || "", w.meaning || ""].join("¦")
+    .map((word) =>
+      [
+        getId(word),
+        word?.article || "",
+        word?.noun || "",
+        word?.plural || "",
+        word?.meaning || "",
+      ].join("¦")
     )
     .sort()
     .join("|");
 
-// ---------------------------------------------------------------
-// Persistent rotation state
-// ---------------------------------------------------------------
+// ============================================================
+// STORAGE
+// ============================================================
 
 function loadState() {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const raw = JSON.parse(
+      localStorage.getItem(STORAGE_KEY)
+    );
+
     return {
       shown: new Set(raw?.shown || []),
       last: raw?.last || null,
-      scheduled: Array.isArray(raw?.scheduled) ? raw.scheduled : [],
+      scheduled: Array.isArray(raw?.scheduled)
+        ? raw.scheduled
+        : [],
     };
   } catch {
-    return { shown: new Set(), last: null, scheduled: [] };
+    return {
+      shown: new Set(),
+      last: null,
+      scheduled: [],
+    };
   }
 }
 
@@ -77,94 +128,218 @@ function saveState(state) {
       })
     );
   } catch {
-    // ignore storage errors
+    // Ignore storage errors.
   }
 }
 
-// Web fallback: pick one word, no repeats until every eligible word was shown.
+// ============================================================
+// PICK WORD
+// ============================================================
+
 export function pickNextWord(vocabList) {
   const eligible = (vocabList || []).filter(isInProgress);
-  if (eligible.length === 0) return null;
+
+  if (eligible.length === 0) {
+    return null;
+  }
 
   const state = loadState();
-  const eligibleIds = new Set(eligible.map(getId));
 
-  state.shown = new Set([...state.shown].filter((id) => eligibleIds.has(id)));
+  const eligibleIds = new Set(
+    eligible.map(getId)
+  );
 
-  let pool = eligible.filter((w) => !state.shown.has(getId(w)));
+  state.shown = new Set(
+    [...state.shown].filter((id) =>
+      eligibleIds.has(id)
+    )
+  );
+
+  let pool = eligible.filter(
+    (word) => !state.shown.has(getId(word))
+  );
 
   if (pool.length === 0) {
     state.shown = new Set();
+
     pool = eligible.filter(
-      (w) => eligible.length === 1 || getId(w) !== state.last
+      (word) =>
+        eligible.length === 1 ||
+        getId(word) !== state.last
     );
   }
 
-  const word = pool[Math.floor(Math.random() * pool.length)];
+  const word =
+    pool[Math.floor(Math.random() * pool.length)];
+
   state.shown.add(getId(word));
   state.last = getId(word);
+
   saveState(state);
+
   return word;
 }
 
-// ---------------------------------------------------------------
-// Permissions
-// ---------------------------------------------------------------
+// ============================================================
+// PERMISSION
+// ============================================================
 
 export async function requestMobileNotificationPermission() {
-  // Native app: Capacitor handles the Android 13+ POST_NOTIFICATIONS prompt
+  // ==========================================================
+  // ANDROID / IOS
+  // ==========================================================
+
   if (isNative()) {
     try {
-      const current = await LocalNotifications.checkPermissions();
-      if (current.display === "granted") return true;
-      if (current.display === "denied") return false;
-      const res = await LocalNotifications.requestPermissions();
-      return res.display === "granted";
-    } catch (err) {
-      console.warn("Native notification permission failed:", err);
+      console.log(
+        "[Deutschly] Using Capacitor Local Notifications:",
+        Capacitor.getPlatform()
+      );
+
+      const current =
+        await LocalNotifications.checkPermissions();
+
+      console.log(
+        "[Deutschly] Current notification permission:",
+        current
+      );
+
+      if (current.display === "granted") {
+        return true;
+      }
+
+      if (current.display === "denied") {
+        console.warn(
+          "[Deutschly] Notification permission denied."
+        );
+
+        return false;
+      }
+
+      const result =
+        await LocalNotifications.requestPermissions();
+
+      console.log(
+        "[Deutschly] Permission result:",
+        result
+      );
+
+      return result.display === "granted";
+    } catch (error) {
+      console.error(
+        "[Deutschly] Native notification permission failed:",
+        error
+      );
+
       return false;
     }
   }
 
-  if (typeof window === "undefined" || !("Notification" in window)) {
-    alert("System notifications are not supported in this browser.");
+  // ==========================================================
+  // WEB / PWA
+  // ==========================================================
+
+  if (
+    typeof window === "undefined" ||
+    !("Notification" in window)
+  ) {
+    console.warn(
+      "Web notifications are unavailable."
+    );
+
     return false;
   }
-  if (Notification.permission === "granted") return true;
-  if (Notification.permission === "denied") return false;
-  return (await Notification.requestPermission()) === "granted";
+
+  if (Notification.permission === "granted") {
+    return true;
+  }
+
+  if (Notification.permission === "denied") {
+    return false;
+  }
+
+  return (
+    (await Notification.requestPermission()) ===
+    "granted"
+  );
 }
 
-// Android 12+: exact alarms are a separate special permission. Without it the
-// hourly words still fire, but Android may delay each one by a few minutes.
-// This opens the system settings page, so call it from a button, not automatically.
+// ============================================================
+// EXACT ALARM
+// ============================================================
+
 export async function ensureExactAlarmAccess() {
-  if (!isNative() || Capacitor.getPlatform() !== "android") return true;
+  if (
+    !isNative() ||
+    Capacitor.getPlatform() !== "android"
+  ) {
+    return true;
+  }
+
   try {
-    const status = await LocalNotifications.checkExactNotificationSetting();
-    if (status.exact_alarm === "granted") return true;
-    const res = await LocalNotifications.changeExactNotificationSetting();
-    return res.exact_alarm === "granted";
-  } catch (err) {
-    console.warn("Exact alarm setting failed:", err);
+    const status =
+      await LocalNotifications.checkExactNotificationSetting();
+
+    console.log(
+      "[Deutschly] Exact alarm status:",
+      status
+    );
+
+    if (status.exact_alarm === "granted") {
+      return true;
+    }
+
+    const result =
+      await LocalNotifications.changeExactNotificationSetting();
+
+    console.log(
+      "[Deutschly] Exact alarm result:",
+      result
+    );
+
+    return result.exact_alarm === "granted";
+  } catch (error) {
+    console.warn(
+      "[Deutschly] Exact alarm setting failed:",
+      error
+    );
+
     return false;
   }
 }
 
-// ---------------------------------------------------------------
-// Native (Capacitor) local notifications
-// ---------------------------------------------------------------
+// ============================================================
+// NOTIFICATION CONTENT
+// ============================================================
 
-const wordTitle = (w) =>
-  `${w.article || ""} ${w.noun || ""}`.trim() || "Word of the Hour";
+const wordTitle = (word) =>
+  `${word?.article || ""} ${word?.noun || ""}`.trim() ||
+  "Word of the Hour";
 
-// "Plural: Äpfel · apple"
-const wordBody = (w) =>
-  [w.plural ? `Plural: ${w.plural}` : "", w.meaning || ""]
+const wordBody = (word) =>
+  [
+    word?.plural
+      ? `Plural: ${word.plural}`
+      : "",
+    word?.meaning || "",
+  ]
     .filter(Boolean)
-    .join(" · ") || "Open deutschly to review this word";
+    .join(" · ") ||
+  "Open Deutschly to review this word";
+
+// ============================================================
+// ANDROID CHANNEL
+// ============================================================
 
 async function ensureAndroidChannel() {
+  if (!isNative()) {
+    return;
+  }
+
+  if (Capacitor.getPlatform() !== "android") {
+    return;
+  }
+
   try {
     await LocalNotifications.createChannel({
       id: CHANNEL_ID,
@@ -174,112 +349,277 @@ async function ensureAndroidChannel() {
       visibility: 1,
       vibration: true,
     });
-  } catch {
-    // createChannel is Android-only; ignore elsewhere
+  } catch (error) {
+    console.warn(
+      "[Deutschly] Could not create notification channel:",
+      error
+    );
   }
 }
+
+// ============================================================
+// CANCEL
+// ============================================================
 
 async function cancelAllPending() {
   try {
-    const pending = await LocalNotifications.getPending();
-    if (pending.notifications.length) {
-      await LocalNotifications.cancel({ notifications: pending.notifications });
+    const pending =
+      await LocalNotifications.getPending();
+
+    if (
+      pending?.notifications &&
+      pending.notifications.length > 0
+    ) {
+      await LocalNotifications.cancel({
+        notifications: pending.notifications,
+      });
     }
-  } catch (err) {
-    console.warn("Could not cancel pending notifications:", err);
+  } catch (error) {
+    console.warn(
+      "[Deutschly] Could not cancel pending notifications:",
+      error
+    );
   }
 }
 
-// Run schedule/cancel operations one at a time so overlapping triggers
-// (app resume + list change + toggle) can never interleave.
+// ============================================================
+// SERIAL QUEUE
+// ============================================================
+
 let chain = Promise.resolve();
+
 const serial = (fn) => {
   const run = chain.then(fn);
+
   chain = run.catch(() => {});
+
   return run;
 };
 
-const clampHour = (h, fallback) =>
-  Number.isFinite(h) ? Math.min(23, Math.max(0, Math.floor(h))) : fallback;
+// ============================================================
+// TIME HELPERS
+// ============================================================
 
-// startHour..endHour is inclusive. If startHour > endHour the window wraps midnight.
-const isQuietHour = (h, startHour, endHour) =>
+const clampHour = (hour, fallback) =>
+  Number.isFinite(hour)
+    ? Math.min(
+        23,
+        Math.max(0, Math.floor(hour))
+      )
+    : fallback;
+
+const isQuietHour = (
+  hour,
+  startHour,
+  endHour
+) =>
   startHour <= endHour
-    ? h < startHour || h > endHour
-    : h > endHour && h < startHour;
+    ? hour < startHour ||
+      hour > endHour
+    : hour > endHour &&
+      hour < startHour;
 
-// Words whose notification time has already passed count as "shown".
-function syncStateWithFired(state, eligible) {
+// ============================================================
+// STATE
+// ============================================================
+
+function syncStateWithFired(
+  state,
+  eligible
+) {
   const now = Date.now();
-  const eligibleIds = new Set(eligible.map(getId));
 
-  for (const s of state.scheduled) {
-    if (s.at <= now && eligibleIds.has(s.id)) {
-      state.shown.add(s.id);
-      state.last = s.id;
+  const eligibleIds = new Set(
+    eligible.map(getId)
+  );
+
+  for (const item of state.scheduled) {
+    if (
+      item.at <= now &&
+      eligibleIds.has(item.id)
+    ) {
+      state.shown.add(item.id);
+      state.last = item.id;
     }
   }
-  state.scheduled = [];
-  state.shown = new Set([...state.shown].filter((id) => eligibleIds.has(id)));
 
-  if (eligible.length > 0 && state.shown.size >= eligible.length) {
-    state.shown = new Set(); // everything was shown -> start a new cycle
+  state.scheduled = [];
+
+  state.shown = new Set(
+    [...state.shown].filter((id) =>
+      eligibleIds.has(id)
+    )
+  );
+
+  if (
+    eligible.length > 0 &&
+    state.shown.size >= eligible.length
+  ) {
+    state.shown = new Set();
   }
 }
 
-// Not-yet-shown words first, then the rest. No back-to-back repeats,
-// including across the start of the sequence and each wrap-around.
-function buildWordSequence(eligible, state, count) {
-  if (eligible.length === 0 || count <= 0) return [];
+// ============================================================
+// BUILD WORD SEQUENCE
+// ============================================================
 
-  const fresh = shuffle(eligible.filter((w) => !state.shown.has(getId(w))));
-  const seen = shuffle(eligible.filter((w) => state.shown.has(getId(w))));
+function buildWordSequence(
+  eligible,
+  state,
+  count
+) {
+  if (
+    eligible.length === 0 ||
+    count <= 0
+  ) {
+    return [];
+  }
 
-  let round = [...fresh, ...seen];
-  if (round.length > 1 && getId(round[0]) === state.last) {
-    round = [...round.slice(1), round[0]];
+  const fresh = shuffle(
+    eligible.filter(
+      (word) =>
+        !state.shown.has(getId(word))
+    )
+  );
+
+  const seen = shuffle(
+    eligible.filter(
+      (word) =>
+        state.shown.has(getId(word))
+    )
+  );
+
+  let round = [
+    ...fresh,
+    ...seen,
+  ];
+
+  if (
+    round.length > 1 &&
+    getId(round[0]) === state.last
+  ) {
+    round = [
+      ...round.slice(1),
+      round[0],
+    ];
   }
 
   const sequence = [];
+
   while (sequence.length < count) {
-    for (const w of round) {
-      if (sequence.length >= count) break;
-      sequence.push(w);
+    for (const word of round) {
+      if (sequence.length >= count) {
+        break;
+      }
+
+      sequence.push(word);
     }
-    const prevId = getId(sequence[sequence.length - 1]);
+
+    const previousId =
+      getId(
+        sequence[sequence.length - 1]
+      );
+
     round = shuffle(eligible);
-    if (round.length > 1 && getId(round[0]) === prevId) {
-      [round[0], round[1]] = [round[1], round[0]];
+
+    if (
+      round.length > 1 &&
+      getId(round[0]) === previousId
+    ) {
+      [
+        round[0],
+        round[1],
+      ] = [
+        round[1],
+        round[0],
+      ];
     }
   }
+
   return sequence;
 }
 
-async function doSchedule(vocabList, startHour, endHour) {
-  if (!(await requestMobileNotificationPermission())) return false;
+// ============================================================
+// SCHEDULE NATIVE NOTIFICATIONS
+// ============================================================
+
+async function doSchedule(
+  vocabList,
+  startHour,
+  endHour
+) {
+  console.log(
+    "[Deutschly] Scheduling native notifications..."
+  );
+
+  console.log(
+    "[Deutschly] Platform:",
+    Capacitor.getPlatform()
+  );
+
+  if (
+    !(await requestMobileNotificationPermission())
+  ) {
+    console.warn(
+      "[Deutschly] Notification permission not granted."
+    );
+
+    return false;
+  }
 
   await ensureAndroidChannel();
+
   await cancelAllPending();
 
-  const eligible = (vocabList || []).filter(isInProgress);
+  const eligible =
+    (vocabList || []).filter(
+      isInProgress
+    );
+
   const state = loadState();
-  syncStateWithFired(state, eligible);
+
+  syncStateWithFired(
+    state,
+    eligible
+  );
 
   if (eligible.length === 0) {
     saveState(state);
     return false;
   }
 
-  // Next full hours that are not in quiet hours
+  // Start from the next full hour.
   const slots = [];
-  const t = new Date();
-  t.setMinutes(0, 0, 0);
+
+  const time = new Date();
+
+  time.setMinutes(0, 0, 0);
+
   let guard = 0;
-  while (slots.length < MAX_SCHEDULED && guard < 24 * 14) {
+
+  while (
+    slots.length < MAX_SCHEDULED &&
+    guard < 24 * 14
+  ) {
     guard++;
-    t.setHours(t.getHours() + 1);
-    if (isQuietHour(t.getHours(), startHour, endHour)) continue;
-    slots.push(new Date(t));
+
+    time.setHours(
+      time.getHours() + 1
+    );
+
+    if (
+      isQuietHour(
+        time.getHours(),
+        startHour,
+        endHour
+      )
+    ) {
+      continue;
+    }
+
+    slots.push(
+      new Date(time)
+    );
   }
 
   if (slots.length === 0) {
@@ -287,218 +627,355 @@ async function doSchedule(vocabList, startHour, endHour) {
     return false;
   }
 
-  const words = buildWordSequence(eligible, state, slots.length);
+  const words =
+    buildWordSequence(
+      eligible,
+      state,
+      slots.length
+    );
 
-  const notifications = slots.map((at, i) => ({
-    id: i + 1,
-    title: wordTitle(words[i]),
-    body: wordBody(words[i]),
-    channelId: CHANNEL_ID,
-    smallIcon: SMALL_ICON,
-    extra: { wordId: getId(words[i]) },
-    schedule: { at, allowWhileIdle: true },
-  }));
+  const notifications =
+    slots.map(
+      (at, index) => ({
+        id: index + 1,
 
-  await LocalNotifications.schedule({ notifications });
+        title: wordTitle(
+          words[index]
+        ),
 
-  state.scheduled = slots.map((at, i) => ({
-    id: getId(words[i]),
-    at: at.getTime(),
-  }));
+        body: wordBody(
+          words[index]
+        ),
+
+        channelId:
+          CHANNEL_ID,
+
+        smallIcon:
+          SMALL_ICON,
+
+        extra: {
+          wordId:
+            getId(words[index]),
+        },
+
+        schedule: {
+          at,
+          allowWhileIdle: true,
+        },
+      })
+    );
+
+  console.log(
+    "[Deutschly] Scheduling",
+    notifications.length,
+    "native notifications."
+  );
+
+  await LocalNotifications.schedule({
+    notifications,
+  });
+
+  state.scheduled =
+    slots.map(
+      (at, index) => ({
+        id: getId(
+          words[index]
+        ),
+        at: at.getTime(),
+      })
+    );
+
   saveState(state);
+
   return true;
 }
 
-// Cancels everything pending and schedules up to 60 future hourly words.
-// Safe to call as often as you like (app open, list change, toggle).
+// ============================================================
+// PUBLIC SCHEDULER
+// ============================================================
+
 export function scheduleHourlyWords(
   vocabList,
-  { startHour = 8, endHour = 22 } = {}
+  {
+    startHour = 8,
+    endHour = 22,
+  } = {}
 ) {
-  if (!isNative()) return Promise.resolve(false);
-  const start = clampHour(startHour, 8);
-  const end = clampHour(endHour, 22);
-  return serial(() => doSchedule(vocabList, start, end));
+  if (!isNative()) {
+    console.warn(
+      "[Deutschly] scheduleHourlyWords called on web."
+    );
+
+    return Promise.resolve(false);
+  }
+
+  const start =
+    clampHour(startHour, 8);
+
+  const end =
+    clampHour(endHour, 22);
+
+  return serial(() =>
+    doSchedule(
+      vocabList,
+      start,
+      end
+    )
+  );
 }
 
+// ============================================================
+// STOP NOTIFICATIONS
+// ============================================================
+
 export function cancelHourlyWords() {
-  if (!isNative()) return Promise.resolve();
+  if (!isNative()) {
+    return Promise.resolve();
+  }
+
   return serial(async () => {
     await cancelAllPending();
+
     const state = loadState();
+
     state.scheduled = [];
+
     saveState(state);
+
+    console.log(
+      "[Deutschly] Hourly notifications cancelled."
+    );
   });
 }
 
-// Fires one real notification after `seconds`, for testing with the app closed.
-export async function scheduleTestNotification(word, seconds = 60) {
-  if (!isNative() || !word) return false;
-  if (!(await requestMobileNotificationPermission())) return false;
+// ============================================================
+// TEST NOTIFICATION
+// ============================================================
+
+export async function scheduleTestNotification(
+  word = {
+    article: "der",
+    noun: "Tisch",
+    plural: "Tische",
+    meaning: "table",
+  },
+  seconds = 10
+) {
+  if (!isNative()) {
+    console.warn(
+      "[Deutschly] Test notification requires Android/iOS."
+    );
+
+    return false;
+  }
+
+  if (
+    !(await requestMobileNotificationPermission())
+  ) {
+    return false;
+  }
+
   await ensureAndroidChannel();
+
+  console.log(
+    `[Deutschly] Test notification scheduled in ${seconds} seconds.`
+  );
+
   await LocalNotifications.schedule({
     notifications: [
       {
         id: TEST_ID,
+
         title: wordTitle(word),
+
         body: wordBody(word),
-        channelId: CHANNEL_ID,
-        smallIcon: SMALL_ICON,
+
+        channelId:
+          CHANNEL_ID,
+
+        smallIcon:
+          SMALL_ICON,
+
         schedule: {
-          at: new Date(Date.now() + seconds * 1000),
+          at: new Date(
+            Date.now() +
+              seconds * 1000
+          ),
+
           allowWhileIdle: true,
         },
       },
     ],
   });
+
   return true;
 }
 
-// ---------------------------------------------------------------
-// Web notification (image banner drawn with Poppins)
-// ---------------------------------------------------------------
+// ============================================================
+// IMMEDIATE NOTIFICATION
+// ============================================================
 
-function createPoppinsNotificationImage(nounItem) {
-  const W = 600;
-  const H = 180;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(0, 0, W, H, 24);
-  } else {
-    ctx.rect(0, 0, W, H);
-  }
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-
-  ctx.strokeStyle = "#ede5d8";
-  ctx.lineWidth = 4;
-  ctx.stroke();
-
-  const article = nounItem.article || "";
-  const noun = nounItem.noun || "";
-  ctx.fillStyle = "#b45309";
-  ctx.font = "800 38px 'Poppins', sans-serif";
-  ctx.fillText(`${article} ${noun}`.trim(), 32, 68);
-
-  ctx.fillStyle = "#44403c";
-  ctx.font = "600 20px 'Poppins', sans-serif";
-  ctx.fillText(`Meaning: ${nounItem.meaning || "—"}`, 32, 116);
-
-  ctx.fillStyle = "#78716c";
-  ctx.font = "500 16px 'Poppins', sans-serif";
-  ctx.fillText(`Plural: ${nounItem.plural || "—"}`, 32, 150);
-
-  return canvas.toDataURL("image/png");
-}
-
-export async function sendNounNotification(nounItem) {
-  if (!nounItem) return;
-
-  // Native app: show a local notification right away
-  if (isNative()) {
-    try {
-      if (!(await requestMobileNotificationPermission())) return;
-      await ensureAndroidChannel();
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: 100000 + Math.floor(Math.random() * 100000),
-            title: wordTitle(nounItem),
-            body: wordBody(nounItem),
-            channelId: CHANNEL_ID,
-            smallIcon: SMALL_ICON,
-            schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true },
-          },
-        ],
-      });
-    } catch (err) {
-      console.warn("Native notification failed:", err);
-    }
+export async function sendNounNotification(
+  nounItem
+) {
+  if (!nounItem) {
     return;
   }
 
-  if (typeof window === "undefined" || !("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
-
-  try {
-    await Promise.all([
-      document.fonts.load("800 38px 'Poppins'"),
-      document.fonts.load("600 20px 'Poppins'"),
-      document.fonts.load("500 16px 'Poppins'"),
-    ]);
-  } catch {
-    // fall back to sans-serif
-  }
-
-  const imageBanner = createPoppinsNotificationImage(nounItem);
-  const title = "Word of the Hour";
-
-  const options = {
-    image: imageBanner,
-    icon: "/icons.svg",
-    badge: "/apple-touch-icon.png",
-    vibrate: [150, 80, 150],
-    tag: "hourly-german-noun",
-    renotify: true,
-  };
-
-  if ("serviceWorker" in navigator) {
+  // Android / iOS
+  if (isNative()) {
     try {
-      const registration = await navigator.serviceWorker.getRegistration();
-      if (registration) {
-        await registration.showNotification(title, options);
+      if (
+        !(await requestMobileNotificationPermission())
+      ) {
         return;
       }
-    } catch (err) {
-      console.warn("ServiceWorker notification failed:", err);
+
+      await ensureAndroidChannel();
+
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id:
+              100000 +
+              Math.floor(
+                Math.random() *
+                  100000
+              ),
+
+            title:
+              wordTitle(nounItem),
+
+            body:
+              wordBody(nounItem),
+
+            channelId:
+              CHANNEL_ID,
+
+            smallIcon:
+              SMALL_ICON,
+
+            schedule: {
+              at: new Date(
+                Date.now() + 1000
+              ),
+
+              allowWhileIdle: true,
+            },
+          },
+        ],
+      });
+
+      return;
+    } catch (error) {
+      console.error(
+        "[Deutschly] Native notification failed:",
+        error
+      );
+
+      return;
     }
   }
 
+  // ==========================================================
+  // WEB ONLY
+  // ==========================================================
+
+  if (
+    typeof window === "undefined" ||
+    !("Notification" in window)
+  ) {
+    return;
+  }
+
+  if (
+    Notification.permission !==
+    "granted"
+  ) {
+    return;
+  }
+
   try {
-    new Notification(title, options);
-  } catch (err) {
-    console.warn("Standard notification failed:", err);
+    new Notification(
+      "Word of the Hour",
+      {
+        body: wordBody(
+          nounItem
+        ),
+      }
+    );
+  } catch (error) {
+    console.warn(
+      "Web notification failed:",
+      error
+    );
   }
 }
 
-// ---------------------------------------------------------------
-// Public start / stop (native schedules, web uses setInterval)
-// ---------------------------------------------------------------
+// ============================================================
+// START / STOP
+// ============================================================
 
-// Native: schedules on the phone and returns null (no timer needed).
-// Web:    starts the setInterval and returns its id (works only while the tab is open).
 export function startHourlyNounNotifier(
   getVocabList,
-  intervalMs = 60 * 60 * 1000,
+  intervalMs =
+    60 * 60 * 1000,
   onWordPicked,
   options = {}
 ) {
   const readList = () =>
-    typeof getVocabList === "function" ? getVocabList() : getVocabList;
+    typeof getVocabList ===
+    "function"
+      ? getVocabList()
+      : getVocabList;
+
+  // ==========================================================
+  // ANDROID / IOS
+  // ==========================================================
 
   if (isNative()) {
-    scheduleHourlyWords(readList(), options);
+    scheduleHourlyWords(
+      readList(),
+      options
+    );
+
     return null;
   }
 
-  const intervalId = setInterval(() => {
-    const word = pickNextWord(readList());
-    if (word) {
-      sendNounNotification(word);
-      if (typeof onWordPicked === "function") onWordPicked(word);
-    }
-  }, intervalMs);
+  // ==========================================================
+  // WEB
+  // ==========================================================
+
+  const intervalId =
+    setInterval(() => {
+      const word =
+        pickNextWord(
+          readList()
+        );
+
+      if (word) {
+        sendNounNotification(
+          word
+        );
+
+        if (
+          typeof onWordPicked ===
+          "function"
+        ) {
+          onWordPicked(word);
+        }
+      }
+    }, intervalMs);
 
   return intervalId;
 }
 
-// Stops hourly alerts on both platforms.
-export function stopHourlyNounNotifier(intervalId) {
-  if (intervalId) clearInterval(intervalId);
+export function stopHourlyNounNotifier(
+  intervalId
+) {
+  if (intervalId) {
+    clearInterval(intervalId);
+  }
+
   cancelHourlyWords();
 }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
@@ -23,6 +24,18 @@ const CASES = ["Akkusativ", "Dativ", "Wechsel"];
 const QUIZ_MODE_OPTIONS = [
   { label: "Case", value: "case" },
   { label: "FlashRev", value: "flashrev" },
+];
+
+// Quiz multi-select: status filters + question modes can be selected together.
+const QUIZ_STATUS_MODE_OPTIONS = [
+  { label: "All Status", value: "status:all" },
+  { label: "In Progress", value: "status:In Progress" },
+  { label: "Mastered", value: "status:Mastered" },
+  { label: "Case", value: "mode:case" },
+  { label: "FlashRev", value: "mode:flashrev" },
+  { label: "Article (Akkusativ)", value: "article:Akkusativ" },
+  { label: "Article (Dativ)", value: "article:Dativ" },
+  { label: "Article (Wechsel)", value: "article:Wechsel" },
 ];
 
 const PREP_FLASHREV_ROTATION = ["case", "meaning", "example"];
@@ -214,6 +227,246 @@ const normalizeCase = (raw) => {
   return "Akkusativ";
 };
 
+// Quiz multi-select (Case / FlashRev / Article + status).
+// The menu is rendered in a portal with fixed positioning
+function QuizMultiSelect({ values = [], options = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState({});
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const MENU_WIDTH = 212;
+
+  const updateMenuPosition = () => {
+    if (!buttonRef.current) return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const gap = 6;
+    const viewportPadding = 8;
+
+    let left = rect.left;
+    if (left + MENU_WIDTH > window.innerWidth - viewportPadding) {
+      left = Math.max(viewportPadding, window.innerWidth - MENU_WIDTH - viewportPadding);
+    }
+
+    const estimatedMenuHeight = options.length * 40 + 48;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openAbove = spaceBelow < estimatedMenuHeight && rect.top > estimatedMenuHeight;
+
+    setMenuStyle({
+      position: "fixed",
+      left: `${left}px`,
+      top: openAbove
+        ? `${Math.max(viewportPadding, rect.top - estimatedMenuHeight - gap)}px`
+        : `${rect.bottom + gap}px`,
+      width: `${MENU_WIDTH}px`,
+      zIndex: 99999,
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    updateMenuPosition();
+
+    const handleOutside = (e) => {
+      const t = e.target;
+      if (
+        buttonRef.current && !buttonRef.current.contains(t) &&
+        menuRef.current && !menuRef.current.contains(t)
+      ) {
+        setOpen(false);
+      }
+    };
+    const handleReposition = () => updateMenuPosition();
+
+    document.addEventListener("mousedown", handleOutside);
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [open, options.length]);
+
+  const toggle = (value) => {
+    let next = Array.isArray(values) ? [...values] : [];
+    
+    if (value === "status:all") {
+      next = next.filter((v) => !v.startsWith("status:"));
+      next.push("status:all");
+    } else if (value.startsWith("status:")) {
+      next = next.filter((v) => !v.startsWith("status:"));
+      next.push(value);
+    } else if (value.startsWith("article:")) {
+      // Article modes: can only select one article type
+      next = next.filter((v) => !v.startsWith("article:"));
+      next.push(value);
+      // If FlashRev not selected, auto-select it
+      if (!next.some((v) => v === "mode:flashrev")) {
+        next = next.filter((v) => v === "mode:case" ? false : true);
+        next.push("mode:flashrev");
+      }
+    } else {
+      // Mode selection (Case, FlashRev)
+      next = next.includes(value) ? next.filter((v) => v !== value) : [...next, value];
+      // Ensure at least one mode is selected
+      if (!next.some((v) => v.startsWith("mode:") || v.startsWith("article:"))) {
+        next.push("mode:case");
+      }
+    }
+    onChange(next);
+  };
+
+  const safeValues = (Array.isArray(values) ? values : []).map((v) =>
+    v === "article" || v === "mode:article" ? "mode:case" : v
+  );
+  
+  const labels = safeValues.map((v) => {
+    if (v.startsWith("article:")) {
+      return "Article: " + v.slice(8);
+    }
+    return options.find((o) => o.value === v)?.label;
+  }).filter(Boolean);
+  
+  const label = labels.length ? labels.join(" + ") : "Case";
+
+  const menu = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            ...menuStyle,
+            boxSizing: "border-box",
+            maxHeight: "min(360px, calc(100vh - 16px))",
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: "#ffffff",
+            color: "#1f2937",
+            border: "1px solid #ebdccb",
+            borderRadius: "14px",
+            boxShadow: "0 14px 32px rgba(0,0,0,0.14), 0 2px 6px rgba(0,0,0,0.06)",
+            padding: "6px",
+          }}
+        >
+          {options.map((o) => {
+            const checked = safeValues.includes(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => toggle(o.value)}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  background: checked ? "#fff7ed" : "transparent",
+                  color: checked ? "#b45309" : "#374151",
+                  borderRadius: "9px",
+                  padding: "10px 9px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: "14px",
+                  fontWeight: checked ? 700 : 500,
+                }}
+              >
+                <span
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    borderRadius: "5px",
+                    border: checked ? "1.5px solid #b45309" : "1.5px solid #d1d5db",
+                    background: checked ? "#b45309" : "#ffffff",
+                    color: "#ffffff",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "12px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {checked ? "✓" : ""}
+                </span>
+                <span>{o.label}</span>
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => onChange(["mode:case"])}
+            style={{
+              width: "100%",
+              marginTop: "3px",
+              padding: "8px",
+              border: "none",
+              borderTop: "1px solid #f1f1f1",
+              background: "transparent",
+              color: "#9ca3af",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: 600,
+            }}
+          >
+            Reset to Case
+          </button>
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((x) => !x)}
+        title={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{
+          width: "212px",
+          minWidth: "212px",
+          maxWidth: "212px",
+          height: "40px",
+          boxSizing: "border-box",
+          padding: "0 12px",
+          borderRadius: "12px",
+          border: "1px solid var(--line-2, #ebdccb)",
+          background: "#ffffff",
+          color: "var(--ink, #1f2937)",
+          cursor: "pointer",
+          fontSize: "13.5px",
+          fontWeight: 600,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          whiteSpace: "nowrap",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+        }}
+      >
+        <span>📌</span>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            textAlign: "left",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {label}
+        </span>
+        <span style={{ fontSize: "10px", opacity: 0.6, flexShrink: 0 }}>▼</span>
+      </button>
+      {menu}
+    </>
+  );
+}
+
 // 🗓️ Interactive Calendar Picker Popover
 function RealCalendarPicker({ selectedDate, onSelectDate }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -350,7 +603,7 @@ function RealCalendarPicker({ selectedDate, onSelectDate }) {
           boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
         }}
       >
-        <span>🗓️️</span>
+        <span>🗓️</span>
         <span>
           {selectedDate
             ? new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, {
@@ -470,7 +723,14 @@ export default function PrepositionsPage({
 
   // Quiz State
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
-  const [quizMode, setQuizMode] = useState("case");
+  const [quizMode, setQuizMode] = useState(["mode:case"]);
+  
+  const selectedQuizModes = quizMode.filter((v) => v.startsWith("mode:")).map((v) => v.slice(5));
+  const selectedArticle = quizMode.find((v) => v.startsWith("article:"));
+  const articleFilter = selectedArticle ? selectedArticle.slice(8) : null;
+  const selectedQuizStatus = quizMode.find((v) => v.startsWith("status:"));
+  const effectiveQuizStatus = selectedQuizStatus === "status:In Progress" ? "In Progress" : selectedQuizStatus === "status:Mastered" ? "Mastered" : "all";
+  
   const [quizTextInput, setQuizTextInput] = useState("");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
@@ -483,12 +743,11 @@ export default function PrepositionsPage({
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [quizFeedback, setQuizFeedback] = useState(null);
-  const [quizAnswerState, setQuizAnswerState] = useState("idle"); // 'idle' | 'correct' | 'wrong'
+  const [quizAnswerState, setQuizAnswerState] = useState("idle");
   const [quizShuffleKey, setQuizShuffleKey] = useState(0);
   const [quizSessionKey, setQuizSessionKey] = useState(0);
   const autoNextTimeoutRef = useRef(null);
 
-  // Clear auto-advance timeout on unmount
   useEffect(() => {
     return () => {
       if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
@@ -530,7 +789,6 @@ export default function PrepositionsPage({
   const [flashOrder, setFlashOrder] = useState(null);
   const [touchStartX, setTouchStartX] = useState(null);
 
-  // Flashcard filters
   const [flashCaseFilter, setFlashCaseFilter] = useState("all");
   const [flashStatusFilter, setFlashStatusFilter] = useState("all");
   const [flashDateMode, setFlashDateMode] = useState("all");
@@ -569,37 +827,68 @@ export default function PrepositionsPage({
   const availableQuizPool = useMemo(() => {
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
-      const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
+      const matchesStatus = effectiveQuizStatus === "all" || itemStatus === effectiveQuizStatus;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
+      
+      const includesCase = selectedQuizModes.includes("case");
+      const includesFlashRev = selectedQuizModes.includes("flashrev");
+      const includesArticle = Boolean(articleFilter);
+      
+      let matchesMode = false;
+      if (includesCase) {
+        matchesMode = true;
+      }
+      if (includesFlashRev && Boolean(item.flashRev)) {
+        if (includesArticle) {
+          // Only include if article matches
+          matchesMode = normalizeCase(item.caseType) === articleFilter;
+        } else {
+          matchesMode = true;
+        }
+      }
+      
       return matchesStatus && matchesDate && matchesMode;
     });
+    
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
-    return quizMode === "flashrev"
-      ? ordered.flatMap((item) => Array(PREP_FLASHREV_STEPS).fill(item.id))
-      : ordered.map((item) => item.id);
-    // The pool is frozen for the whole quiz session: it is only rebuilt when a
-    // filter/mode changes or resetQuizProgress() bumps quizSessionKey. `list` is
-    // intentionally NOT a dependency — otherwise mastering a word mid-quiz
-    // (flashRev -> false) would drop it from the pool and shift every index.
-    // list.length covers add/delete/import (e.g. data loading after mount).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list.length, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
+    const includesCase = selectedQuizModes.includes("case");
+    const includesFlashRev = selectedQuizModes.includes("flashrev");
+    
+    return ordered.flatMap((item) => {
+      const tokens = [];
+      if (includesCase) tokens.push({ id: item.id, mode: "case" });
+      if (includesFlashRev && item.flashRev) {
+        if (articleFilter) {
+          // Only add if matches article filter
+          if (normalizeCase(item.caseType) === articleFilter) {
+            for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
+              tokens.push({ id: item.id, mode: "flashrev", step: i });
+            }
+          }
+        } else {
+          for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
+            tokens.push({ id: item.id, mode: "flashrev", step: i });
+          }
+        }
+      }
+      return tokens;
+    });
+  }, [list.length, effectiveQuizStatus, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
 
   const availableQuizWords = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
-    return availableQuizPool.map((id) => byId.get(id)).filter(Boolean);
+    return availableQuizPool.map((q) => ({ ...byId.get(q.id), __quizMode: q.mode, __quizStep: q.step })).filter((x) => x?.id);
   }, [list, availableQuizPool]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
-    if (quizMode === "flashrev") {
+    if (selectedQuizModes.includes("flashrev")) {
       if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count * PREP_FLASHREV_STEPS);
       return availableQuizWords;
     }
     if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count);
     return availableQuizWords;
-  }, [availableQuizWords, wordCountInput, quizMode]);
+  }, [availableQuizWords, wordCountInput, selectedQuizModes.join(",")]);
 
   const handleQuizCaseSelect = (selectedCase) => {
     if (quizFeedback !== null || !prepQuizWord) return;
@@ -639,9 +928,8 @@ export default function PrepositionsPage({
   const recordAnswerResult = (word, ok) => {
     if (!word) return;
 
-    const isLastSubQuestion =
-      quizMode !== "flashrev" ||
-      quizIndex % PREP_FLASHREV_STEPS === PREP_FLASHREV_STEPS - 1;
+    const isFlashRevQuestion = word?.__quizMode === "flashrev";
+    const isLastSubQuestion = !isFlashRevQuestion || (word.__quizStep ?? 0) === PREP_FLASHREV_STEPS - 1;
 
     let changed = false;
     const updated = list.map((item) => {
@@ -649,7 +937,7 @@ export default function PrepositionsPage({
       const next = { ...item };
 
       if (ok) {
-        if (quizMode === "flashrev" && item.flashRev && isLastSubQuestion) {
+        if (isFlashRevQuestion && item.flashRev && isLastSubQuestion) {
           next.flashRev = false;
           changed = true;
         }
@@ -748,8 +1036,6 @@ export default function PrepositionsPage({
     setQuizSessionKey((k) => k + 1);
   };
 
-  // Entering the quiz starts a fresh session (rebuilds the frozen question pool);
-  // leaving it stops any running timer.
   const [lastViewMode, setLastViewMode] = useState(viewMode);
   if (lastViewMode !== viewMode) {
     setLastViewMode(viewMode);
@@ -763,11 +1049,9 @@ export default function PrepositionsPage({
     }
   }
 
-  // Hourly notifier
   useEffect(() => {
     let timerId = null;
     if (hourlyAlertsActive && list.length > 0) {
-      // The notifier expects {article, noun, plural, meaning}; map preposition fields onto it
       const formattedForNotifier = list.map((p) => ({
         article: p.caseType,
         noun: p.prep,
@@ -964,7 +1248,6 @@ export default function PrepositionsPage({
           const example = (rowLower.example || rowLower["example sentence"] || "").toString().trim();
           const status = (rowLower.status || "In Progress").toString().trim();
 
-
           if (prep) {
             const lower = prep.toLowerCase();
             if (existingSet.has(lower)) {
@@ -1141,19 +1424,15 @@ export default function PrepositionsPage({
 
   const prepCard = flashList[cardIndex];
 
-  // Closing the result modal starts a fresh session so the pool reflects what changed
   const closeScoreModal = () => {
     setScoreModal((p) => ({ ...p, isOpen: false }));
     resetQuizProgress();
   };
 
-  // Moves to the next question (or finishes the quiz)
   const goToNextQuestion = (finalScore) => {
     setQuizAnswerState("idle");
     setQuizFeedback(null);
     setQuizTextInput("");
-    // NOTE: do not bump quizSessionKey here — it rebuilds (and reshuffles) the
-    // question pool, which must stay fixed while a quiz is running.
 
     if (quizIndex < quizList.length - 1) {
       setQuizIndex((prev) => prev + 1);
@@ -1170,7 +1449,6 @@ export default function PrepositionsPage({
     }
   };
 
-  // Correct -> auto advance after 1s | Wrong -> stay and wait for Next button
   const triggerAutoAdvance = (isCorrect) => {
     setQuizAnswerState(isCorrect ? "correct" : "wrong");
 
@@ -1184,20 +1462,18 @@ export default function PrepositionsPage({
       clearTimeout(autoNextTimeoutRef.current);
     }
 
-    if (!isCorrect) return; // wait for the user to click Next
+    if (!isCorrect) return;
 
     autoNextTimeoutRef.current = setTimeout(() => {
       goToNextQuestion(quizScore + 1);
     }, 1000);
   };
 
-  // Manual forward button (only used after a wrong answer)
   const handleForwardClick = () => {
     if (quizAnswerState !== "wrong") return;
     goToNextQuestion(quizScore);
   };
 
-  // Shuffle handlers
   const handleShuffleList = () => {
     if (list.length <= 1) return;
     onCommitPreps?.(shuffleArray(list));
@@ -1286,7 +1562,6 @@ export default function PrepositionsPage({
     setTouchStartX(null);
   };
 
-  // Reset all items currently queued for FlashRev
   const handleResetFlashRev = () => {
     if (flashRevCount === 0) return;
     onCommitPreps?.(list.map((item) => (item.flashRev ? { ...item, flashRev: false } : item)));
@@ -1304,11 +1579,11 @@ export default function PrepositionsPage({
     setCardFlipped((f) => !f);
   };
 
-  // Pale green / red panel tint while answering
   const getQuizPanelStyle = () => {
     const baseStyle = {
       marginTop: "-6px",
       paddingTop: "14px",
+      overflow: "visible",
       transition: "background-color 0.25s ease, border-color 0.25s ease",
     };
     if (quizAnswerState === "correct") {
@@ -1321,11 +1596,11 @@ export default function PrepositionsPage({
   };
 
   const prepQuizWord = quizList[quizIndex];
-  const effectivePrepMode = quizMode === "flashrev"
-    ? getPrepFlashRevMode(prepQuizWord, quizIndex % PREP_FLASHREV_STEPS)
+  const effectivePrepMode = prepQuizWord?.__quizMode === "flashrev"
+    ? getPrepFlashRevMode(prepQuizWord, prepQuizWord.__quizStep ?? 0)
     : "case";
   const flashRevCount = list.filter((p) => p.flashRev).length;
-  const flashRevUniqueWords = quizMode === "flashrev" ? quizList.length / PREP_FLASHREV_STEPS : quizList.length;
+  const flashRevUniqueWords = quizList.filter((q) => q?.__quizMode === "flashrev").length / PREP_FLASHREV_STEPS;
 
   return (
     <>
@@ -1606,7 +1881,6 @@ export default function PrepositionsPage({
                       }}
                       className="icon-btn"
                     >
-                      
                       ✏️
                     </button>
                     <button
@@ -1795,8 +2069,9 @@ export default function PrepositionsPage({
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${prepCard.prep}. ${prepCard.example || ""}`)}>🔊 Pronounce</button>
                 <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex >= flashList.length - 1} onClick={handleFlashNext}>Next ▶</button>
               </div>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>Preposition {cardIndex + 1} of {flashList.length} · {Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}% · {flashRevCount} queued for FlashRev</span><div style={{width:"100%",maxWidth:520,height:6,background:"#eee7df",borderRadius:999,overflow:"hidden",marginTop:8}}>
-                <div style={{width:`${Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}%`,height:"100%",background:"var(--brand,#b85c19)",borderRadius:999,transition:"width .2s ease"}} />
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>Preposition {cardIndex + 1} of {flashList.length} · {Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}% · {flashRevCount} queued for FlashRev</span>
+              <div style={{ width: "100%", maxWidth: 520, height: 6, background: "#eee7df", borderRadius: 999, overflow: "hidden", marginTop: 8 }}>
+                <div style={{ width: `${Math.round(((cardIndex + 1) / Math.max(flashList.length, 1)) * 100)}%`, height: "100%", background: "var(--brand,#b85c19)", borderRadius: 999, transition: "width .2s ease" }} />
               </div>
             </div>
           )}
@@ -1818,39 +2093,44 @@ export default function PrepositionsPage({
               width: "100%",
               maxWidth: "100%",
               overflowX: "auto",
-              overflowY: "hidden",
+              overflowY: "visible",
               WebkitOverflowScrolling: "touch",
-              padding: "4px 2px 14px 2px",
+              padding: "4px 2px 18px 2px",
               marginBottom: "16px",
+              minHeight: "62px",
+              boxSizing: "border-box",
               borderBottom: "1px solid var(--line-2, #ebdccb)",
             }}
           >
             {!(timerRunning || timerPaused) ? (
               <>
-                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <CustomDropdown
-                    icon="📌"
-                    value={quizStatusFilter}
-                    options={STATUS_FILTER_OPTIONS}
-                    onChange={(v) => { setQuizStatusFilter(v); resetQuizProgress(); }}
-                  />
+                <div style={{ flex: "0 0 auto", minWidth: "0", whiteSpace: "nowrap" }}>
+                  <QuizMultiSelect values={quizMode} options={QUIZ_STATUS_MODE_OPTIONS} onChange={(next) => {
+                    setQuizMode(next);
+                    const status = next.find((v) => v.startsWith("status:"));
+                    setQuizStatusFilter(status ? status.slice(7) : "all");
+                    resetQuizProgress();
+                  }} />
                 </div>
 
-                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <CustomDropdown
-                    icon="🎯"
-                    value={quizMode}
-                    options={QUIZ_MODE_OPTIONS}
-                    onChange={(v) => { setQuizMode(v); resetQuizProgress(); }}
-                  />
-                </div>
-
-                <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                <div
+                  style={{
+                    flex: "0 0 180px",
+                    width: "180px",
+                    minWidth: "180px",
+                    maxWidth: "180px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   <CustomDropdown
                     icon="📅"
                     value={quizDateMode}
                     options={QUIZ_DATE_DROPDOWN_OPTIONS}
-                    onChange={(v) => { setQuizDateMode(v); if (v !== "specific") setQuizSpecificDate(""); resetQuizProgress(); }}
+                    onChange={(v) => {
+                      setQuizDateMode(v);
+                      if (v !== "specific") setQuizSpecificDate("");
+                      resetQuizProgress();
+                    }}
                   />
                 </div>
 
@@ -1985,13 +2265,14 @@ export default function PrepositionsPage({
                   🔀 Shuffle
                 </button>
 
-                {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
+                {(effectiveQuizStatus !== "all" || selectedQuizModes.join(",") !== "case" || quizDateMode !== "all" || quizSpecificDate || wordCountInput || articleFilter) && (
                   <button
                     type="button"
                     className="btn btn-secondary"
                     style={{ flexShrink: 0, height: "40px", borderRadius: "12px" }}
                     onClick={() => {
                       setQuizStatusFilter("all");
+                      setQuizMode(["mode:case"]);
                       setQuizDateMode("all");
                       setQuizSpecificDate("");
                       setWordCountInput("");
@@ -2072,25 +2353,23 @@ export default function PrepositionsPage({
               `}</style>
               <div className="quiz-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="quiz-head-left">
-                  {quizMode === "flashrev"
-                    ? <>Word {Math.floor(quizIndex / PREP_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{ color: "var(--muted)", fontWeight: 500 }}> · Q{(quizIndex % PREP_FLASHREV_STEPS) + 1}/{PREP_FLASHREV_STEPS}</span></>
-                    : <>Question {quizIndex + 1} of {quizList.length}</>}
+                  {prepQuizWord?.__quizMode === "flashrev"
+                    ? <>FlashRev · Q{(prepQuizWord.__quizStep ?? 0) + 1}/{PREP_FLASHREV_STEPS}</>
+                    : <>Case · Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
-
-                
 
                 <span className="quiz-head-right" style={{ fontWeight: 700, color: "var(--brand)" }}>
                   Score: {quizScore}
                 </span>
               </div>
 
-              {quizMode === "flashrev" && (
+              {prepQuizWord?.__quizMode === "flashrev" && (
                 <div className="flashrev-dots">
-                  {Array.from({length:PREP_FLASHREV_STEPS}).map((_,i) => (
+                  {Array.from({ length: PREP_FLASHREV_STEPS }).map((_, i) => (
                     <span key={i} className={`flashrev-dot ${i < quizIndex % PREP_FLASHREV_STEPS ? "done" : i === quizIndex % PREP_FLASHREV_STEPS ? "active" : ""}`} />
                   ))}
-                  <span style={{fontSize:12,color:"var(--muted)",marginLeft:6}}>
-                    {["Case","Meaning","Example"][quizIndex % PREP_FLASHREV_STEPS]}
+                  <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 6 }}>
+                    {["Case", "Meaning", "Example"][quizIndex % PREP_FLASHREV_STEPS]}
                   </span>
                 </div>
               )}
@@ -2098,22 +2377,22 @@ export default function PrepositionsPage({
               <div className="quiz-card">
                 {effectivePrepMode === "case" && (
                   <>
-                    <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Choose the correct case:</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct case:</span>
                     <h1>{prepQuizWord.prep}</h1>
-                    <p style={{color:"var(--muted)",margin:0,fontSize:15}}>Meaning: <strong>{prepQuizWord.meaning}</strong></p>
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 15 }}>Meaning: <strong>{prepQuizWord.meaning}</strong></p>
                   </>
                 )}
                 {effectivePrepMode === "meaning" && (
                   <>
-                    <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the English meaning:</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Type the English meaning:</span>
                     <h1>{prepQuizWord.prep}</h1>
                   </>
                 )}
                 {effectivePrepMode === "example" && (
                   <>
-                    <span style={{fontSize:13,color:"var(--muted)",fontWeight:500}}>Type the German preposition used in this sentence:</span>
-                    <p style={{fontSize:18,lineHeight:1.5,fontWeight:700}}>{prepQuizWord.example || "No example available"}</p>
-                    <span style={{fontSize:12,color:"var(--muted)"}}>Hint: {prepQuizWord.meaning || "Meaning not available"}</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Type the German preposition used in this sentence:</span>
+                    <p style={{ fontSize: 18, lineHeight: 1.5, fontWeight: 700 }}>{prepQuizWord.example || "No example available"}</p>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>Hint: {prepQuizWord.meaning || "Meaning not available"}</span>
                   </>
                 )}
               </div>
@@ -2147,17 +2426,17 @@ export default function PrepositionsPage({
                   ))}
                 </div>
               ) : (
-                <form onSubmit={handleQuizTextSubmit} style={{marginTop:18,display:"flex",gap:8,width:"100%",maxWidth:420,marginInline:"auto"}}>
-                  <input autoFocus disabled={quizAnswerState !== "idle"} value={quizTextInput} onChange={(e)=>setQuizTextInput(e.target.value)} className="modal-input" placeholder={effectivePrepMode === "meaning" ? "Type English meaning..." : "Type German preposition..."} style={{flex:1,height:46,fontSize:16,fontWeight:600,borderRadius:12,padding:"0 14px"}} />
-                  <button type="submit" disabled={quizAnswerState !== "idle" || !quizTextInput.trim()} className="btn btn-primary" style={{height:46,padding:"0 18px",borderRadius:12}}>Check</button>
+                <form onSubmit={handleQuizTextSubmit} style={{ marginTop: 18, display: "flex", gap: 8, width: "100%", maxWidth: 420, marginInline: "auto" }}>
+                  <input autoFocus disabled={quizAnswerState !== "idle"} value={quizTextInput} onChange={(e) => setQuizTextInput(e.target.value)} className="modal-input" placeholder={effectivePrepMode === "meaning" ? "Type English meaning..." : "Type German preposition..."} style={{ flex: 1, height: 46, fontSize: 16, fontWeight: 600, borderRadius: 12, padding: "0 14px" }} />
+                  <button type="submit" disabled={quizAnswerState !== "idle" || !quizTextInput.trim()} className="btn btn-primary" style={{ height: 46, padding: "0 18px", borderRadius: 12 }}>Check</button>
                 </form>
               )}
 
               {quizFeedback && (
-                <div style={{marginTop:20,textAlign:"center"}}>
-                  <p style={{fontSize:16,fontWeight:700,color:quizAnswerState === "correct" ? "#15803d" : "#dc2626"}}>{quizFeedback}</p>
-                  {quizAnswerState === "correct" && <span style={{fontSize:12,color:"var(--muted)"}}>Moving to next word in 1 second...</span>}
-{quizAnswerState === "wrong" && (
+                <div style={{ marginTop: 20, textAlign: "center" }}>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: quizAnswerState === "correct" ? "#15803d" : "#dc2626" }}>{quizFeedback}</p>
+                  {quizAnswerState === "correct" && <span style={{ fontSize: 12, color: "var(--muted)" }}>Moving to next word in 1 second...</span>}
+                  {quizAnswerState === "wrong" && (
                     <button
                       type="button"
                       className="btn btn-primary quiz-next-symbol"
@@ -2175,7 +2454,8 @@ export default function PrepositionsPage({
                     >
                       Next
                     </button>
-                  )}                </div>
+                  )}
+                </div>
               )}
 
             </div>
@@ -2252,9 +2532,6 @@ export default function PrepositionsPage({
           <div className="modal">
             <h3>{editingPrepId ? "Edit Preposition" : "Add New Preposition"}</h3>
             <form onSubmit={handleSaveModal}>
-              <div>
-</div>
-
               <div>
                 <label className="modal-label">Required Case</label>
                 <div className="radios">

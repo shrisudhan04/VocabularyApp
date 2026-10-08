@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
   sendNounNotification,
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
-import CustomDropdown from "../components/CustomDropdown";
 import SearchableDropdown from "../components/SearchableDropdown";
 import GoalModal from "../components/GoalModal";
 import { ARTICLE_CLASS, STATUS_OPTIONS, GENDER_MAP } from "../constants/seedData";
@@ -231,6 +231,425 @@ const QUIZ_DATE_DROPDOWN_OPTIONS = [
   { label: "Last Month", value: "last_month" },
   { label: "Specific Date...", value: "specific" },
 ];
+
+
+// -----------------------------------------------------------------------------
+// Portal dropdowns
+// These menus are rendered into document.body so they are never clipped by
+// horizontal filter rows that use overflow-x:auto.
+// -----------------------------------------------------------------------------
+function PortalCustomDropdown({ icon = "", value, options = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState({});
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const selectedOption = options.find((option) => option.value === value);
+  const displayLabel = selectedOption?.label || options[0]?.label || "";
+
+  const updateMenuPosition = () => {
+    if (!buttonRef.current) return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = Math.max(175, Math.min(285, rect.width + 40));
+    const gap = 6;
+    const padding = 8;
+
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = Math.max(padding, window.innerWidth - menuWidth - padding);
+    }
+
+    const estimatedHeight = Math.min(options.length * 44 + 16, 340);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openAbove =
+      spaceBelow < estimatedHeight + gap && rect.top > estimatedHeight + gap;
+
+    setMenuStyle({
+      position: "fixed",
+      left: `${left}px`,
+      top: openAbove
+        ? `${Math.max(padding, rect.top - estimatedHeight - gap)}px`
+        : `${rect.bottom + gap}px`,
+      width: `${menuWidth}px`,
+      zIndex: 100000,
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    updateMenuPosition();
+
+    const handleOutside = (event) => {
+      const target = event.target;
+      if (
+        buttonRef.current &&
+        !buttonRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const reposition = () => updateMenuPosition();
+
+    document.addEventListener("mousedown", handleOutside);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [open, options.length]);
+
+  const handleSelect = (nextValue) => {
+    onChange?.(nextValue);
+    setOpen(false);
+  };
+
+  const menu = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            ...menuStyle,
+            boxSizing: "border-box",
+            maxHeight: "min(340px, calc(100vh - 16px))",
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: "#ffffff",
+            border: "1px solid #ebdccb",
+            borderRadius: "14px",
+            boxShadow:
+              "0 14px 32px rgba(0,0,0,0.14), 0 2px 6px rgba(0,0,0,0.06)",
+            padding: "6px",
+          }}
+        >
+          {options.map((option) => {
+            const selected = option.value === value;
+
+            return (
+              <button
+                key={String(option.value)}
+                type="button"
+                onClick={() => handleSelect(option.value)}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  background: selected ? "#fff7ed" : "transparent",
+                  color: selected ? "#b45309" : "#374151",
+                  borderRadius: "9px",
+                  padding: "10px 9px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: "14px",
+                  fontWeight: selected ? 700 : 500,
+                }}
+              >
+                <span style={{ flex: 1 }}>{option.label}</span>
+                {selected && (
+                  <span
+                    style={{
+                      color: "#b45309",
+                      fontWeight: 800,
+                      fontSize: "16px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        style={{
+          height: "40px",
+          minWidth: "145px",
+          maxWidth: "280px",
+          padding: "0 12px",
+          borderRadius: "12px",
+          border: "1px solid var(--line-2, #ebdccb)",
+          background: "#ffffff",
+          color: "var(--ink, #1f2937)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          cursor: "pointer",
+          fontSize: "13.5px",
+          fontWeight: 600,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+          whiteSpace: "nowrap",
+          boxSizing: "border-box",
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>{icon}</span>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            textAlign: "left",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {displayLabel}
+        </span>
+        <span style={{ fontSize: "10px", opacity: 0.6, flexShrink: 0 }}>
+          ▼
+        </span>
+      </button>
+      {menu}
+    </>
+  );
+}
+
+function QuizModeMultiDropdown({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState({});
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const selected = Array.isArray(value) ? value : value ? [value] : [];
+
+  const updateMenuPosition = () => {
+    if (!buttonRef.current) return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 235;
+    const gap = 6;
+    const padding = 8;
+
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = Math.max(padding, window.innerWidth - menuWidth - padding);
+    }
+
+    const estimatedHeight = options.length * 42 + 55;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openAbove =
+      spaceBelow < estimatedHeight + gap && rect.top > estimatedHeight + gap;
+
+    setMenuStyle({
+      position: "fixed",
+      left: `${left}px`,
+      top: openAbove
+        ? `${Math.max(padding, rect.top - estimatedHeight - gap)}px`
+        : `${rect.bottom + gap}px`,
+      width: `${menuWidth}px`,
+      zIndex: 100001,
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    updateMenuPosition();
+
+    const handleOutside = (event) => {
+      const target = event.target;
+
+      if (
+        buttonRef.current &&
+        !buttonRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const reposition = () => updateMenuPosition();
+
+    document.addEventListener("mousedown", handleOutside);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [open, options.length]);
+
+  const toggle = (mode) => {
+    const next = selected.includes(mode)
+      ? selected.filter((item) => item !== mode)
+      : [...selected, mode];
+
+    // Never allow the quiz to have no selected mode.
+    onChange(next.length ? next : ["article"]);
+  };
+
+  const selectedLabels = options
+    .filter((option) => selected.includes(option.value))
+    .map((option) => option.label);
+
+  const label =
+    selectedLabels.length === 0
+      ? "Select Quiz Modes"
+      : selectedLabels.length <= 2
+      ? selectedLabels.join(" + ")
+      : `${selectedLabels.length} modes selected`;
+
+  const menu = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            ...menuStyle,
+            boxSizing: "border-box",
+            maxHeight: "min(360px, calc(100vh - 16px))",
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: "#ffffff",
+            border: "1px solid #ebdccb",
+            borderRadius: "14px",
+            boxShadow:
+              "0 14px 32px rgba(0,0,0,0.14), 0 2px 6px rgba(0,0,0,0.06)",
+            padding: "6px",
+          }}
+        >
+          {options.map((option) => {
+            const checked = selected.includes(option.value);
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => toggle(option.value)}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  background: checked ? "#fff7ed" : "transparent",
+                  color: checked ? "#b45309" : "#374151",
+                  borderRadius: "9px",
+                  padding: "10px 9px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: "14px",
+                  fontWeight: checked ? 700 : 500,
+                }}
+              >
+                <span
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    borderRadius: "5px",
+                    border: checked
+                      ? "1.5px solid #b45309"
+                      : "1.5px solid #d1d5db",
+                    background: checked ? "#b45309" : "#ffffff",
+                    color: "#ffffff",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "12px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {checked ? "✓" : ""}
+                </span>
+
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => onChange(["article"])}
+            style={{
+              width: "100%",
+              marginTop: "3px",
+              padding: "8px",
+              border: "none",
+              borderTop: "1px solid #f1f1f1",
+              background: "transparent",
+              color: "#9ca3af",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: 600,
+            }}
+          >
+            Reset to Article
+          </button>
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        style={{
+          height: "40px",
+          minWidth: "155px",
+          maxWidth: "280px",
+          padding: "0 12px",
+          borderRadius: "12px",
+          border: "1px solid var(--line-2, #ebdccb)",
+          background: "#ffffff",
+          color: "var(--ink, #1f2937)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          cursor: "pointer",
+          fontSize: "13.5px",
+          fontWeight: 600,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+          whiteSpace: "nowrap",
+          boxSizing: "border-box",
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>🎯</span>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            textAlign: "left",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {label}
+        </span>
+        <span style={{ fontSize: "10px", opacity: 0.6, flexShrink: 0 }}>
+          ▼
+        </span>
+      </button>
+
+      {menu}
+    </>
+  );
+}
 
 const QUIZ_MODE_OPTIONS = [
   { label: "Article", value: "article" },
@@ -586,7 +1005,7 @@ export default function PatternsPage({
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
-  const [quizMode, setQuizMode] = useState("article");
+  const [quizMode, setQuizMode] = useState(["article"]);
   const [quizTextInput, setQuizTextInput] = useState("");
 
   // Quiz Controls: Question Count Limit & Timer
@@ -733,28 +1152,73 @@ export default function PatternsPage({
 
   const hasPatterns = list.length > 0;
 
-  // Freeze the quiz session by id, while allowing edits/deletions to update the displayed data.
-  const quizSessionIds = useMemo(() => {
+  const selectedQuizModes = Array.isArray(quizMode)
+    ? quizMode
+    : quizMode
+    ? [quizMode]
+    : ["article"];
+
+  const isFlashRevSelected = selectedQuizModes.includes("flashrev");
+  const isFlashRevOnly =
+    isFlashRevSelected && selectedQuizModes.length === 1;
+
+  const getPatternQuestionModes = (pattern) => {
+    if (!pattern) return [];
+
+    // FlashRev alone preserves the original 3-step sequence.
+    if (isFlashRevOnly) {
+      return [
+        getFlashRevMode(pattern, 0),
+        getFlashRevMode(pattern, 1),
+        getFlashRevMode(pattern, 2),
+      ];
+    }
+
+    // When FlashRev is combined with other modes, only the explicitly
+    // selected non-FlashRev modes are asked for FlashRev patterns.
+    const requested = selectedQuizModes.filter((mode) => mode !== "flashrev");
+
+    return requested.filter((mode) => {
+      if (mode === "article") return true;
+      if (mode === "ending") return Boolean(pattern.ending);
+      if (mode === "examples") return Boolean(pattern.examples);
+      return false;
+    });
+  };
+
+  // Freeze the quiz session by pattern order while allowing edits/deletions
+  // to update the displayed data.
+  const availableQuizPool = useMemo(() => {
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
-      const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
+      const matchesStatus =
+        quizStatusFilter === "all" || itemStatus === quizStatusFilter;
       const matchesCat = matchesCategory(item, quizCategoryFilter);
-      const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
+      const matchesDate = matchesDateFilter(
+        item.createdAt,
+        quizDateMode,
+        quizSpecificDate
+      );
+
+      // Any quiz containing FlashRev works only on FlashRev-queued patterns.
+      const matchesMode = !isFlashRevSelected || Boolean(item.flashRev);
+
       return matchesStatus && matchesCat && matchesDate && matchesMode;
     });
-    const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
-    if (quizMode === "flashrev") {
-      return ordered.flatMap((item) => Array(FLASHREV_STEPS).fill(item.id));
-    }
-    return ordered.map((item) => item.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasPatterns, viewMode, quizMode, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
 
-  const availableQuizPool = useMemo(() => {
-    const byId = new Map(list.map((item) => [item.id, item]));
-    return quizSessionIds.map((id) => byId.get(id)).filter(Boolean);
-  }, [list, quizSessionIds]);
+    return quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hasPatterns,
+    viewMode,
+    quizMode,
+    quizStatusFilter,
+    quizDateMode,
+    quizSpecificDate,
+    quizShuffleKey,
+    quizSessionKey,
+  ]);
 
   const filteredFlashPool = useMemo(() => {
     return list.filter((item) => {
@@ -769,31 +1233,47 @@ export default function PatternsPage({
         flashDateMode,
         flashSpecificDate
       );
+
       return matchesArticle && matchesStatus && matchesCat && matchesDate;
     });
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, flashArticleFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
 
   const flashList = useMemo(() => {
     if (!flashOrder) return filteredFlashPool;
+
     const byId = new Map(filteredFlashPool.map((item) => [item.id, item]));
     const ordered = flashOrder.map((id) => byId.get(id)).filter(Boolean);
     const seen = new Set(flashOrder);
+
     return [
       ...ordered,
       ...filteredFlashPool.filter((item) => !seen.has(item.id)),
     ];
   }, [filteredFlashPool, flashOrder]);
 
-  const quizList = useMemo(() => {
+  // Build the actual question sequence.
+  // wordCountInput always counts patterns/words, not individual sub-questions.
+  const quizQuestions = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
-    if (quizMode === "flashrev") {
-      if (!isNaN(count) && count > 0) return availableQuizPool.slice(0, count * FLASHREV_STEPS);
-      return availableQuizPool;
-    }
-    if (!isNaN(count) && count > 0) return availableQuizPool.slice(0, count);
-    return availableQuizPool;
+    const patterns =
+      !isNaN(count) && count > 0
+        ? availableQuizPool.slice(0, count)
+        : availableQuizPool;
+
+    return patterns.flatMap((pattern) =>
+      getPatternQuestionModes(pattern).map((mode) => ({
+        pattern,
+        mode,
+      }))
+    );
   }, [availableQuizPool, wordCountInput, quizMode]);
+
+  const quizList = useMemo(
+    () => quizQuestions.map((question) => question.pattern),
+    [quizQuestions]
+  );
 
   useEffect(() => {
     let interval = null;
@@ -1457,22 +1937,44 @@ export default function PatternsPage({
 
   const recordAnswerResult = (pattern, ok) => {
     if (!pattern) return;
-    const isLastSubQuestion = quizMode !== "flashrev" || (quizIndex % FLASHREV_STEPS === FLASHREV_STEPS - 1);
+
+    const currentQuestion = quizQuestions[quizIndex];
+    const nextQuestion = quizQuestions[quizIndex + 1];
+
+    // A FlashRev item leaves the queue only after its final selected
+    // FlashRev question has been answered correctly.
+    const isLastSubQuestion =
+      !isFlashRevSelected ||
+      !nextQuestion ||
+      nextQuestion.pattern.id !== pattern.id;
+
     let changed = false;
+
     const updated = list.map((p) => {
       if (p.id !== pattern.id) return p;
+
       const next = { ...p };
+
       if (ok) {
-        if (quizMode === "flashrev" && p.flashRev && isLastSubQuestion) {
+        if (isFlashRevSelected && p.flashRev && isLastSubQuestion) {
           next.flashRev = false;
           changed = true;
         }
       } else {
-        if (!p.flashRev) { next.flashRev = true; changed = true; }
-        if (p.status === "Mastered") { next.status = "In Progress"; changed = true; }
+        if (!p.flashRev) {
+          next.flashRev = true;
+          changed = true;
+        }
+
+        if (p.status === "Mastered") {
+          next.status = "In Progress";
+          changed = true;
+        }
       }
+
       return next;
     });
+
     if (changed) onCommitPatterns?.(updated);
   };
 
@@ -1564,13 +2066,53 @@ export default function PatternsPage({
   };
 
   const patternCard = list[cardIndex];
-  const patternQuizWord = quizList[quizIndex];
-  const effectiveMode = quizMode === "flashrev"
-    ? getFlashRevMode(patternQuizWord, quizIndex % FLASHREV_STEPS)
-    : quizMode;
+  const currentQuizQuestion = quizQuestions[quizIndex];
+  const patternQuizWord = currentQuizQuestion?.pattern;
+  const effectiveMode = currentQuizQuestion?.mode || "article";
+
   const flashRevCount = list.filter((p) => p.flashRev).length;
-  const flashRevUniqueWords = quizMode === "flashrev" ? quizList.length / FLASHREV_STEPS : quizList.length;
-  const flashRevSubLabel = quizMode === "flashrev" ? ` · Q${(quizIndex % FLASHREV_STEPS) + 1}/${FLASHREV_STEPS}` : "";
+  const flashRevUniqueWords = isFlashRevSelected
+    ? new Set(quizList.map((p) => p.id)).size
+    : quizList.length;
+
+  const currentPatternQuestions = patternQuizWord
+    ? getPatternQuestionModes(patternQuizWord)
+    : [];
+
+  const currentSubIndex =
+    isFlashRevSelected && patternQuizWord
+      ? Math.max(
+          0,
+          quizQuestions
+            .slice(0, quizIndex)
+            .filter((question) => question.pattern.id === patternQuizWord.id)
+            .length
+        )
+      : 0;
+
+  const flashRevSubLabel =
+    isFlashRevSelected && patternQuizWord
+      ? ` · Q${currentSubIndex + 1}/${Math.max(currentPatternQuestions.length, 1)}`
+      : "";
+
+  const modeDisplayLabels = {
+    article: "Article",
+    ending: "Rule → Suffix",
+    examples: "Example → Suffix",
+  };
+
+  const currentModeLabel =
+    modeDisplayLabels[effectiveMode] || "Question";
+  const currentPatternNumber = isFlashRevSelected
+    ? Array.from(
+        new Set(
+          quizQuestions
+            .slice(0, quizIndex + 1)
+            .map((question) => question.pattern.id)
+        )
+      ).length
+    : 0;
+
 
   const resultPct = scoreModal.total > 0 ? (scoreModal.score / scoreModal.total) * 100 : 0;
   const resultPassed = resultPct >= PASS_PERCENT;
@@ -1642,7 +2184,7 @@ export default function PatternsPage({
               }}
             >
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                <CustomDropdown
+                <PortalCustomDropdown
                   icon="👤"
                   value={articleFilter}
                   options={GENDER_OPTIONS}
@@ -1651,7 +2193,7 @@ export default function PatternsPage({
               </div>
 
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                <CustomDropdown
+                <PortalCustomDropdown
                   icon="📌"
                   value={statusFilter}
                   options={STATUS_FILTER_OPTIONS}
@@ -1664,7 +2206,7 @@ export default function PatternsPage({
               </div>
 
               <div style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
-                <CustomDropdown
+                <PortalCustomDropdown
                   icon="📅"
                   value={dateFilter}
                   options={QUIZ_DATE_DROPDOWN_OPTIONS}
@@ -1687,7 +2229,7 @@ export default function PatternsPage({
               />
 
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                <CustomDropdown
+                <PortalCustomDropdown
                   icon="📊"
                   value=""
                   options={EXCEL_ACTIONS}
@@ -1926,7 +2468,7 @@ export default function PatternsPage({
             }}
           >
             <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-              <CustomDropdown
+              <PortalCustomDropdown
                 icon="👤"
                 value={flashArticleFilter}
                 options={GENDER_OPTIONS}
@@ -1935,7 +2477,7 @@ export default function PatternsPage({
             </div>
 
             <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-              <CustomDropdown
+              <PortalCustomDropdown
                 icon="📌"
                 value={flashStatusFilter}
                 options={STATUS_FILTER_OPTIONS}
@@ -1955,7 +2497,7 @@ export default function PatternsPage({
                 whiteSpace: "nowrap",
               }}
             >
-              <CustomDropdown
+              <PortalCustomDropdown
                 icon="📅"
                 value={flashDateMode}
                 options={QUIZ_DATE_DROPDOWN_OPTIONS}
@@ -2145,8 +2687,7 @@ export default function PatternsPage({
             {!(timerRunning || timerPaused) ? (
               <>
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <CustomDropdown
-                    icon="🎯"
+                  <QuizModeMultiDropdown
                     value={quizMode}
                     options={QUIZ_MODE_OPTIONS}
                     onChange={(val) => {
@@ -2157,7 +2698,7 @@ export default function PatternsPage({
                 </div>
 
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <CustomDropdown
+                  <PortalCustomDropdown
                     icon="📌"
                     value={quizStatusFilter}
                     options={STATUS_FILTER_OPTIONS}
@@ -2169,7 +2710,7 @@ export default function PatternsPage({
                 </div>
 
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <CustomDropdown
+                  <PortalCustomDropdown
                     icon="📅"
                     value={quizDateMode}
                     options={QUIZ_DATE_DROPDOWN_OPTIONS}
@@ -2202,16 +2743,14 @@ export default function PatternsPage({
                 >
                   <span style={{ fontSize: "14px" }}>🔢</span>
                   <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>
-                    {quizMode === "flashrev" ? "Words:" : "Count:"}
+                    "Words:"
                   </span>
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     placeholder={
-                      quizMode === "flashrev"
-                        ? `${flashRevUniqueWords}`
-                        : availableQuizPool.length
+                      availableQuizPool.length
                         ? `${availableQuizPool.length}`
                         : "All"
                     }
@@ -2316,7 +2855,7 @@ export default function PatternsPage({
                 </button>
 
                 <div style={{ flexShrink: 0, fontSize: "13.5px", color: "var(--muted)", whiteSpace: "nowrap", paddingLeft: "4px" }}>
-                  {quizMode === "flashrev" ? (
+                  {isFlashRevSelected ? (
                     <>
                       Words: <strong style={{ color: "var(--ink)" }}>{flashRevUniqueWords}</strong>
                       <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{FLASHREV_STEPS}Q</span>
@@ -2400,7 +2939,11 @@ export default function PatternsPage({
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "36px 16px", textAlign: "center" }}>
               <img src={noDataImg} alt="No Data" style={{ width: "160px", maxWidth: "80%", height: "auto", marginBottom: "12px" }} />
               <p style={{ color: "var(--muted)", margin: "0 0 12px 0", fontSize: 15 }}>
-                {list.length === 0 ? "Add patterns to start quiz." : quizMode === "flashrev" ? "No FlashRev patterns yet. Flip some flashcards, or miss a question in another quiz mode, and those patterns will show up here (or relax your filters)." : "No patterns match the selected status, date, or count filters."}
+                {list.length === 0
+  ? "Add patterns to start quiz."
+  : isFlashRevSelected
+  ? "No FlashRev patterns match the selected filters."
+  : "No patterns match the selected status, date, or count filters."}
               </p>
               {(quizStatusFilter !== "all" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
                 <button type="button" className="btn btn-secondary" onClick={() => { setQuizStatusFilter("all"); setQuizDateMode("all"); setQuizSpecificDate(""); setWordCountInput(""); resetQuizProgress(); }}>
@@ -2446,16 +2989,37 @@ export default function PatternsPage({
 
               <div className="quiz-head quiz-head-with-submit">
                 <span className="quiz-head-left">
-                  {quizMode === "flashrev" ? <>Pattern {Math.floor(quizIndex / FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{ color:"var(--muted)", fontWeight:500 }}>{flashRevSubLabel}</span></> : <>Question {quizIndex + 1} of {quizList.length}</>}
+                  {isFlashRevSelected ? (
+                    <>
+                      Pattern {currentPatternNumber} of {flashRevUniqueWords}
+                      <span style={{ color:"var(--muted)", fontWeight:500 }}>{flashRevSubLabel}</span>
+                    </>
+                  ) : (
+                    <>Question {quizIndex + 1} of {quizList.length}</>
+                  )}
                 </span>
                 <button type="button" className="quiz-submit-btn quiz-submit-top" onClick={handleSubmitQuiz} title="End the quiz now and see your result"><span className="quiz-submit-tick">✓</span> Submit Quiz</button>
                 <span className="quiz-head-right" style={{ fontWeight:700, color:"var(--brand)" }}>Score: {quizScore}</span>
               </div>
 
-              {quizMode === "flashrev" && (
+              {isFlashRevSelected && (
                 <div className="flashrev-dots">
-                  {Array.from({length:FLASHREV_STEPS}).map((_,i)=>{ const subIdx=quizIndex%FLASHREV_STEPS; return <span key={i} className={`flashrev-dot ${i<subIdx?"done":i===subIdx?"active":""}`} title={["Article","Rule → Suffix","Example → Suffix"][i]} />; })}
-                  <span style={{fontSize:12,color:"var(--muted)",marginLeft:6}}>{["Article","Rule → Suffix","Example → Suffix"][quizIndex%FLASHREV_STEPS]}</span>
+                  {currentPatternQuestions.map((mode, index) => (
+                    <span
+                      key={`${mode}-${index}`}
+                      className={`flashrev-dot ${
+                        index < currentSubIndex
+                          ? "done"
+                          : index === currentSubIndex
+                          ? "active"
+                          : ""
+                      }`}
+                      title={modeDisplayLabels[mode] || mode}
+                    />
+                  ))}
+                  <span style={{fontSize:12,color:"var(--muted)",marginLeft:6}}>
+                    {currentModeLabel}
+                  </span>
                 </div>
               )}
 
@@ -2535,7 +3099,13 @@ export default function PatternsPage({
 
               {quizFeedback && <div style={{marginTop:20,textAlign:"center",animation:"fadeIn .15s ease-in"}}>
                 <p style={{fontSize:16,fontWeight:700,color:quizAnswerState==="correct"?"#15803d":"#dc2626"}}>{quizFeedback}</p>
-                {quizAnswerState==="correct" && <span style={{fontSize:12,color:"var(--muted)"}}>{quizMode==="flashrev" && quizIndex%FLASHREV_STEPS<FLASHREV_STEPS-1 ? "Next sub-question in 1 second..." : "Moving to next word in 1 second..."}</span>}
+                {quizAnswerState==="correct" && (
+  <span style={{fontSize:12,color:"var(--muted)"}}>
+    {isFlashRevSelected && quizQuestions[quizIndex + 1]?.pattern?.id === patternQuizWord?.id
+      ? "Next sub-question in 1 second..."
+      : "Moving to next word in 1 second..."}
+  </span>
+)}
               </div>}
 
               {/* Next button — shown after a wrong answer (same style as Nouns quiz) */}
@@ -2757,7 +3327,7 @@ export default function PatternsPage({
 
               <div>
                 <label className="modal-label">Status</label>
-                <CustomDropdown
+                <PortalCustomDropdown
                   fullWidth
                   value={patternFormData.status}
                   options={STATUS_OPTIONS}

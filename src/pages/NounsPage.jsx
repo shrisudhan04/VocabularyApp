@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   requestMobileNotificationPermission,
   startHourlyNounNotifier,
@@ -389,10 +390,235 @@ const QUIZ_DATE_DROPDOWN_OPTIONS = [
 
 const QUIZ_MODE_OPTIONS = [
   { label: "Article", value: "article" },
-  { label: "English ➔ Noun", value: "english" },
+  { label: "English → Noun", value: "english" },
   { label: "Plural Form", value: "plural" },
   { label: "FlashRev", value: "flashrev" },
 ];
+
+// Quiz mode is multi-select. When FlashRev is selected by itself,
+// its original 3-step sequence is preserved: Article → Plural → English.
+// When FlashRev is combined with one or more modes, only the selected
+// modes are asked for FlashRev-queued words.
+function QuizModeMultiDropdown({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState({});
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const selected = Array.isArray(value) ? value : value ? [value] : [];
+
+  const updateMenuPosition = () => {
+    if (!buttonRef.current) return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 225;
+    const gap = 6;
+    const viewportPadding = 8;
+
+    // Keep the menu inside the viewport horizontally.
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - viewportPadding) {
+      left = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+    }
+
+    // Normally open below. If there isn't enough room, open above.
+    const estimatedMenuHeight = options.length * 40 + 48;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openAbove = spaceBelow < estimatedMenuHeight && rect.top > estimatedMenuHeight;
+
+    setMenuStyle({
+      position: "fixed",
+      left: `${left}px`,
+      top: openAbove
+        ? `${Math.max(viewportPadding, rect.top - estimatedMenuHeight - gap)}px`
+        : `${rect.bottom + gap}px`,
+      width: `${menuWidth}px`,
+      zIndex: 99999,
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    updateMenuPosition();
+
+    const handleOutside = (e) => {
+      const target = e.target;
+      if (
+        buttonRef.current && !buttonRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const handleReposition = () => updateMenuPosition();
+
+    document.addEventListener("mousedown", handleOutside);
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [open, options.length]);
+
+  const toggle = (mode) => {
+    const next = selected.includes(mode)
+      ? selected.filter((m) => m !== mode)
+      : [...selected, mode];
+
+    // Never allow an empty quiz-mode selection.
+    onChange(next.length ? next : ["article"]);
+  };
+
+  const selectedLabels = options
+    .filter((option) => selected.includes(option.value))
+    .map((option) => option.label);
+
+  const label =
+    selectedLabels.length === 0
+      ? "Select Quiz Modes"
+      : selectedLabels.length <= 2
+      ? selectedLabels.join(" + ")
+      : `${selectedLabels.length} modes selected`;
+
+  const menu = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            ...menuStyle,
+            boxSizing: "border-box",
+            maxHeight: "min(360px, calc(100vh - 16px))",
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: "#ffffff",
+            border: "1px solid #ebdccb",
+            borderRadius: "14px",
+            boxShadow: "0 14px 32px rgba(0,0,0,0.14), 0 2px 6px rgba(0,0,0,0.06)",
+            padding: "6px",
+          }}
+        >
+          {options.map((option) => {
+            const checked = selected.includes(option.value);
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => toggle(option.value)}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  background: checked ? "#fff7ed" : "transparent",
+                  color: checked ? "#b45309" : "#374151",
+                  borderRadius: "9px",
+                  padding: "10px 9px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: "14px",
+                  fontWeight: checked ? 700 : 500,
+                }}
+              >
+                <span
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    borderRadius: "5px",
+                    border: checked ? "1.5px solid #b45309" : "1.5px solid #d1d5db",
+                    background: checked ? "#b45309" : "#ffffff",
+                    color: "#ffffff",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "12px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {checked ? "✓" : ""}
+                </span>
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange(["article"])}
+              style={{
+                width: "100%",
+                marginTop: "3px",
+                padding: "8px",
+                border: "none",
+                borderTop: "1px solid #f1f1f1",
+                background: "transparent",
+                color: "#9ca3af",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: 600,
+              }}
+            >
+              Reset to Article
+            </button>
+          )}
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => {
+          setOpen((v) => !v);
+        }}
+        style={{
+          height: "40px",
+          minWidth: "155px",
+          maxWidth: "260px",
+          padding: "0 12px",
+          borderRadius: "12px",
+          border: "1px solid var(--line-2, #ebdccb)",
+          background: "#ffffff",
+          color: "var(--ink, #1f2937)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          cursor: "pointer",
+          fontSize: "13.5px",
+          fontWeight: 600,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+          whiteSpace: "nowrap",
+          boxSizing: "border-box",
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>🎯</span>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            textAlign: "left",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {label}
+        </span>
+        <span style={{ fontSize: "10px", opacity: 0.6, flexShrink: 0 }}>▼</span>
+      </button>
+      {menu}
+    </>
+  );
+}
 
 const EXCEL_ACTIONS = [
   { label: "Excel Actions", value: "" },
@@ -756,7 +982,7 @@ export default function NounsPage({
   const [quizCategoryFilter, setQuizCategoryFilter] = useState([]);
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
-  const [quizMode, setQuizMode] = useState("article");
+  const [quizModes, setQuizModes] = useState(["article"]);
   const [quizTextInput, setQuizTextInput] = useState("");
   const [quizSelectedArticle, setQuizSelectedArticle] = useState("");
 
@@ -1055,22 +1281,34 @@ export default function NounsPage({
   };
 
   const hasNouns = list.length > 0;
+
+  const hasFlashRevMode = quizModes.includes("flashrev");
+  const isFlashRevOnly = quizModes.length === 1 && hasFlashRevMode;
+
+  // FlashRev by itself keeps the original 3-step behavior.
+  // FlashRev + other modes uses only those explicitly selected modes.
+  const activeQuizQuestionModes = useMemo(() => {
+    if (isFlashRevOnly) return [...FLASHREV_ROTATION];
+    return QUIZ_MODE_OPTIONS
+      .filter((option) => quizModes.includes(option.value) && option.value !== "flashrev")
+      .map((option) => option.value);
+  }, [quizModes, isFlashRevOnly]);
+
   const quizSessionIds = useMemo(() => {
     const filtered = list.filter((item) => {
       const matchesStatus = matchesStudyStatus(item, quizStatusFilter);
       const matchesCat = matchesCategory(item, quizCategoryFilter);
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
+      const matchesMode = hasFlashRevMode ? Boolean(item.flashRev) : true;
       return matchesStatus && matchesCat && matchesDate && matchesMode;
     });
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
 
-    if (quizMode === "flashrev") {
-      return ordered.flatMap((item) => Array(FLASHREV_STEPS).fill(item.id));
-    }
-    return ordered.map((item) => item.id);
+    return ordered.flatMap((item) =>
+      Array(Math.max(activeQuizQuestionModes.length, 1)).fill(item.id)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasNouns, viewMode, quizMode, quizStatusFilter, quizCategoryFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey]);
+  }, [hasNouns, viewMode, quizModes, quizStatusFilter, quizCategoryFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizSessionKey, activeQuizQuestionModes]);
 
   const availableQuizPool = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
@@ -1103,20 +1341,13 @@ export default function NounsPage({
   }, [flashFilteredList, flashOrder]);
 
   const quizList = useMemo(() => {
-    if (quizMode === "flashrev") {
-      const count = parseInt(wordCountInput, 10);
-      if (!isNaN(count) && count > 0) {
-        const maxSlots = count * FLASHREV_STEPS;
-        return availableQuizPool.slice(0, maxSlots);
-      }
-      return availableQuizPool;
-    }
     const count = parseInt(wordCountInput, 10);
     if (!isNaN(count) && count > 0) {
-      return availableQuizPool.slice(0, count);
+      const slotsPerWord = Math.max(activeQuizQuestionModes.length, 1);
+      return availableQuizPool.slice(0, count * slotsPerWord);
     }
     return availableQuizPool;
-  }, [availableQuizPool, wordCountInput, quizMode]);
+  }, [availableQuizPool, wordCountInput, activeQuizQuestionModes.length]);
 
   // Countdown Timer
   useEffect(() => {
@@ -1840,14 +2071,15 @@ export default function NounsPage({
     if (!word) return;
 
     const isLastSubQuestion =
-      quizMode !== "flashrev" || (quizIndex % FLASHREV_STEPS === FLASHREV_STEPS - 1);
+      !hasFlashRevMode ||
+      (quizIndex % Math.max(activeQuizQuestionModes.length, 1) === activeQuizQuestionModes.length - 1);
 
     let changed = false;
     const updated = list.map((n) => {
       if (n.id !== word.id) return n;
       const next = { ...n };
       if (ok) {
-        if (quizMode === "flashrev" && n.flashRev && isLastSubQuestion) {
+        if (hasFlashRevMode && n.flashRev && isLastSubQuestion) {
           next.flashRev = false;
           changed = true;
         }
@@ -2012,19 +2244,19 @@ export default function NounsPage({
 
   const nounQuizWord = quizList[quizIndex];
 
-  const effectiveMode =
-    quizMode === "flashrev"
-      ? getFlashRevMode(nounQuizWord, quizIndex % FLASHREV_STEPS)
-      : quizMode;
+  const effectiveMode = activeQuizQuestionModes.length
+    ? activeQuizQuestionModes[quizIndex % activeQuizQuestionModes.length]
+    : null;
 
   const flashRevCount = list.filter((n) => n.flashRev).length;
+  const flashRevQuestionCount = Math.max(activeQuizQuestionModes.length, 1);
 
   const flashRevUniqueWords =
-    quizMode === "flashrev" ? quizList.length / FLASHREV_STEPS : quizList.length;
+    hasFlashRevMode ? quizList.length / flashRevQuestionCount : quizList.length;
 
   const flashRevSubLabel =
-    quizMode === "flashrev"
-      ? ` · Q${(quizIndex % FLASHREV_STEPS) + 1}/${FLASHREV_STEPS}`
+    hasFlashRevMode
+      ? ` · Q${(quizIndex % flashRevQuestionCount) + 1}/${flashRevQuestionCount}`
       : "";
 
   const resultPct = scoreModal.total > 0 ? (scoreModal.score / scoreModal.total) * 100 : 0;
@@ -2887,7 +3119,7 @@ export default function NounsPage({
               width: "100%",
               maxWidth: "100%",
               overflowX: "auto",
-              overflowY: "hidden",
+              overflowY: "visible",
               WebkitOverflowScrolling: "touch",
               padding: "0 2px 14px 2px",
               marginBottom: "16px",
@@ -2897,12 +3129,11 @@ export default function NounsPage({
             {!isQuizActive ? (
               <>
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <CustomDropdown
-                    icon="🎯"
-                    value={quizMode}
+                  <QuizModeMultiDropdown
+                    value={quizModes}
                     options={QUIZ_MODE_OPTIONS}
                     onChange={(val) => {
-                      setQuizMode(val);
+                      setQuizModes(val);
                       resetQuizProgress();
                     }}
                   />
@@ -2963,14 +3194,14 @@ export default function NounsPage({
                 >
                   <span style={{ fontSize: "14px" }}>🔢</span>
                   <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>
-                    {quizMode === "flashrev" ? "Words:" : "Count:"}
+                    {hasFlashRevMode ? "Words:" : "Count:"}
                   </span>
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     placeholder={
-                      quizMode === "flashrev"
+                      hasFlashRevMode
                         ? `${flashRevUniqueWords}`
                         : availableQuizPool.length
                         ? `${availableQuizPool.length}`
@@ -3077,10 +3308,10 @@ export default function NounsPage({
                 </button>
 
                 <div style={{ flexShrink: 0, fontSize: "13.5px", color: "var(--muted)", whiteSpace: "nowrap", paddingLeft: "4px" }}>
-                  {quizMode === "flashrev" ? (
+                  {hasFlashRevMode ? (
                     <>
                       Words: <strong style={{ color: "var(--ink)" }}>{flashRevUniqueWords}</strong>
-                      <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{FLASHREV_STEPS}Q</span>
+                      <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{flashRevQuestionCount}Q</span>
                     </>
                   ) : (
                     <>Words: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong></>
@@ -3191,7 +3422,7 @@ export default function NounsPage({
               <p style={{ color: "var(--muted)", margin: "0 0 12px 0", fontSize: 15 }}>
                 {list.length === 0
                   ? "Add nouns to start quiz."
-                  : quizMode === "flashrev"
+                  : hasFlashRevMode
                   ? "No FlashRev words yet. Flip some flashcards, or miss a question in another quiz mode, and those words will show up here (or relax your filters)."
                   : "No nouns match the selected status, category, date, or count filters."}
               </p>
@@ -3294,9 +3525,9 @@ export default function NounsPage({
 
               <div className="quiz-head quiz-head-with-submit">
                 <span className="quiz-head-left">
-                  {quizMode === "flashrev" ? (
+                  {hasFlashRevMode ? (
                     <>
-                      Word {Math.floor(quizIndex / FLASHREV_STEPS) + 1} of {flashRevUniqueWords}
+                      Word {Math.floor(quizIndex / flashRevQuestionCount) + 1} of {flashRevUniqueWords}
                       <span style={{ color: "var(--muted)", fontWeight: 500 }}>{flashRevSubLabel}</span>
                     </>
                   ) : (
@@ -3309,22 +3540,26 @@ export default function NounsPage({
                 </span>
               </div>
 
-              {quizMode === "flashrev" && (
+              {hasFlashRevMode && (
                 <div className="flashrev-dots">
-                  {Array.from({ length: FLASHREV_STEPS }).map((_, i) => {
-                    const subIdx = quizIndex % FLASHREV_STEPS;
+                  {Array.from({ length: flashRevQuestionCount }).map((_, i) => {
+                    const subIdx = quizIndex % flashRevQuestionCount;
                     const dotClass =
                       i < subIdx ? "done" : i === subIdx ? "active" : "";
                     return (
                       <span
                         key={i}
                         className={`flashrev-dot ${dotClass}`}
-                        title={["Article", "Plural", "English"][i]}
+                        title={activeQuizQuestionModes[i] === "english" ? "English → Noun" : activeQuizQuestionModes[i] === "plural" ? "Plural Form" : "Article"}
                       />
                     );
                   })}
                   <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 6 }}>
-                    {["Article", "Plural", "English → Noun"][quizIndex % FLASHREV_STEPS]}
+                    {activeQuizQuestionModes[quizIndex % flashRevQuestionCount] === "english"
+                      ? "English → Noun"
+                      : activeQuizQuestionModes[quizIndex % flashRevQuestionCount] === "plural"
+                      ? "Plural Form"
+                      : "Article"}
                   </span>
                 </div>
               )}
@@ -3483,7 +3718,7 @@ export default function NounsPage({
 
                   {quizAnswerState === "correct" && (
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                      {quizMode === "flashrev" && quizIndex % FLASHREV_STEPS < FLASHREV_STEPS - 1
+                      {hasFlashRevMode && quizIndex % flashRevQuestionCount < flashRevQuestionCount - 1
                         ? `Next sub-question in 1 second...`
                         : `Moving to next word in 1 second...`}
                     </span>

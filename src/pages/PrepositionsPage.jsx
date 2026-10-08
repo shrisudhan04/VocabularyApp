@@ -33,9 +33,7 @@ const QUIZ_STATUS_MODE_OPTIONS = [
   { label: "Mastered", value: "status:Mastered" },
   { label: "Case", value: "mode:case" },
   { label: "FlashRev", value: "mode:flashrev" },
-  { label: "Article (Akkusativ)", value: "article:Akkusativ" },
-  { label: "Article (Dativ)", value: "article:Dativ" },
-  { label: "Article (Wechsel)", value: "article:Wechsel" },
+  { label: "Article", value: "mode:article" },
 ];
 
 const PREP_FLASHREV_ROTATION = ["case", "meaning", "example"];
@@ -299,20 +297,12 @@ function QuizMultiSelect({ values = [], options = [], onChange }) {
     } else if (value.startsWith("status:")) {
       next = next.filter((v) => !v.startsWith("status:"));
       next.push(value);
-    } else if (value.startsWith("article:")) {
-      // Article modes: can only select one article type
-      next = next.filter((v) => !v.startsWith("article:"));
-      next.push(value);
-      // If FlashRev not selected, auto-select it
-      if (!next.some((v) => v === "mode:flashrev")) {
-        next = next.filter((v) => v === "mode:case" ? false : true);
-        next.push("mode:flashrev");
-      }
     } else {
-      // Mode selection (Case, FlashRev)
+      // Mode selection (Case, FlashRev, Article)
       next = next.includes(value) ? next.filter((v) => v !== value) : [...next, value];
+
       // Ensure at least one mode is selected
-      if (!next.some((v) => v.startsWith("mode:") || v.startsWith("article:"))) {
+      if (!next.some((v) => v.startsWith("mode:"))) {
         next.push("mode:case");
       }
     }
@@ -320,16 +310,13 @@ function QuizMultiSelect({ values = [], options = [], onChange }) {
   };
 
   const safeValues = (Array.isArray(values) ? values : []).map((v) =>
-    v === "article" || v === "mode:article" ? "mode:case" : v
+    v === "article" ? "mode:article" : v
   );
-  
-  const labels = safeValues.map((v) => {
-    if (v.startsWith("article:")) {
-      return "Article: " + v.slice(8);
-    }
-    return options.find((o) => o.value === v)?.label;
-  }).filter(Boolean);
-  
+
+  const labels = safeValues
+    .map((v) => options.find((o) => o.value === v)?.label)
+    .filter(Boolean);
+
   const label = labels.length ? labels.join(" + ") : "Case";
 
   const menu = open
@@ -725,9 +712,10 @@ export default function PrepositionsPage({
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
   const [quizMode, setQuizMode] = useState(["mode:case"]);
   
-  const selectedQuizModes = quizMode.filter((v) => v.startsWith("mode:")).map((v) => v.slice(5));
-  const selectedArticle = quizMode.find((v) => v.startsWith("article:"));
-  const articleFilter = selectedArticle ? selectedArticle.slice(8) : null;
+  const selectedQuizModes = quizMode
+    .filter((v) => v.startsWith("mode:"))
+    .map((v) => v.slice(5));
+  const includesArticle = selectedQuizModes.includes("article");
   const selectedQuizStatus = quizMode.find((v) => v.startsWith("status:"));
   const effectiveQuizStatus = selectedQuizStatus === "status:In Progress" ? "In Progress" : selectedQuizStatus === "status:Mastered" ? "Mastered" : "all";
   
@@ -829,51 +817,49 @@ export default function PrepositionsPage({
       const itemStatus = item.status || "In Progress";
       const matchesStatus = effectiveQuizStatus === "all" || itemStatus === effectiveQuizStatus;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      
+
       const includesCase = selectedQuizModes.includes("case");
       const includesFlashRev = selectedQuizModes.includes("flashrev");
-      const includesArticle = Boolean(articleFilter);
-      
+
       let matchesMode = false;
-      if (includesCase) {
+      if (includesCase || includesArticle) {
         matchesMode = true;
       }
       if (includesFlashRev && Boolean(item.flashRev)) {
-        if (includesArticle) {
-          // Only include if article matches
-          matchesMode = normalizeCase(item.caseType) === articleFilter;
-        } else {
-          matchesMode = true;
-        }
+        matchesMode = true;
       }
-      
+
       return matchesStatus && matchesDate && matchesMode;
     });
-    
+
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
     const includesCase = selectedQuizModes.includes("case");
     const includesFlashRev = selectedQuizModes.includes("flashrev");
-    
+
     return ordered.flatMap((item) => {
       const tokens = [];
-      if (includesCase) tokens.push({ id: item.id, mode: "case" });
+      if (includesCase || includesArticle) {
+        tokens.push({
+          id: item.id,
+          mode: includesArticle && !includesCase ? "article" : "case",
+        });
+      }
       if (includesFlashRev && item.flashRev) {
-        if (articleFilter) {
-          // Only add if matches article filter
-          if (normalizeCase(item.caseType) === articleFilter) {
-            for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
-              tokens.push({ id: item.id, mode: "flashrev", step: i });
-            }
-          }
-        } else {
-          for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
-            tokens.push({ id: item.id, mode: "flashrev", step: i });
-          }
+        for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
+          tokens.push({ id: item.id, mode: "flashrev", step: i });
         }
       }
       return tokens;
     });
-  }, [list.length, effectiveQuizStatus, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
+  }, [
+    list.length,
+    effectiveQuizStatus,
+    quizDateMode,
+    quizSpecificDate,
+    quizShuffleKey,
+    quizMode,
+    quizSessionKey,
+  ]);
 
   const availableQuizWords = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
@@ -2265,7 +2251,7 @@ export default function PrepositionsPage({
                   🔀 Shuffle
                 </button>
 
-                {(effectiveQuizStatus !== "all" || selectedQuizModes.join(",") !== "case" || quizDateMode !== "all" || quizSpecificDate || wordCountInput || articleFilter) && (
+                {(effectiveQuizStatus !== "all" || selectedQuizModes.join(",") !== "case" || quizDateMode !== "all" || quizSpecificDate || wordCountInput) && (
                   <button
                     type="button"
                     className="btn btn-secondary"

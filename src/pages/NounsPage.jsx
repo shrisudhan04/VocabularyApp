@@ -2306,8 +2306,10 @@ export default function NounsPage({
             <div className="stat dark" style={{ minWidth: 0 }}>
               <div className="stat-head">
                 <span className="stat-label">TOTAL NOUNS</span>
-                <span className="stat-pill dark">{nounsMastered} mastered</span>
-              </div>
+<span className="stat-pill dark mastered-count">
+  <span className="mastered-number">{nounsMastered}</span>
+  <span className="mastered-label">mastered</span>
+</span>              </div>
               <div className="stat-foot">
                 <span className="stat-value">{list.length}</span>
                 {nounsForgot > 0 ? (

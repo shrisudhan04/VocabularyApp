@@ -1806,3 +1806,17 @@ textarea:focus-visible {
 .category-study-actions .btn { height:32px; padding:0 10px; font-size:12px; }
 @media (max-width: 900px) { .dashboard-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } .dashboard-category-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width: 650px) { .dashboard-hero { flex-direction:column; align-items:stretch; } .dashboard-hero h2 { font-size:23px; } .dashboard-stats, .dashboard-category-grid, .dashboard-bottom-grid { grid-template-columns:1fr; } .dashboard-review-btn { width:100%; } }
+/* Keep the mastered count and label visible on desktop */
+.mastered-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* Mobile view: hide only the "mastered" text */
+@media (max-width: 600px) {
+  .mastered-count .mastered-label {
+    display: none;
+  }
+}

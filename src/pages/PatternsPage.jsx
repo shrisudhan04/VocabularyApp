@@ -2133,24 +2133,27 @@ export default function PatternsPage({
             <div className="stat dark">
               <div className="stat-head">
                 <span className="stat-label">TOTAL PATTERNS</span>
-                <span className="stat-pill dark">{patternsMastered} mastered</span>
+                <span className="stat-pill dark mastered-count">
+  <span className="mastered-number">{patternsMastered}</span>
+  <span className="mastered-label">mastered</span>
+</span> 
+                
               </div>
               <div className="stat-foot">
                 <span className="stat-value">{list.length}</span>
-                <span className="stat-note" style={{ color: "#a8a29e" }}>active rules</span>
               </div>
             </div>
 
             <div className="stat">
-              <div className="stat-head"><span className="stat-label">DER PATTERNS</span><span className="stat-pill bg-der">der</span></div>
+              <div className="stat-head"><span className="stat-label">DER</span><span className="stat-pill bg-der">der</span></div>
               <div className="stat-foot"><span className="stat-value c-der">{countPattern("der")}</span></div>
             </div>
             <div className="stat">
-              <div className="stat-head"><span className="stat-label">DIE PATTERNS</span><span className="stat-pill bg-die">die</span></div>
+              <div className="stat-head"><span className="stat-label">DIE</span><span className="stat-pill bg-die">die</span></div>
               <div className="stat-foot"><span className="stat-value c-die">{countPattern("die")}</span></div>
             </div>
             <div className="stat">
-              <div className="stat-head"><span className="stat-label">DAS PATTERNS</span><span className="stat-pill bg-das">das</span></div>
+              <div className="stat-head"><span className="stat-label">DAS</span><span className="stat-pill bg-das">das</span></div>
               <div className="stat-foot"><span className="stat-value c-das">{countPattern("das")}</span></div>
             </div>
           </div>

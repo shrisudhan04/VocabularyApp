@@ -1588,8 +1588,10 @@ export default function VerbsPage({
             <div className="stat dark">
               <div className="stat-head">
                 <span className="stat-label">TOTAL VERBS</span>
-                <span className="stat-pill dark">{verbsMastered} mastered</span>
-              </div>
+<span className="stat-pill dark mastered-count">
+  <span className="mastered-number">{verbsMastered}</span>
+  <span className="mastered-label">mastered</span>
+</span>               </div>
               <div className="stat-foot">
                 <span className="stat-value">{list.length}</span>
                 <span className="stat-note" style={{ color: "#a8a29e" }}>all cases</span>

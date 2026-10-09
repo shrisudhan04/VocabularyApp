@@ -39,6 +39,22 @@ const QUIZ_STATUS_MODE_OPTIONS = [
 const PREP_FLASHREV_ROTATION = ["case", "meaning", "example"];
 const PREP_FLASHREV_STEPS = PREP_FLASHREV_ROTATION.length;
 
+// Article quiz questions use the article already present in each German example.
+// This avoids guessing noun gender when the data only stores preposition/meaning/example.
+const GERMAN_ARTICLE_REGEX = /\b(der|die|das)\b/i;
+const GERMAN_ARTICLE_OPTIONS = ["der", "die", "das"];
+
+const getArticleQuestion = (example = "") => {
+  const sentence = String(example ?? "").trim();
+  const match = sentence.match(GERMAN_ARTICLE_REGEX);
+  if (!match || match.index === undefined) return null;
+
+  return {
+    answer: match[0].toLowerCase(),
+    sentence: `${sentence.slice(0, match.index)}_____${sentence.slice(match.index + match[0].length)}`,
+  };
+};
+
 const getPrepFlashRevMode = (word, subIndex) => {
   const available = PREP_FLASHREV_ROTATION.filter((mode) =>
     mode === "case" ||
@@ -290,7 +306,7 @@ function QuizMultiSelect({ values = [], options = [], onChange }) {
 
   const toggle = (value) => {
     let next = Array.isArray(values) ? [...values] : [];
-    
+
     if (value === "status:all") {
       next = next.filter((v) => !v.startsWith("status:"));
       next.push("status:all");
@@ -711,14 +727,14 @@ export default function PrepositionsPage({
   // Quiz State
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
   const [quizMode, setQuizMode] = useState(["mode:case"]);
-  
+
   const selectedQuizModes = quizMode
     .filter((v) => v.startsWith("mode:"))
     .map((v) => v.slice(5));
   const includesArticle = selectedQuizModes.includes("article");
   const selectedQuizStatus = quizMode.find((v) => v.startsWith("status:"));
   const effectiveQuizStatus = selectedQuizStatus === "status:In Progress" ? "In Progress" : selectedQuizStatus === "status:Mastered" ? "Mastered" : "all";
-  
+
   const [quizTextInput, setQuizTextInput] = useState("");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
@@ -813,46 +829,48 @@ export default function PrepositionsPage({
   };
 
   const availableQuizPool = useMemo(() => {
+    const includesCase = selectedQuizModes.includes("case");
+    const includesFlashRev = selectedQuizModes.includes("flashrev");
+
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = effectiveQuizStatus === "all" || itemStatus === effectiveQuizStatus;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
 
-      const includesCase = selectedQuizModes.includes("case");
-      const includesFlashRev = selectedQuizModes.includes("flashrev");
+      // A word qualifies if it is a FlashRev word (when FlashRev is on),
+      // or if it is a regular word (when Case or Article is on).
+      const qualifiesAsFlashRev = includesFlashRev && Boolean(item.flashRev);
+      const qualifiesAsRegular = includesCase || includesArticle;
 
-      let matchesMode = false;
-      if (includesCase || includesArticle) {
-        matchesMode = true;
-      }
-      if (includesFlashRev && Boolean(item.flashRev)) {
-        matchesMode = true;
-      }
-
-      return matchesStatus && matchesDate && matchesMode;
+      return matchesStatus && matchesDate && (qualifiesAsFlashRev || qualifiesAsRegular);
     });
 
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
-    const includesCase = selectedQuizModes.includes("case");
-    const includesFlashRev = selectedQuizModes.includes("flashrev");
 
     return ordered.flatMap((item) => {
       const tokens = [];
-      if (includesCase || includesArticle) {
+      const isFlashRevItem = includesFlashRev && Boolean(item.flashRev);
+
+      if (isFlashRevItem) {
+        // When Article is selected with FlashRev, FlashRev words get Article only.
+        // FlashRev by itself retains the original Case -> Meaning -> Example sequence.
+        if (includesArticle) {
+          tokens.push({ id: item.id, mode: "flashrev", questionMode: "article", step: 0 });
+        } else {
+          for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
+            tokens.push({ id: item.id, mode: "flashrev", step: i });
+          }
+        }
+      } else if (includesCase || includesArticle) {
         tokens.push({
           id: item.id,
           mode: includesArticle && !includesCase ? "article" : "case",
         });
       }
-      if (includesFlashRev && item.flashRev) {
-        for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
-          tokens.push({ id: item.id, mode: "flashrev", step: i });
-        }
-      }
       return tokens;
     });
   }, [
-    list.length,
+    list,
     effectiveQuizStatus,
     quizDateMode,
     quizSpecificDate,
@@ -863,18 +881,31 @@ export default function PrepositionsPage({
 
   const availableQuizWords = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
-    return availableQuizPool.map((q) => ({ ...byId.get(q.id), __quizMode: q.mode, __quizStep: q.step })).filter((x) => x?.id);
+    return availableQuizPool.map((q) => ({
+      ...byId.get(q.id),
+      __quizMode: q.mode,
+      __quizStep: q.step,
+      __questionMode: q.questionMode || q.mode,
+    })).filter((x) => x?.id);
   }, [list, availableQuizPool]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
-    if (selectedQuizModes.includes("flashrev")) {
-      if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count * PREP_FLASHREV_STEPS);
-      return availableQuizWords;
+    if (!isNaN(count) && count > 0) {
+      // Count applies to words, not sub-questions, so FlashRev's 3 steps stay together
+      const kept = new Set();
+      const result = [];
+      for (const q of availableQuizWords) {
+        if (!kept.has(q.id)) {
+          if (kept.size >= count) break;
+          kept.add(q.id);
+        }
+        result.push(q);
+      }
+      return result;
     }
-    if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count);
     return availableQuizWords;
-  }, [availableQuizWords, wordCountInput, selectedQuizModes.join(",")]);
+  }, [availableQuizWords, wordCountInput]);
 
   const handleQuizCaseSelect = (selectedCase) => {
     if (quizFeedback !== null || !prepQuizWord) return;
@@ -887,6 +918,27 @@ export default function PrepositionsPage({
       isCorrect
         ? "Correct! 🎉"
         : `Wrong! "${prepQuizWord.prep}" takes "${actual}".`
+    );
+    recordAnswerResult(prepQuizWord, isCorrect);
+    triggerAutoAdvance(isCorrect);
+  };
+
+  const handleQuizArticleSelect = (selectedArticle) => {
+    if (quizFeedback !== null || !prepQuizWord) return;
+
+    const articleQuestion = getArticleQuestion(prepQuizWord.example);
+    if (!articleQuestion) {
+      setQuizFeedback("No der/die/das article was found in this example. Please update the example sentence.");
+      setQuizAnswerState("wrong");
+      return;
+    }
+
+    const isCorrect = selectedArticle === articleQuestion.answer;
+    if (isCorrect) setQuizScore((prev) => prev + 1);
+    setQuizFeedback(
+      isCorrect
+        ? "Correct! 🎉"
+        : `Incorrect. The correct article is "${articleQuestion.answer}".`
     );
     recordAnswerResult(prepQuizWord, isCorrect);
     triggerAutoAdvance(isCorrect);
@@ -915,7 +967,9 @@ export default function PrepositionsPage({
     if (!word) return;
 
     const isFlashRevQuestion = word?.__quizMode === "flashrev";
-    const isLastSubQuestion = !isFlashRevQuestion || (word.__quizStep ?? 0) === PREP_FLASHREV_STEPS - 1;
+    const isLastSubQuestion = !isFlashRevQuestion ||
+      word.__questionMode === "article" ||
+      (word.__quizStep ?? 0) === PREP_FLASHREV_STEPS - 1;
 
     let changed = false;
     const updated = list.map((item) => {
@@ -1582,11 +1636,17 @@ export default function PrepositionsPage({
   };
 
   const prepQuizWord = quizList[quizIndex];
-  const effectivePrepMode = prepQuizWord?.__quizMode === "flashrev"
-    ? getPrepFlashRevMode(prepQuizWord, prepQuizWord.__quizStep ?? 0)
-    : "case";
+  // Article mode asks the user to identify der, die, or das in the example sentence.
+  const isArticleQuestion = prepQuizWord?.__questionMode === "article" || prepQuizWord?.__quizMode === "article";
+  const articleQuestion = isArticleQuestion ? getArticleQuestion(prepQuizWord?.example) : null;
+  const effectivePrepMode = isArticleQuestion
+    ? "article"
+    : prepQuizWord?.__quizMode === "flashrev"
+      ? getPrepFlashRevMode(prepQuizWord, prepQuizWord.__quizStep ?? 0)
+      : prepQuizWord?.__quizMode || "case";
   const flashRevCount = list.filter((p) => p.flashRev).length;
-  const flashRevUniqueWords = quizList.filter((q) => q?.__quizMode === "flashrev").length / PREP_FLASHREV_STEPS;
+  const flashRevUniqueWords = quizList.filter((q) => q?.__quizMode === "flashrev").length /
+    (selectedQuizModes.includes("article") ? 1 : PREP_FLASHREV_STEPS);
 
   return (
     <>
@@ -1625,7 +1685,11 @@ export default function PrepositionsPage({
             <div className="stat dark">
               <div className="stat-head">
                 <span className="stat-label">TOTAL PREPOSITIONS</span>
-                <span className="stat-pill dark">{prepsMastered} mastered</span>
+                <span className="stat-pill dark mastered-count">
+  <span className="mastered-number">{prepsMastered}</span>
+  <span className="mastered-label">mastered</span>
+</span> 
+                
               </div>
               <div className="stat-foot">
                 <span className="stat-value">{list.length}</span>
@@ -2339,9 +2403,11 @@ export default function PrepositionsPage({
               `}</style>
               <div className="quiz-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="quiz-head-left">
-                  {prepQuizWord?.__quizMode === "flashrev"
-                    ? <>FlashRev · Q{(prepQuizWord.__quizStep ?? 0) + 1}/{PREP_FLASHREV_STEPS}</>
-                    : <>Case · Question {quizIndex + 1} of {quizList.length}</>}
+                  {isArticleQuestion
+                    ? <>Article · Question {quizIndex + 1} of {quizList.length}</>
+                    : prepQuizWord?.__quizMode === "flashrev"
+                      ? <>FlashRev · Q{(prepQuizWord.__quizStep ?? 0) + 1}/{PREP_FLASHREV_STEPS}</>
+                      : <>{effectivePrepMode === "meaning" ? "Meaning" : effectivePrepMode === "example" ? "Example" : "Case"} · Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
 
                 <span className="quiz-head-right" style={{ fontWeight: 700, color: "var(--brand)" }}>
@@ -2349,7 +2415,7 @@ export default function PrepositionsPage({
                 </span>
               </div>
 
-              {prepQuizWord?.__quizMode === "flashrev" && (
+              {prepQuizWord?.__quizMode === "flashrev" && !isArticleQuestion && (
                 <div className="flashrev-dots">
                   {Array.from({ length: PREP_FLASHREV_STEPS }).map((_, i) => (
                     <span key={i} className={`flashrev-dot ${i < quizIndex % PREP_FLASHREV_STEPS ? "done" : i === quizIndex % PREP_FLASHREV_STEPS ? "active" : ""}`} />
@@ -2361,6 +2427,17 @@ export default function PrepositionsPage({
               )}
 
               <div className="quiz-card">
+                {effectivePrepMode === "article" && (
+                  <>
+                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct article:</span>
+                    {articleQuestion ? (
+                      <h1 style={{ fontSize: 22, lineHeight: 1.5 }}>{articleQuestion.sentence}</h1>
+                    ) : (
+                      <p style={{ color: "#b91c1c", fontWeight: 600 }}>No der/die/das article was found in this example. Please update the example sentence.</p>
+                    )}
+                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>Preposition: <strong>{prepQuizWord.prep}</strong></p>
+                  </>
+                )}
                 {effectivePrepMode === "case" && (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct case:</span>
@@ -2383,7 +2460,21 @@ export default function PrepositionsPage({
                 )}
               </div>
 
-              {effectivePrepMode === "case" ? (
+              {effectivePrepMode === "article" ? (
+                <div className="quiz-opts">
+                  {GERMAN_ARTICLE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      disabled={quizAnswerState !== "idle" || !articleQuestion}
+                      className={`quiz-opt ${opt}`}
+                      onClick={() => handleQuizArticleSelect(opt)}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              ) : effectivePrepMode === "case" ? (
                 <div className="quiz-opts">
                   {["Dativ", "Akkusativ", "Wechsel"].map((opt) => (
                     <button
@@ -2413,7 +2504,7 @@ export default function PrepositionsPage({
                 </div>
               ) : (
                 <form onSubmit={handleQuizTextSubmit} style={{ marginTop: 18, display: "flex", gap: 8, width: "100%", maxWidth: 420, marginInline: "auto" }}>
-                  <input autoFocus disabled={quizAnswerState !== "idle"} value={quizTextInput} onChange={(e) => setQuizTextInput(e.target.value)} className="modal-input" placeholder={effectivePrepMode === "meaning" ? "Type English meaning..." : "Type German preposition..."} style={{ flex: 1, height: 46, fontSize: 16, fontWeight: 600, borderRadius: 12, padding: "0 14px" }} />
+                  <input autoFocus disabled={quizAnswerState !== "idle"} value={quizTextInput} onChange={(e) => setQuizTextInput(e.target.value)} className="modal-input" placeholder={effectivePrepMode === "meaning" ? "Type English meaning..." : effectivePrepMode === "example" ? "Type German preposition..." : "Type answer..."} style={{ flex: 1, height: 46, fontSize: 16, fontWeight: 600, borderRadius: 12, padding: "0 14px" }} />
                   <button type="submit" disabled={quizAnswerState !== "idle" || !quizTextInput.trim()} className="btn btn-primary" style={{ height: 46, padding: "0 18px", borderRadius: 12 }}>Check</button>
                 </form>
               )}

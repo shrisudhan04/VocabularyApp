@@ -33,27 +33,10 @@ const QUIZ_STATUS_MODE_OPTIONS = [
   { label: "Mastered", value: "status:Mastered" },
   { label: "Case", value: "mode:case" },
   { label: "FlashRev", value: "mode:flashrev" },
-  { label: "Article", value: "mode:article" },
 ];
 
 const PREP_FLASHREV_ROTATION = ["case", "meaning", "example"];
 const PREP_FLASHREV_STEPS = PREP_FLASHREV_ROTATION.length;
-
-// Article quiz questions use the article already present in each German example.
-// This avoids guessing noun gender when the data only stores preposition/meaning/example.
-const GERMAN_ARTICLE_REGEX = /\b(der|die|das)\b/i;
-const GERMAN_ARTICLE_OPTIONS = ["der", "die", "das"];
-
-const getArticleQuestion = (example = "") => {
-  const sentence = String(example ?? "").trim();
-  const match = sentence.match(GERMAN_ARTICLE_REGEX);
-  if (!match || match.index === undefined) return null;
-
-  return {
-    answer: match[0].toLowerCase(),
-    sentence: `${sentence.slice(0, match.index)}_____${sentence.slice(match.index + match[0].length)}`,
-  };
-};
 
 const getPrepFlashRevMode = (word, subIndex) => {
   const available = PREP_FLASHREV_ROTATION.filter((mode) =>
@@ -241,7 +224,7 @@ const normalizeCase = (raw) => {
   return "Akkusativ";
 };
 
-// Quiz multi-select (Case / FlashRev / Article + status).
+// Quiz multi-select (Case / FlashRev + status).
 // The menu is rendered in a portal with fixed positioning
 function QuizMultiSelect({ values = [], options = [], onChange }) {
   const [open, setOpen] = useState(false);
@@ -314,7 +297,7 @@ function QuizMultiSelect({ values = [], options = [], onChange }) {
       next = next.filter((v) => !v.startsWith("status:"));
       next.push(value);
     } else {
-      // Mode selection (Case, FlashRev, Article)
+      // Mode selection (Case, FlashRev)
       next = next.includes(value) ? next.filter((v) => v !== value) : [...next, value];
 
       // Ensure at least one mode is selected
@@ -325,9 +308,7 @@ function QuizMultiSelect({ values = [], options = [], onChange }) {
     onChange(next);
   };
 
-  const safeValues = (Array.isArray(values) ? values : []).map((v) =>
-    v === "article" ? "mode:article" : v
-  );
+  const safeValues = (Array.isArray(values) ? values : []).filter((v) => v !== "mode:article" && v !== "article");
 
   const labels = safeValues
     .map((v) => options.find((o) => o.value === v)?.label)
@@ -731,7 +712,6 @@ export default function PrepositionsPage({
   const selectedQuizModes = quizMode
     .filter((v) => v.startsWith("mode:"))
     .map((v) => v.slice(5));
-  const includesArticle = selectedQuizModes.includes("article");
   const selectedQuizStatus = quizMode.find((v) => v.startsWith("status:"));
   const effectiveQuizStatus = selectedQuizStatus === "status:In Progress" ? "In Progress" : selectedQuizStatus === "status:Mastered" ? "Mastered" : "all";
 
@@ -838,9 +818,9 @@ export default function PrepositionsPage({
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
 
       // A word qualifies if it is a FlashRev word (when FlashRev is on),
-      // or if it is a regular word (when Case or Article is on).
+      // or if Case mode is selected for regular words.
       const qualifiesAsFlashRev = includesFlashRev && Boolean(item.flashRev);
-      const qualifiesAsRegular = includesCase || includesArticle;
+      const qualifiesAsRegular = includesCase;
 
       return matchesStatus && matchesDate && (qualifiesAsFlashRev || qualifiesAsRegular);
     });
@@ -852,20 +832,17 @@ export default function PrepositionsPage({
       const isFlashRevItem = includesFlashRev && Boolean(item.flashRev);
 
       if (isFlashRevItem) {
-        // When Article is selected with FlashRev, FlashRev words get Article only.
-        // FlashRev by itself retains the original Case -> Meaning -> Example sequence.
-        if (includesArticle) {
-          tokens.push({ id: item.id, mode: "flashrev", questionMode: "article", step: 0 });
+        // FlashRev + Case asks only the Case question for FlashRev words.
+        // FlashRev by itself keeps the original Case -> Meaning -> Example sequence.
+        if (includesCase && selectedQuizModes.length > 1) {
+          tokens.push({ id: item.id, mode: "flashrev", questionMode: "case", step: 0 });
         } else {
           for (let i = 0; i < PREP_FLASHREV_STEPS; i++) {
             tokens.push({ id: item.id, mode: "flashrev", step: i });
           }
         }
-      } else if (includesCase || includesArticle) {
-        tokens.push({
-          id: item.id,
-          mode: includesArticle && !includesCase ? "article" : "case",
-        });
+      } else if (includesCase) {
+        tokens.push({ id: item.id, mode: "case" });
       }
       return tokens;
     });
@@ -923,26 +900,6 @@ export default function PrepositionsPage({
     triggerAutoAdvance(isCorrect);
   };
 
-  const handleQuizArticleSelect = (selectedArticle) => {
-    if (quizFeedback !== null || !prepQuizWord) return;
-
-    const articleQuestion = getArticleQuestion(prepQuizWord.example);
-    if (!articleQuestion) {
-      setQuizFeedback("No der/die/das article was found in this example. Please update the example sentence.");
-      setQuizAnswerState("wrong");
-      return;
-    }
-
-    const isCorrect = selectedArticle === articleQuestion.answer;
-    if (isCorrect) setQuizScore((prev) => prev + 1);
-    setQuizFeedback(
-      isCorrect
-        ? "Correct! 🎉"
-        : `Incorrect. The correct article is "${articleQuestion.answer}".`
-    );
-    recordAnswerResult(prepQuizWord, isCorrect);
-    triggerAutoAdvance(isCorrect);
-  };
 
   const handleQuizTextSubmit = (e) => {
     e?.preventDefault();
@@ -968,7 +925,7 @@ export default function PrepositionsPage({
 
     const isFlashRevQuestion = word?.__quizMode === "flashrev";
     const isLastSubQuestion = !isFlashRevQuestion ||
-      word.__questionMode === "article" ||
+      word.__questionMode === "case" ||
       (word.__quizStep ?? 0) === PREP_FLASHREV_STEPS - 1;
 
     let changed = false;
@@ -1636,17 +1593,14 @@ export default function PrepositionsPage({
   };
 
   const prepQuizWord = quizList[quizIndex];
-  // Article mode asks the user to identify der, die, or das in the example sentence.
-  const isArticleQuestion = prepQuizWord?.__questionMode === "article" || prepQuizWord?.__quizMode === "article";
-  const articleQuestion = isArticleQuestion ? getArticleQuestion(prepQuizWord?.example) : null;
-  const effectivePrepMode = isArticleQuestion
-    ? "article"
-    : prepQuizWord?.__quizMode === "flashrev"
-      ? getPrepFlashRevMode(prepQuizWord, prepQuizWord.__quizStep ?? 0)
-      : prepQuizWord?.__quizMode || "case";
+  const effectivePrepMode = prepQuizWord?.__quizMode === "flashrev"
+    ? (prepQuizWord?.__questionMode === "case"
+        ? "case"
+        : getPrepFlashRevMode(prepQuizWord, prepQuizWord.__quizStep ?? 0))
+    : prepQuizWord?.__quizMode || "case";
   const flashRevCount = list.filter((p) => p.flashRev).length;
   const flashRevUniqueWords = quizList.filter((q) => q?.__quizMode === "flashrev").length /
-    (selectedQuizModes.includes("article") ? 1 : PREP_FLASHREV_STEPS);
+    (selectedQuizModes.includes("case") && selectedQuizModes.length > 1 ? 1 : PREP_FLASHREV_STEPS);
 
   return (
     <>
@@ -2403,11 +2357,9 @@ export default function PrepositionsPage({
               `}</style>
               <div className="quiz-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="quiz-head-left">
-                  {isArticleQuestion
-                    ? <>Article · Question {quizIndex + 1} of {quizList.length}</>
-                    : prepQuizWord?.__quizMode === "flashrev"
-                      ? <>FlashRev · Q{(prepQuizWord.__quizStep ?? 0) + 1}/{PREP_FLASHREV_STEPS}</>
-                      : <>{effectivePrepMode === "meaning" ? "Meaning" : effectivePrepMode === "example" ? "Example" : "Case"} · Question {quizIndex + 1} of {quizList.length}</>}
+                  {prepQuizWord?.__quizMode === "flashrev"
+                    ? <>FlashRev · Q{(prepQuizWord.__quizStep ?? 0) + 1}/{selectedQuizModes.includes("case") && selectedQuizModes.length > 1 ? 1 : PREP_FLASHREV_STEPS}</>
+                    : <>{effectivePrepMode === "meaning" ? "Meaning" : effectivePrepMode === "example" ? "Example" : "Case"} · Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
 
                 <span className="quiz-head-right" style={{ fontWeight: 700, color: "var(--brand)" }}>
@@ -2415,7 +2367,7 @@ export default function PrepositionsPage({
                 </span>
               </div>
 
-              {prepQuizWord?.__quizMode === "flashrev" && !isArticleQuestion && (
+              {prepQuizWord?.__quizMode === "flashrev" && !(prepQuizWord?.__questionMode === "case") && (
                 <div className="flashrev-dots">
                   {Array.from({ length: PREP_FLASHREV_STEPS }).map((_, i) => (
                     <span key={i} className={`flashrev-dot ${i < quizIndex % PREP_FLASHREV_STEPS ? "done" : i === quizIndex % PREP_FLASHREV_STEPS ? "active" : ""}`} />
@@ -2427,17 +2379,6 @@ export default function PrepositionsPage({
               )}
 
               <div className="quiz-card">
-                {effectivePrepMode === "article" && (
-                  <>
-                    <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct article:</span>
-                    {articleQuestion ? (
-                      <h1 style={{ fontSize: 22, lineHeight: 1.5 }}>{articleQuestion.sentence}</h1>
-                    ) : (
-                      <p style={{ color: "#b91c1c", fontWeight: 600 }}>No der/die/das article was found in this example. Please update the example sentence.</p>
-                    )}
-                    <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>Preposition: <strong>{prepQuizWord.prep}</strong></p>
-                  </>
-                )}
                 {effectivePrepMode === "case" && (
                   <>
                     <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Choose the correct case:</span>
@@ -2460,21 +2401,7 @@ export default function PrepositionsPage({
                 )}
               </div>
 
-              {effectivePrepMode === "article" ? (
-                <div className="quiz-opts">
-                  {GERMAN_ARTICLE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      disabled={quizAnswerState !== "idle" || !articleQuestion}
-                      className={`quiz-opt ${opt}`}
-                      onClick={() => handleQuizArticleSelect(opt)}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              ) : effectivePrepMode === "case" ? (
+              {effectivePrepMode === "case" ? (
                 <div className="quiz-opts">
                   {["Dativ", "Akkusativ", "Wechsel"].map((opt) => (
                     <button

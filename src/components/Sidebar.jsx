@@ -458,6 +458,7 @@ export default function Sidebar({
   onSelectCategory,
   onOpenGoals,
   onOpenReport,
+  onOpenWebReminders,
   languageMode = "EN",
   onToggleLanguage,
   version = "1.0.0",
@@ -988,6 +989,21 @@ export default function Sidebar({
             >
               <span>📊 Report</span>
               <span className="nav-count goal-badge">By date</span>
+            </button>
+
+            {/* Web notification reminders */}
+            <button
+              type="button"
+              className="sidebar-tab-btn sidebar-goal-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.currentTarget.blur();
+                onClose();
+                onOpenWebReminders?.();
+              }}
+            >
+              <span>🔔 Notification Reminders</span>
+              <span className="nav-count goal-badge">Set times</span>
             </button>
 
             {/* ── Import / Export (side by side) ── */}

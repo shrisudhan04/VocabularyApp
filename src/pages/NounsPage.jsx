@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   requestMobileNotificationPermission,
+  isNative,
   startHourlyNounNotifier,
   stopHourlyNounNotifier,
   sendNounNotification,
@@ -952,6 +953,7 @@ export default function NounsPage({
   onCommitNouns,
   onRequestConfirm,
   onRequestViewChange,
+  onOpenWebReminders,
   // Optional: pass these from the parent to own categories there.
   // If omitted, categories are kept in this component and saved in localStorage.
   categories: categoriesProp,
@@ -2502,12 +2504,20 @@ export default function NounsPage({
 
                   <button
                     type="button"
-                    onClick={handleToggleHourlyNotifications}
+                    onClick={() => {
+                      if (!isNative() && onOpenWebReminders) {
+                        onOpenWebReminders();
+                      } else {
+                        handleToggleHourlyNotifications();
+                      }
+                    }}
                     className="btn btn-secondary"
-                    title="Toggle Hourly Word Notification"
+                    title={!isNative() && onOpenWebReminders ? "Configure daily reminder times" : "Toggle Hourly Word Notification"}
                     style={{ flexShrink: 0, whiteSpace: "nowrap" }}
                   >
-                    {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
+                    {!isNative() && onOpenWebReminders
+                      ? "🔔 Reminder Times"
+                      : hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
                   </button>
 
                   <button

@@ -63,6 +63,7 @@ import { GRAMMAR_TOPICS } from "./constants/grammarData";
 import Header from "./components/Header";
 
 import Sidebar from "./components/Sidebar";
+import WebReminderSettings from "./components/WebReminderSettings";
 
 import SubTabs from "./components/SubTabs";
 
@@ -91,6 +92,7 @@ import TimePage from "./pages/TimePage";
 import GrammarPage from "./pages/GrammarPage";
 import DashboardPage from "./pages/DashboardPage";
 import { countDueToday } from "./utils/studyHelpers";
+import { startScheduledWebReminders, stopScheduledWebReminders } from "./utils/hourlyWordNotifier";
 
 
 
@@ -117,6 +119,7 @@ export default function App() {
   const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const [reportOpen, setReportOpen] = useState(false);
+  const [webReminderSettingsOpen, setWebReminderSettingsOpen] = useState(false);
 
 
 
@@ -533,6 +536,14 @@ export default function App() {
   }, []);
 
 
+  // Web reminder scheduling runs only while the app page is alive.
+  useEffect(() => {
+    if (!isReady) return undefined;
+    const reminderHandle = startScheduledWebReminders(() => vocabList);
+    return () => stopScheduledWebReminders(reminderHandle);
+  }, [isReady, vocabList]);
+
+
 
   // ---------------------------------------------------------------
 
@@ -674,6 +685,7 @@ export default function App() {
         onOpenGoals={() => setGoalModalOpen(true)}
 
         onOpenReport={() => setReportOpen(true)}
+        onOpenWebReminders={() => setWebReminderSettingsOpen(true)}
 
         vocabList={vocabList}
         verbsList={verbsList}
@@ -689,7 +701,11 @@ export default function App() {
 
       />
 
-
+      <WebReminderSettings
+        isOpen={webReminderSettingsOpen}
+        onClose={() => setWebReminderSettingsOpen(false)}
+        vocabList={vocabList}
+      />
 
       <GoalModal
 
@@ -790,6 +806,7 @@ export default function App() {
               vocabList={vocabList}
 
               onCommitNouns={commitNouns}
+              onOpenWebReminders={() => setWebReminderSettingsOpen(true)}
 
               onRequestConfirm={requestConfirmation}
               onRequestViewChange={(view) => setSubViews((prev) => ({ ...prev, Nouns: view }))}

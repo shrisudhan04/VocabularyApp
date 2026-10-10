@@ -7,6 +7,7 @@ import {
 } from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
+import SearchableDropdown from "../components/SearchableDropdown";
 import GoalModal from "../components/GoalModal";
 import { PREP_CASE_CLASS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
@@ -21,6 +22,19 @@ import "../App.css";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const CASES = ["Akkusativ", "Dativ", "Wechsel"];
+const PREP_CATEGORY_STORAGE_KEY = "preposition_categories";
+const cleanCategoryName = (value = "") => String(value ?? "").replace(/\s+/g, " ").trim();
+const toCategoryArray = (value) => {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return [...new Set(values.map(cleanCategoryName).filter(Boolean))];
+};
+const categoryDisplay = (value) => toCategoryArray(value).join(" + ");
+const loadPrepCategories = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PREP_CATEGORY_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.map(cleanCategoryName).filter(Boolean) : [];
+  } catch { return []; }
+};
 const QUIZ_MODE_OPTIONS = [
   { label: "Case", value: "case" },
   { label: "FlashRev", value: "flashrev" },
@@ -691,6 +705,131 @@ function RealCalendarPicker({ selectedDate, onSelectDate }) {
   );
 }
 
+
+// Category selector styled to match the Nouns page's form dropdown.
+// Supports selecting multiple categories while showing "No category" when empty.
+function PrepositionCategoryDropdown({ value = [], options = [], onChange, onCreateCategory }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const rootRef = useRef(null);
+  const selected = toCategoryArray(value);
+  const selectedLabel = selected.length ? selected.join(" + ") : "No category";
+  const query = cleanCategoryName(search).toLowerCase();
+  const filteredOptions = options.filter((option) => option.label.toLowerCase().includes(query));
+  const exactMatch = options.some((option) => option.label.toLowerCase() === query);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOutside);
+    return () => document.removeEventListener("mousedown", closeOutside);
+  }, [open]);
+
+  const toggleOption = (optionValue) => {
+    const next = selected.some((item) => item.toLowerCase() === optionValue.toLowerCase())
+      ? selected.filter((item) => item.toLowerCase() !== optionValue.toLowerCase())
+      : [...selected, optionValue];
+    onChange(next);
+  };
+
+  const createCategory = () => {
+    const name = cleanCategoryName(search);
+    if (!name) return;
+    const existing = options.find((option) => option.label.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      if (!selected.some((item) => item.toLowerCase() === existing.value.toLowerCase())) {
+        onChange([...selected, existing.value]);
+      }
+    } else {
+      onCreateCategory?.(name);
+    }
+    setSearch("");
+    setOpen(true);
+  };
+
+  return (
+    <div ref={rootRef} style={{ position: "relative", width: "100%" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        style={{
+          display: "flex", alignItems: "center", gap: 12, width: "100%", minHeight: 52,
+          boxSizing: "border-box", padding: "0 18px", border: "1px solid #e6d2bd",
+          borderRadius: 16, background: "#ffffff", color: "#292524", fontFamily: "inherit",
+          fontSize: 16, fontWeight: 600, textAlign: "left", cursor: "pointer",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.025)",
+        }}
+      >
+        <span aria-hidden="true" style={{ fontSize: 17, flexShrink: 0 }}>📁</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedLabel}</span>
+        <span aria-hidden="true" style={{ fontSize: 13, color: "#888", flexShrink: 0 }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 1200,
+          maxHeight: 300, overflowY: "auto", padding: 8, border: "1px solid #e6d2bd",
+          borderRadius: 14, background: "#fff", boxShadow: "0 12px 28px rgba(0,0,0,0.13)",
+        }}>
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") { event.preventDefault(); if (search.trim() && !exactMatch) createCategory(); }
+            }}
+            placeholder="Search or type a new category..."
+            style={{
+              width: "100%", boxSizing: "border-box", padding: "12px 14px", marginBottom: 8,
+              border: "1px solid #ead8c6", borderRadius: 12, background: "#faf7f3",
+              color: "#292524", fontFamily: "inherit", fontSize: 14, outline: "none",
+            }}
+            autoFocus
+          />
+          {search.trim() && !exactMatch && (
+            <button type="button" onClick={createCategory} style={{
+              display: "block", width: "100%", padding: "11px 12px", marginBottom: 4,
+              border: "none", borderRadius: 9, background: "#fff3c4", color: "#292524",
+              textAlign: "left", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer",
+            }}>
+              ＋ Create category “{cleanCategoryName(search)}”
+            </button>
+          )}
+          {filteredOptions.length === 0 && !search.trim() ? (
+            <div style={{ padding: "12px 10px", color: "#78716c", fontSize: 14 }}>No categories yet. Type above to create one.</div>
+          ) : filteredOptions.map((option) => {
+            const checked = selected.some((item) => item.toLowerCase() === option.value.toLowerCase());
+            return (
+              <button key={option.value} type="button" onClick={() => toggleOption(option.value)} style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 12px",
+                border: "none", borderRadius: 9, background: checked ? "#fff7ed" : "#fff",
+                color: checked ? "#b45309" : "#292524", fontFamily: "inherit", fontSize: 14,
+                fontWeight: checked ? 700 : 500, textAlign: "left", cursor: "pointer",
+              }}>
+                <span style={{ width: 17, height: 17, flexShrink: 0, borderRadius: 4,
+                  border: checked ? "1px solid #b85c19" : "1px solid #cfc7bf", background: checked ? "#b85c19" : "#fff",
+                  color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12,
+                }}>{checked ? "✓" : ""}</span>
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+          {selected.length > 0 && (
+            <button type="button" onClick={() => onChange([])} style={{
+              width: "100%", marginTop: 4, padding: "9px 10px", border: "none",
+              borderTop: "1px solid #f1e7da", background: "#fff", color: "#78716c",
+              cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600,
+            }}>Clear selection</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PrepositionsPage({
   viewMode = "list",
   prepsList = [],
@@ -698,10 +837,51 @@ export default function PrepositionsPage({
   onRequestConfirm,
 }) {
   const list = Array.isArray(prepsList) ? prepsList : [];
+  // Initialize category state before deriving allPrepCategories to avoid a temporal-dead-zone error.
+  const [prepCategories, setPrepCategories] = useState(loadPrepCategories);
+  const [newCategory, setNewCategory] = useState("");
+  const [listTab, setListTab] = useState("words");
+
+  const allPrepCategories = [...new Set([
+    ...prepCategories,
+    ...list.flatMap((item) => toCategoryArray(item.category)),
+  ])].sort((a, b) => a.localeCompare(b));
+  const savePrepCategories = (next) => {
+    const unique = [...new Set(next.map(cleanCategoryName).filter(Boolean))];
+    setPrepCategories(unique);
+    try { localStorage.setItem(PREP_CATEGORY_STORAGE_KEY, JSON.stringify(unique)); }
+    catch (error) { console.warn("Could not save preposition categories", error); }
+  };
+  const addPrepCategory = (typedName = newCategory) => {
+    const name = cleanCategoryName(typedName);
+    if (!name) return;
+    if (allPrepCategories.some((item) => item.toLowerCase() === name.toLowerCase())) {
+      alert(`Category "${name}" already exists.`);
+      return;
+    }
+    savePrepCategories([...allPrepCategories, name]);
+    setPrepFormData((prev) => ({ ...prev, category: [...toCategoryArray(prev.category), name] }));
+    setNewCategory("");
+  };
+
+  const categoryOptions = [
+    { label: "Uncategorized", value: "__uncategorized__" },
+    ...allPrepCategories.map((c) => ({ label: c, value: c })),
+  ];
+  const matchesPrepCategories = (item, selected) => {
+    const chosen = Array.isArray(selected) ? selected : selected && selected !== "all" ? [selected] : [];
+    if (!chosen.length) return true;
+    const itemCats = toCategoryArray(item.category);
+    if (chosen.includes("__uncategorized__") && itemCats.length === 0) return true;
+    return chosen.filter((c) => c !== "__uncategorized__").some((c) => itemCats.some((x) => x.toLowerCase() === c.toLowerCase()));
+  };
 
   const [search, setSearch] = useState("");
   const [prepFilter, setPrepFilter] = useState("all");
   const [prepStatusFilter, setPrepStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState([]);
+  const [flashCategoryFilter, setFlashCategoryFilter] = useState([]);
+  const [quizCategoryFilter, setQuizCategoryFilter] = useState([]);
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
 
@@ -863,8 +1043,12 @@ export default function PrepositionsPage({
       __quizMode: q.mode,
       __quizStep: q.step,
       __questionMode: q.questionMode || q.mode,
-    })).filter((x) => x?.id);
-  }, [list, availableQuizPool]);
+    })).filter((x) => {
+      if (!x?.id) return false;
+      const cats = toCategoryArray(x.category);
+      return matchesPrepCategories(x, quizCategoryFilter);
+    });
+  }, [list, availableQuizPool, quizCategoryFilter]);
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
@@ -962,9 +1146,10 @@ export default function PrepositionsPage({
         flashCaseFilter === "all" || normalizeCase(item.caseType) === flashCaseFilter;
       const matchesStatus = flashStatusFilter === "all" || itemStatus === flashStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, flashDateMode, flashSpecificDate);
-      return matchesCase && matchesStatus && matchesDate;
+      const matchesCategory = matchesPrepCategories(item, flashCategoryFilter);
+      return matchesCase && matchesStatus && matchesDate && matchesCategory;
     });
-  }, [list, flashCaseFilter, flashStatusFilter, flashDateMode, flashSpecificDate]);
+  }, [list, flashCaseFilter, flashStatusFilter, flashDateMode, flashSpecificDate, flashCategoryFilter]);
 
   const flashList = useMemo(() => {
     if (!flashOrder) return filteredFlashPool;
@@ -1244,6 +1429,7 @@ export default function PrepositionsPage({
           const meaning = (rowLower.meaning || rowLower["english meaning"] || "").toString().trim();
           const example = (rowLower.example || rowLower["example sentence"] || "").toString().trim();
           const status = (rowLower.status || "In Progress").toString().trim();
+          const category = toCategoryArray((rowLower.category || "").toString().split(/[+,;]/));
 
           if (prep) {
             const lower = prep.toLowerCase();
@@ -1257,6 +1443,7 @@ export default function PrepositionsPage({
                 caseType,
                 meaning,
                 example,
+                category,
                 status: status.toLowerCase() === "mastered" ? "Mastered" : "In Progress",
                 createdAt: new Date().toISOString(),
               });
@@ -1265,6 +1452,10 @@ export default function PrepositionsPage({
         });
 
         if (newEntries.length > 0) {
+          const importedCategories = newEntries.flatMap((item) => toCategoryArray(item.category));
+          if (importedCategories.length) {
+            savePrepCategories([...allPrepCategories, ...importedCategories]);
+          }
           const updatedList = [...list, ...newEntries];
           const reachedGoal = verifyGoalMilestone(list, updatedList, `${newEntries.length} new prepositions`);
           if (!reachedGoal) playSuccessSound();
@@ -1346,7 +1537,9 @@ export default function PrepositionsPage({
     const matchesCase =
       prepFilter === "all" || normalizeCase(item.caseType) === prepFilter;
     const matchesStatus = prepStatusFilter === "all" || (item.status || "In Progress") === prepStatusFilter;
-    return matchesSearch && matchesCase && matchesStatus && matchesDateFilter(item.createdAt, dateFilter, customDate);
+    const itemCategories = toCategoryArray(item.category);
+    const matchesCategory = matchesPrepCategories(item, categoryFilter);
+    return matchesSearch && matchesCase && matchesStatus && matchesCategory && matchesDateFilter(item.createdAt, dateFilter, customDate);
   });
 
   const prepsMastered = list.filter((i) => i.status === "Mastered").length;
@@ -1387,6 +1580,7 @@ export default function PrepositionsPage({
             ...prepFormData,
             prep: cleanPrep,
             caseType: normalizeCase(prepFormData.caseType),
+            category: toCategoryArray(prepFormData.category),
           }
         : item
       );
@@ -1398,6 +1592,7 @@ export default function PrepositionsPage({
           ...prepFormData,
           prep: cleanPrep,
           caseType: normalizeCase(prepFormData.caseType),
+          category: toCategoryArray(prepFormData.category),
           createdAt: new Date().toISOString(),
         },
       ];
@@ -1664,6 +1859,27 @@ export default function PrepositionsPage({
             </div>
           </div>
 
+          <div style={{ display: "flex", gap: 8, margin: "8px 0 12px", flexWrap: "wrap" }}>
+            {[{ id: "words", label: `📝 Prepositions (${list.length})` }, { id: "categories", label: `📂 Categories (${allPrepCategories.length})` }].map((tab) => (
+              <button key={tab.id} type="button" className="btn btn-secondary" onClick={() => setListTab(tab.id)} style={{ height: 40, borderRadius: 12, fontWeight: 700, ...(listTab === tab.id ? { background: "var(--brand, #b85c19)", color: "#fff", borderColor: "var(--brand, #b85c19)" } : {}) }}>{tab.label}</button>
+            ))}
+          </div>
+
+          {listTab === "categories" ? (
+            <div className="panel" style={{ maxWidth: 560 }}>
+              <form onSubmit={(e) => { e.preventDefault(); addPrepCategory(); }} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <input className="modal-input" style={{ flex: 1 }} value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="New category (e.g. Travel)" />
+                <button type="submit" className="btn btn-primary" disabled={!newCategory.trim()}>Add</button>
+              </form>
+              <div style={{ border: "1px solid var(--line-2, #ebdccb)", borderRadius: 12 }}>
+                {allPrepCategories.length === 0 ? <p style={{ padding: 16, color: "var(--muted)", textAlign: "center" }}>No categories yet. Add your first one above.</p> : allPrepCategories.map((cat, i) => {
+                  const count = list.filter((item) => toCategoryArray(item.category).some((c) => c.toLowerCase() === cat.toLowerCase())).length;
+                  return <div key={cat} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 12px", borderTop: i ? "1px solid var(--line-2, #f1e7da)" : "none" }}><span>📁 {cat}</span><span style={{ color: "var(--muted)", fontSize: 13 }}>{count} prepositions</span><button type="button" className="icon-btn" title="Delete category" onClick={() => { if (window.confirm(`Delete category \"${cat}\"? It will be removed from prepositions too.`)) { savePrepCategories(allPrepCategories.filter((c) => c.toLowerCase() !== cat.toLowerCase())); onCommitPreps?.(list.map((item) => ({ ...item, category: toCategoryArray(item.category).filter((c) => c.toLowerCase() !== cat.toLowerCase()) }))); } }}>🗑</button></div>;
+                })}
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="toolbar">
             <div className="search">
               <span>🔍</span>
@@ -1698,6 +1914,10 @@ export default function PrepositionsPage({
                   options={CASE_FILTER_OPTIONS}
                   onChange={(val) => setPrepFilter(val)}
                 />
+              </div>
+
+              <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                <SearchableDropdown icon="📂" value={categoryFilter} options={categoryOptions} multi onChange={setCategoryFilter} placeholder="All Categories" searchPlaceholder="Search categories..." />
               </div>
 
               <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -1880,6 +2100,7 @@ export default function PrepositionsPage({
                           meaning: item.meaning,
                           example: item.example || "",
                           status: item.status || "In Progress",
+                          category: toCategoryArray(item.category),
                         });
                         setModalOpen(true);
                       }}
@@ -1902,10 +2123,12 @@ export default function PrepositionsPage({
               ))}
             </div>
           )}
+          </>
+          )}
         </div>
       )}
 
-      {viewMode === "list" && (
+      {viewMode === "list" && listTab === "words" && (
         <button onClick={openAddModal} className="fab-btn" title="Add Preposition" aria-label="Add Preposition">
           +
         </button>
@@ -1938,6 +2161,10 @@ export default function PrepositionsPage({
                 options={CASE_FILTER_OPTIONS}
                 onChange={handleFlashCaseChange}
               />
+            </div>
+
+            <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+              <SearchableDropdown icon="📂" value={flashCategoryFilter} options={categoryOptions} multi onChange={(value) => { setFlashCategoryFilter(value); setFlashOrder(null); setCardIndex(0); setCardFlipped(false); }} placeholder="All Categories" searchPlaceholder="Search categories..." />
             </div>
 
             <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -1985,7 +2212,7 @@ export default function PrepositionsPage({
               Cards: <strong style={{ color: "var(--ink)" }}>{flashList.length}</strong>
             </div>
 
-            {(flashCaseFilter !== "all" || flashStatusFilter !== "all" || flashDateMode !== "all" || flashSpecificDate) && (
+            {(flashCaseFilter !== "all" || flashCategoryFilter !== "all" || flashStatusFilter !== "all" || flashDateMode !== "all" || flashSpecificDate) && (
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -2109,6 +2336,7 @@ export default function PrepositionsPage({
             {!(timerRunning || timerPaused) ? (
               <>
                 <div style={{ flex: "0 0 auto", minWidth: "0", whiteSpace: "nowrap" }}>
+                  <SearchableDropdown icon="📂" value={quizCategoryFilter} options={categoryOptions} multi onChange={(value) => { setQuizCategoryFilter(value); resetQuizProgress(); }} placeholder="All Categories" searchPlaceholder="Search categories..." />
                   <QuizMultiSelect values={quizMode} options={QUIZ_STATUS_MODE_OPTIONS} onChange={(next) => {
                     setQuizMode(next);
                     const status = next.find((v) => v.startsWith("status:"));
@@ -2596,6 +2824,16 @@ export default function PrepositionsPage({
                   placeholder="e.g. Er geht ohne mich."
                   value={prepFormData.example}
                   onChange={(e) => setPrepFormData({ ...prepFormData, example: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="modal-label">Category</label>
+                <PrepositionCategoryDropdown
+                  value={toCategoryArray(prepFormData.category)}
+                  options={allPrepCategories.map((category) => ({ label: category, value: category }))}
+                  onChange={(value) => setPrepFormData((prev) => ({ ...prev, category: toCategoryArray(value) }))}
+                  onCreateCategory={(name) => addPrepCategory(name)}
                 />
               </div>
 

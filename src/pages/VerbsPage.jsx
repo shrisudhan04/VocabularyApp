@@ -542,6 +542,178 @@ function RealCalendarPicker({ selectedDate, onSelectDate }) {
   );
 }
 
+
+function QuizModeMultiDropdown({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 220 });
+  const triggerRef = useRef(null);
+  const selected = Array.isArray(value) ? value : [];
+  const selectedLabels = options
+    .filter((option) => selected.includes(option.value))
+    .map((option) => option.label);
+  const summary = selectedLabels.length
+    ? selectedLabels.map((label) => label === "Case (Dativ/Akkusativ)" ? "Case" : label).join(" + ")
+    : "Choose quiz modes";
+
+  const toggleOption = (optionValue) => {
+    let next;
+    if (selected.includes(optionValue)) {
+      next = selected.filter((item) => item !== optionValue);
+      if (!next.length) return;
+    } else if (optionValue === "flashrev" && selected.length === 1 && selected[0] === "case") {
+      // Treat FlashRev as a replacement for the default Case selection.
+      // Users can then add any specific question type to make a combination.
+      next = ["flashrev"];
+    } else {
+      next = [...selected, optionValue];
+    }
+    onChange(next);
+  };
+
+  return (
+    <div style={{ position: "relative", width: 162, minWidth: 162, maxWidth: 162, flexShrink: 0 }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            return;
+          }
+          const rect = triggerRef.current?.getBoundingClientRect();
+          if (rect) {
+            setMenuPosition({
+              top: rect.bottom + 8,
+              left: Math.max(12, Math.min(rect.left, window.innerWidth - Math.min(280, window.innerWidth - 24) - 12)),
+              width: Math.min(280, window.innerWidth - 24),
+            });
+          }
+          setOpen(true);
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          width: "100%",
+          minHeight: 44,
+          padding: "0 14px",
+          borderRadius: 12,
+          border: `1px solid ${open ? "var(--brand, #b85c19)" : "var(--line-2, #ebdccb)"}`,
+          background: "#fff",
+          color: "var(--ink, #292524)",
+          fontSize: 14,
+          fontWeight: 700,
+          cursor: "pointer",
+          textAlign: "left",
+          boxShadow: open ? "0 0 0 2px rgba(184,92,25,.08)" : "0 1px 2px rgba(0,0,0,.03)",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span>🎯</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary}</span>
+        </span>
+        <span style={{ color: "#78716c", flexShrink: 0 }}>{open ? "▴" : "▾"}</span>
+      </button>
+
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="Close quiz mode menu"
+            onClick={() => setOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 9998, border: 0, background: "transparent", cursor: "default" }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: menuPosition.top,
+              left: menuPosition.left,
+              width: menuPosition.width,
+              maxWidth: "calc(100vw - 24px)",
+              padding: 8,
+              border: "1px solid #eadfd2",
+              borderRadius: 16,
+              background: "#fff",
+              boxShadow: "0 14px 32px rgba(41,37,36,.16)",
+              zIndex: 9999,
+              maxHeight: "min(70vh, 420px)",
+              overflowY: "auto",
+            }}
+          >
+            {options.map((option) => {
+              const checked = selected.includes(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={checked}
+                  onClick={() => toggleOption(option.value)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "100%",
+                    padding: "11px 10px",
+                    margin: "1px 0",
+                    border: 0,
+                    borderRadius: 10,
+                    background: checked ? "#fff7ed" : "#fff",
+                    color: checked ? "#b45309" : "#374151",
+                    fontSize: 14,
+                    fontWeight: checked ? 700 : 500,
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    width: 19,
+                    height: 19,
+                    borderRadius: 5,
+                    border: `1px solid ${checked ? "#b85c19" : "#cbd5e1"}`,
+                    background: checked ? "#b85c19" : "#fff",
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 800,
+                  }}>{checked ? "✓" : ""}</span>
+                  <span>{option.label}</span>
+                </button>
+              );
+            })}
+            <div style={{ borderTop: "1px solid #f1ece6", marginTop: 5, paddingTop: 7 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(["case"]);
+                  setOpen(false);
+                }}
+                style={{
+                  width: "100%",
+                  border: 0,
+                  background: "transparent",
+                  color: "#9ca3af",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "7px 8px",
+                  cursor: "pointer",
+                }}
+              >
+                Reset to Case
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function VerbsPage({
   viewMode = "list",
   verbsList = [],
@@ -560,7 +732,7 @@ export default function VerbsPage({
   const [quizStatusFilter, setQuizStatusFilter] = useState("all");
   const [quizDateMode, setQuizDateMode] = useState("all");
   const [quizSpecificDate, setQuizSpecificDate] = useState("");
-  const [quizMode, setQuizMode] = useState("case");
+  const [quizModes, setQuizModes] = useState(["case"]);
   const [quizTextInput, setQuizTextInput] = useState("");
 
   // Quiz Controls: Limit & Timer
@@ -623,6 +795,7 @@ export default function VerbsPage({
   const [cardFlipped, setCardFlipped] = useState(false);
   const [flashOrder, setFlashOrder] = useState(null);
   const [touchStartX, setTouchStartX] = useState(null);
+  const swipeMovedRef = useRef(false);
 
   // Flashcard filters
   const [flashCaseFilter, setFlashCaseFilter] = useState("all");
@@ -661,25 +834,34 @@ export default function VerbsPage({
     return true;
   };
 
+  const hasFlashRevMode = quizModes.includes("flashrev");
+  const isFlashRevOnly = quizModes.length === 1 && hasFlashRevMode;
+
+  // FlashRev alone keeps the full review sequence. When combined with one or
+  // more modes, only the explicitly selected question types are asked.
+  const activeQuizQuestionModes = useMemo(() => {
+    if (isFlashRevOnly) return [...VERB_FLASHREV_STEPS_LIST];
+    return QUIZ_MODE_OPTIONS
+      .filter((option) => quizModes.includes(option.value) && option.value !== "flashrev")
+      .map((option) => option.value);
+  }, [quizModes, isFlashRevOnly]);
+
+  const quizQuestionsPerWord = Math.max(activeQuizQuestionModes.length, 1);
+
   const availableQuizPool = useMemo(() => {
     const filtered = list.filter((item) => {
       const itemStatus = item.status || "In Progress";
       const matchesStatus = quizStatusFilter === "all" || itemStatus === quizStatusFilter;
       const matchesDate = matchesDateFilter(item.createdAt, quizDateMode, quizSpecificDate);
-      const matchesMode = quizMode !== "flashrev" || Boolean(item.flashRev);
+      const matchesMode = !hasFlashRevMode || Boolean(item.flashRev);
       return matchesStatus && matchesDate && matchesMode;
     });
     const ordered = quizShuffleKey > 0 ? shuffleArray(filtered) : filtered;
-    return quizMode === "flashrev"
-      ? ordered.flatMap((item) => Array(VERB_FLASHREV_STEPS).fill(item.id))
-      : ordered.map((item) => item.id);
-    // The pool is frozen for the whole quiz session: it is only rebuilt when a
-    // filter/mode changes or resetQuizProgress() bumps quizSessionKey. `list` is
-    // intentionally NOT a dependency — otherwise mastering a word mid-quiz
-    // (flashRev -> false) would drop it from the pool and shift every index.
-    // list.length covers add/delete/import (e.g. data loading after mount).
+    return ordered.flatMap((item) => Array(quizQuestionsPerWord).fill(item.id));
+    // Keep the question pool stable during a running quiz even when FlashRev
+    // flags change after an answer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list.length, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizMode, quizSessionKey]);
+  }, [list.length, quizStatusFilter, quizDateMode, quizSpecificDate, quizShuffleKey, quizModes, quizSessionKey, quizQuestionsPerWord]);
 
   const availableQuizWords = useMemo(() => {
     const byId = new Map(list.map((item) => [item.id, item]));
@@ -688,13 +870,11 @@ export default function VerbsPage({
 
   const quizList = useMemo(() => {
     const count = parseInt(wordCountInput, 10);
-    if (quizMode === "flashrev") {
-      if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count * VERB_FLASHREV_STEPS);
-      return availableQuizWords;
+    if (!isNaN(count) && count > 0) {
+      return availableQuizWords.slice(0, count * quizQuestionsPerWord);
     }
-    if (!isNaN(count) && count > 0) return availableQuizWords.slice(0, count);
     return availableQuizWords;
-  }, [availableQuizWords, wordCountInput, quizMode]);
+  }, [availableQuizWords, wordCountInput, quizQuestionsPerWord]);
 
   // Countdown Timer — same lifecycle as the Noun page
   useEffect(() => {
@@ -1356,15 +1536,32 @@ export default function VerbsPage({
     setCardIndex((prev) => prev + 1);
     setCardFlipped(false);
   };
-  const handleFlashTouchStart = (e) => setTouchStartX(e.touches?.[0]?.clientX ?? null);
+  const handleFlashTouchStart = (e) => {
+    setTouchStartX(e.touches?.[0]?.clientX ?? null);
+    swipeMovedRef.current = false;
+  };
+
   const handleFlashTouchEnd = (e) => {
     if (touchStartX === null) return;
     const endX = e.changedTouches?.[0]?.clientX;
-    if (typeof endX === "number" && Math.abs(endX - touchStartX) >= 60) {
-      if (endX < touchStartX) handleFlashNext();
-      else handleFlashPrevious();
+    if (typeof endX === "number") {
+      const deltaX = endX - touchStartX;
+      if (Math.abs(deltaX) >= 45) {
+        swipeMovedRef.current = true;
+        if (deltaX < 0) handleFlashNext();
+        else handleFlashPrevious();
+      }
     }
     setTouchStartX(null);
+  };
+
+  const handleFlashCardClick = () => {
+    // A swipe ends with a click on some mobile browsers; do not flip in that case.
+    if (swipeMovedRef.current) {
+      swipeMovedRef.current = false;
+      return;
+    }
+    handleFlipCard();
   };
   // Reset all items currently queued for FlashRev
   const handleResetFlashRev = () => {
@@ -1409,13 +1606,13 @@ export default function VerbsPage({
   const recordAnswerResult = (word, ok) => {
     if (!word) return;
     const isLastSubQuestion =
-      quizMode !== "flashrev" || (quizIndex % VERB_FLASHREV_STEPS === VERB_FLASHREV_STEPS - 1);
+      !hasFlashRevMode || (quizIndex % quizQuestionsPerWord === quizQuestionsPerWord - 1);
     let changed = false;
     const updated = list.map((item) => {
       if (item.id !== word.id) return item;
       const next = { ...item };
       if (ok) {
-        if (quizMode === "flashrev" && item.flashRev && isLastSubQuestion) {
+        if (hasFlashRevMode && item.flashRev && isLastSubQuestion) {
           next.flashRev = false;
           changed = true;
         }
@@ -1574,11 +1771,15 @@ export default function VerbsPage({
   };
 
   const verbQuizWord = quizList[quizIndex];
-  const effectiveVerbMode = quizMode === "flashrev"
+  const effectiveVerbMode = isFlashRevOnly
     ? getVerbFlashRevMode(verbQuizWord, quizIndex % VERB_FLASHREV_STEPS)
-    : quizMode;
+    : activeQuizQuestionModes.length
+      ? activeQuizQuestionModes[quizIndex % quizQuestionsPerWord]
+      : "case";
   const flashRevCount = list.filter((v) => v.flashRev).length;
-  const flashRevUniqueWords = quizMode === "flashrev" ? quizList.length / VERB_FLASHREV_STEPS : quizList.length;
+  const flashRevUniqueWords = hasFlashRevMode
+    ? quizList.length / quizQuestionsPerWord
+    : quizList.length;
 
   return (
     <>
@@ -1991,7 +2192,7 @@ export default function VerbsPage({
             </div>
           ) : (
             <div className="flash-wrap">
-              <div className="flash" onClick={handleFlipCard} style={{ position: "relative", touchAction: "pan-y" }}>
+              <div className="flash" onClick={handleFlashCardClick} onTouchStart={handleFlashTouchStart} onTouchEnd={handleFlashTouchEnd} style={{ position: "relative", touchAction: "pan-y", WebkitUserSelect: "none", userSelect: "none" }}>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -2045,7 +2246,7 @@ export default function VerbsPage({
                   </>
                 )}
               </div>
-              <div className="flash-controls" onTouchStart={handleFlashTouchStart} onTouchEnd={handleFlashTouchEnd} style={{touchAction:"pan-y"}}>
+              <div className="flash-controls" style={{touchAction:"pan-y"}}>
                 <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex === 0} onClick={handleFlashPrevious}>◀ Previous</button>
                 <button className="btn btn-secondary mid" onClick={() => speakGerman(`${verbCard.verb}. ${verbCard.preterite || ""}. ${verbCard.participle || ""}.`)}>🔊 Pronounce</button>
                 <button className="btn btn-secondary flash-nav-btn" disabled={cardIndex >= flashList.length - 1} onClick={handleFlashNext}>Next ▶</button>
@@ -2067,6 +2268,8 @@ export default function VerbsPage({
             style={{
               display: "flex",
               flexDirection: "row",
+              // Keep the toolbar horizontally scrollable. The quiz-mode menu is
+              // positioned fixed above the scroll layer so it can overlay it.
               flexWrap: "nowrap",
               alignItems: "center",
               justifyContent: isQuizActive ? "center" : "flex-start",
@@ -2076,21 +2279,22 @@ export default function VerbsPage({
               overflowX: "auto",
               overflowY: "hidden",
               WebkitOverflowScrolling: "touch",
-              padding: "4px 2px 14px 2px",
+              scrollbarWidth: "thin",
+              padding: "4px 2px 8px 2px",
               marginBottom: "16px",
               borderBottom: "1px solid var(--line-2, #ebdccb)",
+              position: "relative",
             }}
           >
             {!isQuizActive ? (
               <>
                 {/* 1. Quiz Mode Dropdown (Case, Präteritum, Partizip II, Infinitive) */}
                 <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <CustomDropdown
-                    icon="🎯"
-                    value={quizMode}
+                  <QuizModeMultiDropdown
+                    value={quizModes}
                     options={QUIZ_MODE_OPTIONS}
-                    onChange={(val) => {
-                      setQuizMode(val);
+                    onChange={(values) => {
+                      setQuizModes(values);
                       resetQuizProgress();
                     }}
                   />
@@ -2142,12 +2346,12 @@ export default function VerbsPage({
                   }}
                 >
                   <span style={{ fontSize: "14px" }}>🔢</span>
-                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>{quizMode === "flashrev" ? "Words:" : "Count:"}</span>
+                  <span style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink, #1f2937)" }}>{hasFlashRevMode ? "Words:" : "Count:"}</span>
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    placeholder={availableQuizPool.length ? `${availableQuizPool.length}` : "All"}
+                    placeholder={availableQuizPool.length ? `${Math.ceil(availableQuizPool.length / quizQuestionsPerWord)}` : "All"}
                     value={wordCountInput}
                     onChange={(e) => {
                       const val = e.target.value.replace(/[^0-9]/g, "");
@@ -2241,14 +2445,12 @@ export default function VerbsPage({
 
                 {/* Quiz Pool Count */}
                 <div style={{ flexShrink: 0, fontSize: "13.5px", color: "var(--muted)", whiteSpace: "nowrap", paddingLeft: "4px" }}>
-                  {quizMode === "flashrev" ? (
-                    <>
-                      Words: <strong style={{ color: "var(--ink)" }}>{flashRevUniqueWords}</strong>
-                      <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{VERB_FLASHREV_STEPS}Q</span>
-                    </>
-                  ) : (
-                    <>Words: <strong style={{ color: "var(--ink)" }}>{quizList.length}</strong></>
-                  )}
+                  <>
+                    Words: <strong style={{ color: "var(--ink)" }}>{flashRevUniqueWords}</strong>
+                    {quizQuestionsPerWord > 1 && (
+                      <span style={{ color: "var(--faint)", fontSize: 12 }}> ×{quizQuestionsPerWord}Q</span>
+                    )}
+                  </>
                 </div>
 
                 {/* Clear Filters */}
@@ -2430,20 +2632,20 @@ export default function VerbsPage({
               `}</style>
               <div className="quiz-head">
                 <span>
-                  {quizMode === "flashrev"
-                    ? <>Word {Math.floor(quizIndex / VERB_FLASHREV_STEPS) + 1} of {flashRevUniqueWords}<span style={{color:"var(--muted)",fontWeight:500}}> · Q{(quizIndex % VERB_FLASHREV_STEPS)+1}/{VERB_FLASHREV_STEPS}</span></>
+                  {hasFlashRevMode
+                    ? <>Word {Math.floor(quizIndex / quizQuestionsPerWord) + 1} of {flashRevUniqueWords}<span style={{color:"var(--muted)",fontWeight:500}}> · Q{(quizIndex % quizQuestionsPerWord)+1}/{quizQuestionsPerWord}</span></>
                     : <>Question {quizIndex + 1} of {quizList.length}</>}
                 </span>
                 <span style={{fontWeight:700,color:"var(--brand)"}}>Score: {quizScore}</span>
               </div>
 
-              {quizMode === "flashrev" && (
+              {hasFlashRevMode && (
                 <div className="flashrev-dots">
-                  {Array.from({length:VERB_FLASHREV_STEPS}).map((_,i)=>(
-                    <span key={i} className={`flashrev-dot ${i < quizIndex % VERB_FLASHREV_STEPS ? "done" : i === quizIndex % VERB_FLASHREV_STEPS ? "active" : ""}`} />
+                  {Array.from({ length: quizQuestionsPerWord }).map((_, i) => (
+                    <span key={i} className={`flashrev-dot ${i < quizIndex % quizQuestionsPerWord ? "done" : i === quizIndex % quizQuestionsPerWord ? "active" : ""}`} />
                   ))}
                   <span style={{fontSize:12,color:"var(--muted)",marginLeft:6}}>
-                    {["Case","Präteritum","Partizip II","Meaning"][quizIndex % VERB_FLASHREV_STEPS]}
+                    {QUIZ_MODE_OPTIONS.find((option) => option.value === activeQuizQuestionModes[quizIndex % quizQuestionsPerWord])?.label || "Question"}
                   </span>
                 </div>
               )}

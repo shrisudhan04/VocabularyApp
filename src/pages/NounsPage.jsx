@@ -2702,7 +2702,77 @@ export default function NounsPage({
 
           {/* 📂 Categories tab */}
           {listTab === "categories" && (
-            <div className="panel" style={{ maxWidth: 560 }}>
+            <div className="panel category-manager-panel" style={{ maxWidth: 560, width: "100%", boxSizing: "border-box" }}>
+              <style>{`
+                .category-manager-panel { min-width: 0; }
+                .category-manager-row {
+                  display: flex; align-items: center; justify-content: space-between;
+                  flex-wrap: wrap; gap: 12px; padding: 14px;
+                  border-bottom: 1px solid var(--line-2, #f1e7da);
+                  box-sizing: border-box; min-width: 0; width: 100%;
+                }
+                .category-manager-row:last-child { border-bottom: 0; }
+                .category-manager-main {
+                  flex: 1 1 220px; min-width: 0; display: flex;
+                  flex-direction: column; gap: 11px;
+                }
+                .category-manager-info {
+                  display: flex; align-items: center; flex-wrap: wrap;
+                  gap: 8px; min-width: 0;
+                }
+                .category-manager-count { font-size: 13px; color: var(--muted, #6b7280); }
+                .category-manager-progress { width: 100%; min-width: 0; }
+                .category-manager-progress .category-study-progress {
+                  width: 100%; height: 7px; border-radius: 999px;
+                  overflow: hidden; background: #eee8df; box-sizing: border-box;
+                }
+                .category-manager-progress .category-study-progress > div {
+                  height: 100%; border-radius: inherit; background: #b85c19;
+                  transition: width .2s ease;
+                }
+                .category-manager-progress .category-study-meta {
+                  display: flex; align-items: center; justify-content: space-between;
+                  flex-wrap: wrap; gap: 4px 10px; margin-top: 7px;
+                  font-size: 12px; line-height: 1.4; color: var(--muted, #6b7280);
+                }
+                .category-manager-progress .category-study-meta strong { color: var(--ink, #4b5563); white-space: nowrap; }
+                .category-manager-actions {
+                  display: flex; align-items: center; justify-content: flex-end;
+                  gap: 8px; flex: 0 0 auto;
+                }
+                .category-manager-actions .icon-btn {
+                  width: 42px; min-width: 42px; height: 42px; padding: 0;
+                  display: inline-flex; align-items: center; justify-content: center;
+                  box-sizing: border-box; flex-shrink: 0;
+                }
+                .category-manager-actions .category-study-btn {
+                  height: 42px; min-width: 92px; padding: 0 12px;
+                  display: inline-flex; align-items: center; justify-content: center;
+                  white-space: nowrap; border-radius: 10px; font-size: 13px;
+                }
+                .category-rename-form { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+                .category-rename-form .modal-input { flex: 1; min-width: 0; height: 40px; box-sizing: border-box; }
+                .category-rename-form .btn { min-height: 40px; flex-shrink: 0; }
+                @media (max-width: 600px) {
+                  .category-manager-row { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 12px; }
+                  .category-manager-main { flex: 1 1 auto; width: 100%; gap: 12px; }
+                  .category-manager-info { width: 100%; gap: 8px; }
+                  .category-manager-actions {
+                    display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 42px);
+                    gap: 8px; width: 100%;
+                  }
+                  .category-manager-actions .category-study-btn { width: 100%; min-width: 0; padding: 0 6px; }
+                  .category-manager-actions .icon-btn { width: 42px; min-width: 42px; height: 42px; }
+                  .category-rename-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+                  .category-rename-form .modal-input { grid-column: 1 / -1; width: 100%; }
+                }
+                @media (max-width: 360px) {
+                  .category-manager-row { padding: 12px 9px; }
+                  .category-manager-actions { grid-template-columns: minmax(0, 1fr) repeat(3, 38px); gap: 6px; }
+                  .category-manager-actions .icon-btn { width: 38px; min-width: 38px; height: 40px; }
+                  .category-manager-actions .category-study-btn { font-size: 12px; }
+                }
+              `}</style>
               <form
                 onSubmit={handleAddCategoryFromManager}
                 style={{ display: "flex", gap: 8, marginBottom: 10 }}
@@ -2745,22 +2815,11 @@ export default function NounsPage({
                     const isRenaming = renamingCategory !== null && sameCategory(renamingCategory, cat);
 
                     return (
-                      <div
-                        key={cat}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "10px 12px",
-                          borderTop: i === 0 ? "none" : "1px solid var(--line-2, #f1e7da)",
-                        }}
-                      >
+                      <div key={cat} className="category-manager-row">
                         {isRenaming ? (
-                          <form onSubmit={handleRenameCategory} style={{ display: "flex", gap: 6, flex: 1 }}>
+                          <form onSubmit={handleRenameCategory} className="category-rename-form">
                             <input
                               className="modal-input"
-                              style={{ flex: 1, height: 34 }}
-                              type="text"
                               autoFocus
                               value={renameValue}
                               onChange={(e) => {
@@ -2775,13 +2834,10 @@ export default function NounsPage({
                                 }
                               }}
                             />
-                            <button type="submit" className="btn btn-primary" style={{ height: 34, padding: "0 12px" }}>
-                              Save
-                            </button>
+                            <button type="submit" className="btn btn-primary">Save</button>
                             <button
                               type="button"
                               className="btn btn-secondary"
-                              style={{ height: 34, padding: "0 12px" }}
                               onClick={() => {
                                 setRenamingCategory(null);
                                 setCategoryError("");
@@ -2792,61 +2848,91 @@ export default function NounsPage({
                           </form>
                         ) : (
                           <>
-                            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                              <CategoryChip name={cat} />
-                              <span style={{ fontSize: 12.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
-                                {count} word{count === 1 ? "" : "s"}
-                              </span>
-                            </div>
-                            <div style={{ minWidth: 110, flex: 1, maxWidth: 180 }}>
-                              <div className="category-study-progress"><div style={{ width: `${masteryPercent(list.filter((item) => toCategoryArray(item.category).some((c) => sameCategory(c, cat))))}%` }} /></div>
-                              <div className="category-study-meta">
-                                <span>{masteryPercent(list.filter((item) => toCategoryArray(item.category).some((c) => sameCategory(c, cat))))}% mastered</span>
-                                <strong>{countDueToday(list.filter((item) => toCategoryArray(item.category).some((c) => sameCategory(c, cat))))} due</strong>
+                            <div className="category-manager-main">
+                              <div className="category-manager-info">
+                                <CategoryChip name={cat} />
+                                <span className="category-manager-count">
+                                  {count} {count === 1 ? "word" : "words"}
+                                </span>
+                              </div>
+
+                              <div className="category-manager-progress">
+                                <div className="category-study-progress">
+                                  <div
+                                    style={{
+                                      width: `${masteryPercent(
+                                        list.filter((item) =>
+                                          toCategoryArray(item.category).some((c) => sameCategory(c, cat))
+                                        )
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                                <div className="category-study-meta">
+                                  <span>
+                                    {masteryPercent(
+                                      list.filter((item) =>
+                                        toCategoryArray(item.category).some((c) => sameCategory(c, cat))
+                                      )
+                                    )}% mastered
+                                  </span>
+                                  <strong>
+                                    {countDueToday(
+                                      list.filter((item) =>
+                                        toCategoryArray(item.category).some((c) => sameCategory(c, cat))
+                                      )
+                                    )} due
+                                  </strong>
+                                </div>
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              style={{ height: 34, padding: "0 10px", whiteSpace: "nowrap", fontSize: 12 }}
-                              title="Study this category"
-                              disabled={count === 0}
-                              onClick={() => {
-                                setFlashCategoryFilter([cat]);
-                                setListTab("words");
-                                onRequestViewChange?.("flashcards");
-                              }}
-                            >
-                              🎴 Study
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title="Show words in this category"
-                              disabled={count === 0}
-                              onClick={() => {
-                                setCategoryFilter(cat);
-                                setListTab("words");
-                              }}
-                            >
-                              👁
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title="Rename category"
-                              onClick={() => startRenameCategory(cat)}
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title="Delete category"
-                              onClick={() => handleDeleteCategory(cat)}
-                            >
-                              🗑
-                            </button>
+
+                            <div className="category-manager-actions">
+                              <button
+                                type="button"
+                                className="btn btn-primary category-study-btn"
+                                title="Study this category"
+                                disabled={count === 0}
+                                onClick={() => {
+                                  setFlashCategoryFilter([cat]);
+                                  setListTab("words");
+                                  onRequestViewChange?.("flashcards");
+                                }}
+                              >
+                                🎴 Study
+                              </button>
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                title="Show words in this category"
+                                aria-label={`Show words in ${cat}`}
+                                disabled={count === 0}
+                                onClick={() => {
+                                  setCategoryFilter([cat]);
+                                  setListTab("words");
+                                }}
+                              >
+                                👁
+                              </button>
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                title="Rename category"
+                                aria-label={`Rename ${cat}`}
+                                onClick={() => startRenameCategory(cat)}
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                title="Delete category"
+                                aria-label={`Delete ${cat}`}
+                                onClick={() => handleDeleteCategory(cat)}
+                              >
+                                🗑
+                              </button>
+                            </div>
                           </>
                         )}
                       </div>

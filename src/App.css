@@ -2008,3 +2008,227 @@ textarea:focus-visible {
     min-height: 44px;
   }
 }
+/* Category manager — responsive layout */
+
+.category-manager-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-2, #f1e7da);
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.category-manager-row:last-child {
+  border-bottom: none;
+}
+
+.category-manager-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(120px, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.category-manager-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.category-manager-count {
+  color: var(--muted, #6b7280);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.category-manager-progress {
+  width: 100%;
+  min-width: 0;
+}
+
+.category-manager-progress .category-study-progress {
+  width: 100%;
+  box-sizing: border-box;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eee8df;
+}
+
+.category-manager-progress .category-study-progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: #b85c19;
+  transition: width 0.25s ease;
+}
+
+.category-manager-progress .category-study-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted, #6b7280);
+}
+
+.category-manager-progress .category-study-meta strong {
+  color: var(--ink, #4b5563);
+  white-space: nowrap;
+}
+
+.category-manager-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.category-manager-actions .icon-btn {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.category-manager-actions .category-study-btn {
+  height: 42px;
+  min-width: 92px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+/* Rename controls */
+.category-rename-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.category-rename-form .modal-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.category-rename-form .btn {
+  min-height: 40px;
+  flex-shrink: 0;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .category-manager-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px 12px;
+  }
+
+  .category-manager-main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .category-manager-info {
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .category-manager-count {
+    font-size: 13px;
+  }
+
+  .category-manager-progress {
+    width: 100%;
+  }
+
+  .category-manager-progress .category-study-meta {
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .category-manager-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(3, 42px);
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .category-manager-actions .category-study-btn {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .category-manager-actions .icon-btn {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+  }
+
+  .category-rename-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .category-rename-form .modal-input {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .category-rename-form .btn {
+    padding: 0 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .category-manager-row {
+    padding: 12px 9px;
+  }
+
+  .category-manager-actions {
+    grid-template-columns: minmax(0, 1fr) repeat(3, 38px);
+    gap: 6px;
+  }
+
+  .category-manager-actions .icon-btn {
+    width: 38px;
+    min-width: 38px;
+    height: 40px;
+  }
+
+  .category-manager-actions .category-study-btn {
+    padding: 0 6px;
+    font-size: 12px;
+  }
+}

@@ -840,6 +840,9 @@ export default function PrepositionsPage({
   // Initialize category state before deriving allPrepCategories to avoid a temporal-dead-zone error.
   const [prepCategories, setPrepCategories] = useState(loadPrepCategories);
   const [newCategory, setNewCategory] = useState("");
+  const [renamingCategory, setRenamingCategory] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [categoryError, setCategoryError] = useState("");
   const [listTab, setListTab] = useState("words");
 
   const allPrepCategories = [...new Set([
@@ -862,6 +865,62 @@ export default function PrepositionsPage({
     savePrepCategories([...allPrepCategories, name]);
     setPrepFormData((prev) => ({ ...prev, category: [...toCategoryArray(prev.category), name] }));
     setNewCategory("");
+  };
+
+  const samePrepCategory = (a, b) => cleanCategoryName(a).toLowerCase() === cleanCategoryName(b).toLowerCase();
+  const countForPrepCategory = (name) => list.filter((item) => toCategoryArray(item.category).some((c) => samePrepCategory(c, name))).length;
+  const openPrepCategoriesTab = () => {
+    setNewCategory("");
+    setRenamingCategory(null);
+    setRenameValue("");
+    setCategoryError("");
+    setListTab("categories");
+  };
+  const startRenamePrepCategory = (name) => {
+    setRenamingCategory(name);
+    setRenameValue(name);
+    setCategoryError("");
+  };
+  const handleRenamePrepCategory = (event) => {
+    event?.preventDefault();
+    const oldName = renamingCategory;
+    const nextName = cleanCategoryName(renameValue);
+    if (!oldName) return;
+    if (!nextName) { setCategoryError("Category name cannot be empty."); return; }
+    if (allPrepCategories.some((cat) => !samePrepCategory(cat, oldName) && samePrepCategory(cat, nextName))) {
+      setCategoryError(`Category "${nextName}" already exists.`);
+      return;
+    }
+    savePrepCategories([...allPrepCategories.filter((cat) => !samePrepCategory(cat, oldName)), nextName]);
+    onCommitPreps?.(list.map((item) => ({
+      ...item,
+      category: toCategoryArray(item.category).map((cat) => samePrepCategory(cat, oldName) ? nextName : cat),
+    })));
+    const renameFilter = (value, setter) => setter(toCategoryArray(value).map((cat) => samePrepCategory(cat, oldName) ? nextName : cat));
+    renameFilter(categoryFilter, setCategoryFilter);
+    renameFilter(flashCategoryFilter, setFlashCategoryFilter);
+    renameFilter(quizCategoryFilter, setQuizCategoryFilter);
+    setPrepFormData((prev) => ({ ...prev, category: toCategoryArray(prev.category).map((cat) => samePrepCategory(cat, oldName) ? nextName : cat) }));
+    setRenamingCategory(null);
+    setRenameValue("");
+    setCategoryError("");
+  };
+  const handleDeletePrepCategory = (name) => {
+    const count = countForPrepCategory(name);
+    const message = count
+      ? `Delete category "${name}"? ${count} preposition${count === 1 ? "" : "s"} will become uncategorized. No prepositions will be deleted.`
+      : `Delete the empty category "${name}"?`;
+    const perform = () => {
+      savePrepCategories(allPrepCategories.filter((cat) => !samePrepCategory(cat, name)));
+      if (count) onCommitPreps?.(list.map((item) => ({ ...item, category: toCategoryArray(item.category).filter((cat) => !samePrepCategory(cat, name)) })));
+      const removeFilter = (value, setter) => setter(toCategoryArray(value).filter((cat) => !samePrepCategory(cat, name)));
+      removeFilter(categoryFilter, setCategoryFilter);
+      removeFilter(flashCategoryFilter, setFlashCategoryFilter);
+      removeFilter(quizCategoryFilter, setQuizCategoryFilter);
+      setPrepFormData((prev) => ({ ...prev, category: toCategoryArray(prev.category).filter((cat) => !samePrepCategory(cat, name)) }));
+    };
+    if (onRequestConfirm) onRequestConfirm("Delete Category", message, perform);
+    else if (window.confirm(message)) perform();
   };
 
   const categoryOptions = [
@@ -1861,22 +1920,84 @@ export default function PrepositionsPage({
 
           <div style={{ display: "flex", gap: 8, margin: "8px 0 12px", flexWrap: "wrap" }}>
             {[{ id: "words", label: `📝 Prepositions (${list.length})` }, { id: "categories", label: `📂 Categories (${allPrepCategories.length})` }].map((tab) => (
-              <button key={tab.id} type="button" className="btn btn-secondary" onClick={() => setListTab(tab.id)} style={{ height: 40, borderRadius: 12, fontWeight: 700, ...(listTab === tab.id ? { background: "var(--brand, #b85c19)", color: "#fff", borderColor: "var(--brand, #b85c19)" } : {}) }}>{tab.label}</button>
+              <button key={tab.id} type="button" className="btn btn-secondary" onClick={() => (tab.id === "categories" ? openPrepCategoriesTab() : setListTab("words"))} style={{ height: 40, borderRadius: 12, fontWeight: 700, ...(listTab === tab.id ? { background: "var(--brand, #b85c19)", color: "#fff", borderColor: "var(--brand, #b85c19)" } : {}) }}>{tab.label}</button>
             ))}
           </div>
 
           {listTab === "categories" ? (
-            <div className="panel" style={{ maxWidth: 560 }}>
-              <form onSubmit={(e) => { e.preventDefault(); addPrepCategory(); }} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                <input className="modal-input" style={{ flex: 1 }} value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="New category (e.g. Travel)" />
+            <div className="panel preposition-category-manager" style={{ maxWidth: 760, width: "100%", boxSizing: "border-box" }}>
+              <style>{`
+                .preposition-category-manager .category-manager-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px; border-bottom:1px solid var(--line-2,#f1e7da); min-width:0; }
+                .preposition-category-manager .category-manager-row:last-child { border-bottom:0; }
+                .preposition-category-manager .category-manager-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; }
+                .preposition-category-manager .category-manager-info { display:flex; align-items:center; flex-wrap:wrap; gap:10px; min-width:0; }
+                .preposition-category-manager .category-manager-name { font-weight:750; overflow-wrap:anywhere; }
+                .preposition-category-manager .category-manager-count { color:var(--muted); font-size:13px; white-space:nowrap; }
+                .preposition-category-manager .category-manager-progress { width:100%; max-width:360px; }
+                .preposition-category-manager .category-study-progress { height:7px; width:100%; border-radius:99px; overflow:hidden; background:#eee7df; }
+                .preposition-category-manager .category-study-progress > span { display:block; height:100%; background:var(--brand,#b85c19); border-radius:99px; }
+                .preposition-category-manager .category-study-meta { display:flex; justify-content:space-between; gap:8px; margin-top:5px; color:var(--muted); font-size:11px; }
+                .preposition-category-manager .category-manager-actions { display:flex; align-items:center; gap:7px; flex-shrink:0; }
+                .preposition-category-manager .category-study-btn { min-height:40px; padding:0 12px; white-space:nowrap; }
+                .preposition-category-manager .category-rename-form { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; width:100%; }
+                .preposition-category-manager .category-rename-form .modal-input { min-width:0; width:100%; box-sizing:border-box; }
+                @media(max-width:600px) {
+                  .preposition-category-manager .category-manager-row { flex-direction:column; align-items:stretch; gap:12px; padding:14px 10px; }
+                  .preposition-category-manager .category-manager-main { width:100%; }
+                  .preposition-category-manager .category-manager-progress { max-width:none; }
+                  .preposition-category-manager .category-manager-actions { display:grid; grid-template-columns:minmax(0,1fr) repeat(3,40px); gap:7px; width:100%; }
+                  .preposition-category-manager .category-manager-actions .category-study-btn { width:100%; min-width:0; padding:0 5px; font-size:12px; }
+                  .preposition-category-manager .category-manager-actions .icon-btn { width:40px; min-width:40px; height:40px; }
+                  .preposition-category-manager .category-rename-form { grid-template-columns:minmax(0,1fr) auto; }
+                  .preposition-category-manager .category-rename-form .modal-input { grid-column:1/-1; }
+                }
+                @media(max-width:360px) {
+                  .preposition-category-manager .category-manager-actions { grid-template-columns:minmax(0,1fr) repeat(3,36px); gap:5px; }
+                  .preposition-category-manager .category-manager-actions .icon-btn { width:36px; min-width:36px; }
+                  .preposition-category-manager .category-manager-actions .category-study-btn { font-size:11px; }
+                }
+              `}</style>
+              <form onSubmit={(event) => { event.preventDefault(); const name = cleanCategoryName(newCategory); if (!name) return; if (allPrepCategories.some((cat) => samePrepCategory(cat, name))) { setCategoryError(`Category "${name}" already exists.`); return; } savePrepCategories([...allPrepCategories, name]); setNewCategory(""); setCategoryError(""); }} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <input className="modal-input" style={{ flex: 1, minWidth: 0 }} value={newCategory} onChange={(event) => { setNewCategory(event.target.value); setCategoryError(""); }} placeholder="New category (e.g. Travel)" />
                 <button type="submit" className="btn btn-primary" disabled={!newCategory.trim()}>Add</button>
               </form>
-              <div style={{ border: "1px solid var(--line-2, #ebdccb)", borderRadius: 12 }}>
-                {allPrepCategories.length === 0 ? <p style={{ padding: 16, color: "var(--muted)", textAlign: "center" }}>No categories yet. Add your first one above.</p> : allPrepCategories.map((cat, i) => {
-                  const count = list.filter((item) => toCategoryArray(item.category).some((c) => c.toLowerCase() === cat.toLowerCase())).length;
-                  return <div key={cat} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 12px", borderTop: i ? "1px solid var(--line-2, #f1e7da)" : "none" }}><span>📁 {cat}</span><span style={{ color: "var(--muted)", fontSize: 13 }}>{count} prepositions</span><button type="button" className="icon-btn" title="Delete category" onClick={() => { if (window.confirm(`Delete category \"${cat}\"? It will be removed from prepositions too.`)) { savePrepCategories(allPrepCategories.filter((c) => c.toLowerCase() !== cat.toLowerCase())); onCommitPreps?.(list.map((item) => ({ ...item, category: toCategoryArray(item.category).filter((c) => c.toLowerCase() !== cat.toLowerCase()) }))); } }}>🗑</button></div>;
+              {categoryError && <p role="alert" style={{ color: "#dc2626", fontSize: 13, margin: "0 0 10px", fontWeight: 600 }}>⚠ {categoryError}</p>}
+              <div style={{ border: "1px solid var(--line-2, #ebdccb)", borderRadius: 12, overflow: "hidden" }}>
+                {allPrepCategories.length === 0 ? (
+                  <p style={{ margin: 0, padding: 18, color: "var(--muted)", fontSize: 14, textAlign: "center" }}>No categories yet. Add your first one above.</p>
+                ) : allPrepCategories.map((cat) => {
+                  const items = list.filter((item) => toCategoryArray(item.category).some((c) => samePrepCategory(c, cat)));
+                  const count = items.length;
+                  const mastered = items.filter((item) => item.status === "Mastered").length;
+                  const percent = count ? Math.round((mastered / count) * 100) : 0;
+                  const isRenaming = renamingCategory !== null && samePrepCategory(renamingCategory, cat);
+                  return (
+                    <div key={cat} className="category-manager-row">
+                      {isRenaming ? (
+                        <form className="category-rename-form" onSubmit={handleRenamePrepCategory}>
+                          <input className="modal-input" autoFocus value={renameValue} onChange={(event) => { setRenameValue(event.target.value); setCategoryError(""); }} onKeyDown={(event) => { if (event.key === "Escape") { setRenamingCategory(null); setRenameValue(""); setCategoryError(""); } }} />
+                          <button type="submit" className="btn btn-primary">Save</button>
+                          <button type="button" className="btn btn-secondary" onClick={() => { setRenamingCategory(null); setRenameValue(""); setCategoryError(""); }}>Cancel</button>
+                        </form>
+                      ) : (
+                        <>
+                          <div className="category-manager-main">
+                            <div className="category-manager-info"><span aria-hidden="true">📁</span><span className="category-manager-name">{cat}</span><span className="category-manager-count">{count} {count === 1 ? "preposition" : "prepositions"}</span></div>
+                            <div className="category-manager-progress"><div className="category-study-progress"><span style={{ width: `${percent}%` }} /></div><div className="category-study-meta"><span>{percent}% mastered</span><strong>{items.filter((item) => item.status !== "Mastered").length} to review</strong></div></div>
+                          </div>
+                          <div className="category-manager-actions">
+                            <button type="button" className="btn btn-primary category-study-btn" title="Study this category" disabled={!count} onClick={() => { setFlashCategoryFilter([cat]); setListTab("words"); }}>🎴 Study</button>
+                            <button type="button" className="icon-btn" title="Show words in this category" aria-label={`Show prepositions in ${cat}`} disabled={!count} onClick={() => { setCategoryFilter([cat]); setListTab("words"); }}>👁</button>
+                            <button type="button" className="icon-btn" title="Rename category" aria-label={`Rename ${cat}`} onClick={() => startRenamePrepCategory(cat)}>✏️</button>
+                            <button type="button" className="icon-btn" title="Delete category" aria-label={`Delete ${cat}`} onClick={() => handleDeletePrepCategory(cat)}>🗑</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
                 })}
               </div>
+              <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--muted)" }}>Deleting a category never deletes prepositions. They simply become Uncategorized. Progress is based on the Mastered status.</p>
             </div>
           ) : (
           <>

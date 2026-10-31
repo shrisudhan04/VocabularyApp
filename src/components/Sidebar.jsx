@@ -149,7 +149,7 @@ const buildImportConfigs = ({
   {
     id: "Verbs", label: "Verbs", sheet: "Verbs",
     list: verbsList, commit: onCommitVerbs,
-    fields: ["case", "preterite", "participle", "auxiliary", "meaning", "example", "status"],
+    fields: ["caseType", "preterite", "participle", "auxiliary", "meaning", "example", "conjugations", "status"],
     keyOf: (i) => lc(i.verb),
     display: (i) => i.verb,
     parse: (row) => {
@@ -157,7 +157,7 @@ const buildImportConfigs = ({
       if (!verb) return null;
       return {
         verb,
-        case: str(row, "Case", "Kasus"),
+        caseType: str(row, "Case", "Case Type", "Grammatical Case", "Kasus"),
         preterite: str(
           row, "Präteritum", "Preterite", "Praeteritum", "Past", "Past Tense", "Simple Past"
         ),
@@ -165,12 +165,25 @@ const buildImportConfigs = ({
           row, "Partizip II", "Partizip 2", "Participle", "Past Participle", "Perfekt", "Partizip"
         ),
         auxiliary: str(row, "Auxiliary", "Hilfsverb", "Aux"),
+        conjugations: {
+          ich: str(row, "Ich"),
+          du: str(row, "Du"),
+          erSieEs: str(row, "Er/Sie/Es", "Er Sie Es", "Er/Sie/Es (3rd Person Singular)"),
+          wir: str(row, "Wir"),
+          ihr: str(row, "Ihr"),
+          sieSie: str(row, "Sie/Sie (Plural/Formal)", "Sie/Sie", "Sie (Plural)", "Sie Formal", "3rd Person Plural"),
+        },
         meaning: str(row, ...MEANING_HEADERS),
         example: str(row, ...EXAMPLE_HEADERS),
         status: statusOf(row),
       };
     },
-    defaults: (inc) => ({ ...inc, auxiliary: inc.auxiliary || "hat" }),
+    defaults: (inc) => ({
+      ...inc,
+      caseType: inc.caseType || "Dativ",
+      auxiliary: inc.auxiliary || "hat",
+      conjugations: { ich: "", du: "", erSieEs: "", wir: "", ihr: "", sieSie: "", ...(inc.conjugations || {}) },
+    }),
     finalize: (item) => item,
   },
   {
@@ -219,7 +232,7 @@ const buildImportConfigs = ({
 const FIELD_LABELS = {
   article: "Article", plural: "Plural", meaning: "English", category: "Category", status: "Status",
   rule: "Rule", examples: "Examples", case: "Case", preterite: "Präteritum",
-  participle: "Partizip II", auxiliary: "Auxiliary", example: "Example",
+  participle: "Partizip II", auxiliary: "Auxiliary", example: "Example", conjugations: "Conjugations",
   caseType: "Case", formal: "Formal", informal: "Informal",
 };
 
@@ -271,9 +284,19 @@ const planSheet = (cfg, workbook, findSheet) => {
     cfg.fields.forEach((f) => {
       const next = inc[f];
       if (next === undefined || next === "") return;
+      if (
+        f === "conjugations" &&
+        (!next || !Object.values(next).some((value) => String(value ?? "").trim()))
+      ) return;
       const prev = ex[f] ?? "";
-      if (String(prev).trim() !== String(next).trim()) {
-        changes.push({ field: f, from: String(prev), to: String(next) });
+      const prevComparable = f === "conjugations" ? JSON.stringify(prev || {}) : String(prev).trim();
+      const nextComparable = f === "conjugations" ? JSON.stringify(next || {}) : String(next).trim();
+      if (prevComparable !== nextComparable) {
+        changes.push({
+          field: f,
+          from: f === "conjugations" ? Object.entries(prev || {}).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(", ") : String(prev),
+          to: f === "conjugations" ? Object.entries(next || {}).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(", ") : String(next),
+        });
         patch[f] = next;
       }
     });
@@ -728,21 +751,27 @@ export default function Sidebar({
       XLSX.utils.book_append_sheet(
         wb,
         createStyledSheet(
-          ["#", "Verb", "Case", "Präteritum", "Partizip II", "Auxiliary", "Meaning", "Example", "Status", "Date Added"],
+          ["#", "Verb", "Case", "Präteritum", "Partizip II", "Auxiliary", "Ich", "Du", "Er/Sie/Es", "Wir", "Ihr", "Sie/Sie (Plural/Formal)", "Meaning", "Example", "Status", "Date Added"],
           verbsList.map((item, i) => [
             i + 1,
             item.verb       || "",
-            item.case       || "",
+            item.caseType   || item.case || "",
             item.preterite  || "",
             item.participle || "",
             item.auxiliary  || "hat",
+            item.conjugations?.ich || "",
+            item.conjugations?.du || "",
+            item.conjugations?.erSieEs || "",
+            item.conjugations?.wir || "",
+            item.conjugations?.ihr || "",
+            item.conjugations?.sieSie || "",
             item.meaning    || "",
             item.example    || "",
             item.status     || "In Progress",
             item.createdAt  || nowIso,
           ]),
-          [6, 22, 18, 18, 20, 14, 28, 40, 16, 22],
-          [0, 2, 5, 8]
+          [6, 22, 18, 18, 20, 14, 16, 16, 18, 16, 16, 22, 28, 40, 16, 22],
+          [0, 2, 5, 6, 7, 8, 9, 10, 11, 14]
         ),
         "Verbs"
       );

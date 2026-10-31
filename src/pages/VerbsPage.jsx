@@ -1,19 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import {
-  requestMobileNotificationPermission,
-  startHourlyNounNotifier,
-  sendNounNotification,
-} from "../utils/hourlyWordNotifier";
 import * as XLSX from "xlsx";
 import CustomDropdown from "../components/CustomDropdown";
-import GoalModal from "../components/GoalModal";
 import { VERB_CASE_CLASS, STATUS_OPTIONS } from "../constants/seedData";
 import { speakGerman } from "../utils/speech";
 import { GoogleGenAI, Type } from "@google/genai";
 import alertGif from "../assets/Alert.gif";
 import successGif from "../assets/Success.gif";
-import congratsGif from "../assets/Congrats.gif";
-import warningRedGif from "../assets/WarningRed.gif";
 import congratsAudio from "../assets/celebration.mp3";
 import noDataImg from "../assets/nodata.svg";
 import "../App.css";
@@ -107,17 +99,17 @@ const playSuccessSound = async () => {
   }
 };
 
-let goalAudioInstance = null;
+let quizCompletionAudioInstance = null;
 
-const playGoalAchievedMusic = () => {
+const playQuizCompletionMusic = () => {
   try {
-    if (goalAudioInstance) {
-      goalAudioInstance.pause();
-      goalAudioInstance.currentTime = 0;
+    if (quizCompletionAudioInstance) {
+      quizCompletionAudioInstance.pause();
+      quizCompletionAudioInstance.currentTime = 0;
     }
-    goalAudioInstance = new Audio(congratsAudio);
-    goalAudioInstance.volume = 0.7;
-    goalAudioInstance.play().catch((err) => {
+    quizCompletionAudioInstance = new Audio(congratsAudio);
+    quizCompletionAudioInstance.volume = 0.7;
+    quizCompletionAudioInstance.play().catch((err) => {
       console.warn("Celebration audio playback error:", err);
     });
   } catch (err) {
@@ -125,10 +117,10 @@ const playGoalAchievedMusic = () => {
   }
 };
 
-const stopGoalAchievedMusic = () => {
-  if (goalAudioInstance) {
-    goalAudioInstance.pause();
-    goalAudioInstance.currentTime = 0;
+const stopQuizCompletionMusic = () => {
+  if (quizCompletionAudioInstance) {
+    quizCompletionAudioInstance.pause();
+    quizCompletionAudioInstance.currentTime = 0;
   }
 };
 
@@ -221,6 +213,15 @@ const EXCEL_ACTIONS = [
   { label: "📤 Export", value: "export" },
 ];
 
+const EMPTY_CONJUGATIONS = {
+  ich: "",
+  du: "",
+  erSieEs: "",
+  wir: "",
+  ihr: "",
+  sieSie: "",
+};
+
 const EMPTY_VERB_FORM = {
   verb: "",
   preterite: "",
@@ -228,8 +229,18 @@ const EMPTY_VERB_FORM = {
   caseType: "Dativ",
   meaning: "",
   example: "",
+  conjugations: { ...EMPTY_CONJUGATIONS },
   status: "In Progress",
 };
+
+const CONJUGATION_FIELDS = [
+  { key: "ich", label: "ich", placeholder: "e.g. helfe" },
+  { key: "du", label: "du", placeholder: "e.g. hilfst" },
+  { key: "erSieEs", label: "er / sie / es", placeholder: "e.g. hilft" },
+  { key: "wir", label: "wir", placeholder: "e.g. helfen" },
+  { key: "ihr", label: "ihr", placeholder: "e.g. helft" },
+  { key: "sieSie", label: "sie / Sie", placeholder: "e.g. helfen" },
+];
 
 // 🗓️ Interactive Real Calendar Picker Popover
 function RealCalendarPicker({ selectedDate, onSelectDate }) {
@@ -771,22 +782,12 @@ export default function VerbsPage({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVerbId, setEditingVerbId] = useState(null);
   const [verbFormData, setVerbFormData] = useState(EMPTY_VERB_FORM);
+  const [verbFormTab, setVerbFormTab] = useState("details");
 
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateWordName, setDuplicateWordName] = useState("");
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [successWordInfo, setSuccessWordInfo] = useState({ verb: "", caseType: "", isEdit: false });
-  const [resetModalOpen, setResetModalOpen] = useState(false);
-
-  const [goalModalOpen, setGoalModalOpen] = useState(false);
-  const [goalCelebration, setGoalCelebration] = useState({
-    isOpen: false,
-    goalType: "daily",
-    target: 10,
-    current: 10,
-    addedWord: "",
-  });
-
   const [importSummary, setImportSummary] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -803,7 +804,6 @@ export default function VerbsPage({
   const [flashDateMode, setFlashDateMode] = useState("all");
   const [flashSpecificDate, setFlashSpecificDate] = useState("");
 
-  const [hourlyAlertsActive, setHourlyAlertsActive] = useState(false);
   const fileInputRef = useRef(null);
 
   const matchesDateFilter = (isoDate, mode, specificDate) => {
@@ -932,13 +932,6 @@ export default function VerbsPage({
     }
   };
 
-  const handleStopTimer = () => {
-    setTimerRunning(false);
-    setTimerExpired(false);
-    setIsQuizActive(false);
-    setTimeLeft(null);
-  };
-
   const resetQuizProgress = () => {
     if (autoNextTimeoutRef.current) clearTimeout(autoNextTimeoutRef.current);
     setQuizIndex(0);
@@ -982,175 +975,6 @@ export default function VerbsPage({
     resetQuizProgress();
   };
 
-  useEffect(() => {
-    let timerId = null;
-    if (hourlyAlertsActive && list.length > 0) {
-      const formattedForNotifier = list.map((v) => ({
-        article: v.caseType,
-        noun: v.verb,
-        plural: `${v.preterite || "—"} / ${v.participle || "—"}`,
-        meaning: v.meaning,
-      }));
-      timerId = startHourlyNounNotifier(formattedForNotifier);
-    }
-    return () => {
-      if (timerId) clearInterval(timerId);
-    };
-  }, [hourlyAlertsActive, list]);
-
-  const handleToggleHourlyNotifications = async () => {
-    if (!hourlyAlertsActive) {
-      const granted = await requestMobileNotificationPermission();
-      if (granted) {
-        setHourlyAlertsActive(true);
-      }
-    } else {
-      setHourlyAlertsActive(false);
-    }
-  };
-
-  const handleTestNotification = async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      alert("System notifications are not supported in this browser.");
-      return;
-    }
-    if (Notification.permission === "denied") {
-      alert("Notifications are blocked. Enable them in your browser's site settings.");
-      return;
-    }
-    if (Notification.permission !== "granted") {
-      const granted = await requestMobileNotificationPermission();
-      if (!granted) return;
-    }
-    const sampleVerb =
-      list.length > 0
-        ? list[Math.floor(Math.random() * list.length)]
-        : { caseType: "Dativ", verb: "helfen", preterite: "half", participle: "geholfen", meaning: "to help" };
-
-    await sendNounNotification({
-      article: sampleVerb.caseType,
-      noun: sampleVerb.verb,
-      plural: `${sampleVerb.preterite || ""} / ${sampleVerb.participle || ""}`,
-      meaning: sampleVerb.meaning,
-    });
-  };
-
-  const getGoalCounts = (items = []) => {
-    const safeItems = Array.isArray(items) ? items : [];
-    const now = new Date();
-
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      0, 0, 0, 0
-    ).getTime();
-
-    const endOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      23, 59, 59, 999
-    ).getTime();
-
-    const currentDayOfWeek = now.getDay();
-
-    const startOfWeek = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() - currentDayOfWeek,
-      0, 0, 0, 0
-    ).getTime();
-
-    const endOfWeek = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() - currentDayOfWeek + 6,
-      23, 59, 59, 999
-    ).getTime();
-
-    let daily = 0;
-    let weekly = 0;
-
-    safeItems.forEach((item) => {
-      if (!item?.createdAt) return;
-      const itemTime = new Date(item.createdAt).getTime();
-
-      if (itemTime >= startOfToday && itemTime <= endOfToday) {
-        daily += 1;
-      }
-
-      if (itemTime >= startOfWeek && itemTime <= endOfWeek) {
-        weekly += 1;
-      }
-    });
-
-    return { daily, weekly };
-  };
-
-  const getSavedTargets = () => {
-    try {
-      const savedCategoryTargets = localStorage.getItem("study_goals_targets");
-      if (savedCategoryTargets) {
-        const parsed = JSON.parse(savedCategoryTargets);
-        return {
-          daily: Number(parsed.Verbs?.daily) || 10,
-          weekly: Number(parsed.Verbs?.weekly) || 50,
-        };
-      }
-    } catch (e) {
-      console.warn("Failed to read study_goals_targets:", e);
-    }
-    return {
-      daily: Number(localStorage.getItem("goal_daily_target")) || 10,
-      weekly: Number(localStorage.getItem("goal_weekly_target")) || 50,
-    };
-  };
-
-  const verifyGoalMilestone = (prevList, nextList, wordLabel = "") => {
-    const { daily: dailyTarget, weekly: weeklyTarget } = getSavedTargets();
-    const prevCounts = getGoalCounts(prevList);
-    const nextCounts = getGoalCounts(nextList);
-
-    if (prevCounts.daily < dailyTarget && nextCounts.daily >= dailyTarget) {
-      playGoalAchievedMusic();
-      setGoalCelebration({
-        isOpen: true,
-        goalType: "daily",
-        target: dailyTarget,
-        current: nextCounts.daily,
-        addedWord: wordLabel,
-      });
-      return true;
-    }
-
-    if (prevCounts.weekly < weeklyTarget && nextCounts.weekly >= weeklyTarget) {
-      playGoalAchievedMusic();
-      setGoalCelebration({
-        isOpen: true,
-        goalType: "weekly",
-        target: weeklyTarget,
-        current: nextCounts.weekly,
-        addedWord: wordLabel,
-      });
-      return true;
-    }
-
-    return false;
-  };
-
-  const { daily: verbDailyCount, weekly: verbWeeklyCount } = getGoalCounts(list);
-  const { daily: verbDailyTarget, weekly: verbWeeklyTarget } = getSavedTargets();
-
-  const handleConfirmReset = () => {
-    playDangerSound();
-    onCommitVerbs?.([]);
-    setCardIndex(0);
-    setCardFlipped(false);
-    resetQuizProgress();
-    setResetModalOpen(false);
-  };
-
   const exportToExcel = () => {
     if (list.length === 0) {
       alert("No verbs to export.");
@@ -1163,6 +987,12 @@ export default function VerbsPage({
       Case: item.caseType || "Dativ",
       Präteritum: item.preterite || "",
       "Partizip II": item.participle || "",
+      Ich: item.conjugations?.ich || "",
+      Du: item.conjugations?.du || "",
+      "Er/Sie/Es": item.conjugations?.erSieEs || "",
+      Wir: item.conjugations?.wir || "",
+      Ihr: item.conjugations?.ihr || "",
+      "Sie/Sie (Plural/Formal)": item.conjugations?.sieSie || "",
       Meaning: item.meaning || "",
       Example: item.example || "",
       Status: item.status || "In Progress",
@@ -1220,6 +1050,14 @@ export default function VerbsPage({
           const participle = (rowLower.participle || rowLower["partizip ii"] || rowLower["partizip 2"] || "").toString().trim();
           const meaning = (rowLower.meaning || rowLower["english meaning"] || "").toString().trim();
           const example = (rowLower.example || rowLower["example sentence"] || "").toString().trim();
+          const conjugations = {
+            ich: (rowLower.ich || rowLower["1st person singular"] || "").toString().trim(),
+            du: (rowLower.du || rowLower["2nd person singular"] || "").toString().trim(),
+            erSieEs: (rowLower["er/sie/es"] || rowLower["er sie es"] || rowLower["3rd person singular"] || "").toString().trim(),
+            wir: (rowLower.wir || rowLower["1st person plural"] || "").toString().trim(),
+            ihr: (rowLower.ihr || rowLower["2nd person plural"] || "").toString().trim(),
+            sieSie: (rowLower["sie/sie (plural/formal)"] || rowLower["sie/sie"] || rowLower["sie (plural)"] || rowLower["3rd person plural"] || "").toString().trim(),
+          };
           const status = (rowLower.status || "In Progress").toString().trim();
 
           const validCases = ["Dativ", "Akkusativ", "Both / Common"];
@@ -1241,6 +1079,7 @@ export default function VerbsPage({
                 caseType,
                 preterite,
                 participle,
+                conjugations,
                 meaning,
                 example,
                 status: status.toLowerCase() === "mastered" ? "Mastered" : "In Progress",
@@ -1252,10 +1091,7 @@ export default function VerbsPage({
 
         if (newEntries.length > 0) {
           const updatedList = [...list, ...newEntries];
-          const reachedGoal = verifyGoalMilestone(list, updatedList, `${newEntries.length} new verbs`);
-          if (!reachedGoal) {
-            playSuccessSound();
-          }
+          playSuccessSound();
           onCommitVerbs?.(updatedList);
         } else if (duplicateWords.length > 0) {
           playDuplicateSound();
@@ -1372,7 +1208,8 @@ export default function VerbsPage({
   const openAddModal = () => {
     setEditingVerbId(null);
     setAiError("");
-    setVerbFormData(EMPTY_VERB_FORM);
+    setVerbFormData({ ...EMPTY_VERB_FORM, conjugations: { ...EMPTY_CONJUGATIONS } });
+    setVerbFormTab("details");
     setModalOpen(true);
   };
 
@@ -1386,8 +1223,10 @@ export default function VerbsPage({
       caseType: item.caseType || "Dativ",
       meaning: item.meaning,
       example: item.example || "",
+      conjugations: { ...EMPTY_CONJUGATIONS, ...(item.conjugations || {}) },
       status: item.status || "In Progress",
     });
+    setVerbFormTab("details");
     setModalOpen(true);
   };
 
@@ -1431,23 +1270,19 @@ export default function VerbsPage({
       ];
     }
 
-    const reachedGoal = !isEditing && verifyGoalMilestone(list, updated, cleanVerb);
-
-    if (!reachedGoal && !isEditing) {
+    if (!isEditing) {
       playSuccessSound();
     }
 
     onCommitVerbs?.(updated);
     setModalOpen(false);
 
-    if (!reachedGoal) {
-      setSuccessWordInfo({
-        verb: cleanVerb,
-        caseType: verbFormData.caseType,
-        isEdit: isEditing,
-      });
-      setSuccessModalOpen(true);
-    }
+    setSuccessWordInfo({
+      verb: cleanVerb,
+      caseType: verbFormData.caseType,
+      isEdit: isEditing,
+    });
+    setSuccessModalOpen(true);
   };
 
   const toggleStatus = (id) =>
@@ -1580,7 +1415,7 @@ export default function VerbsPage({
     const pct = total > 0 ? (score / total) * 100 : 0;
     if (reason !== "timeup") {
       if (pct >= PASS_PERCENT) {
-        playGoalAchievedMusic();
+        playQuizCompletionMusic();
       } else {
         playDangerSound();
       }
@@ -1589,7 +1424,7 @@ export default function VerbsPage({
   };
 
   const closeScoreModal = () => {
-    stopGoalAchievedMusic();
+    stopQuizCompletionMusic();
     setScoreModal((p) => ({ ...p, isOpen: false }));
     resetQuizProgress();
   };
@@ -1903,54 +1738,7 @@ export default function VerbsPage({
                 🔀 Shuffle
               </button>
 
-              <button
-                type="button"
-                onClick={handleToggleHourlyNotifications}
-                className="btn btn-secondary"
-                title="Toggle Hourly Verb Notification"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                {hourlyAlertsActive ? "🔔 Alerts On" : "🔕 Alerts Off"}
-              </button>
 
-              <button
-                type="button"
-                onClick={handleTestNotification}
-                className="btn btn-secondary"
-                title="Send a verb notification now"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                📨 Notify Now
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setGoalModalOpen(true)}
-                className="btn btn-secondary"
-                title="Configure Daily & Weekly Goals"
-                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                🎯 Goals
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  playDangerSound();
-                  setResetModalOpen(true);
-                }}
-                className="btn btn-secondary"
-                style={{
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                  color: "#dc2626",
-                  borderColor: "#fca5a5",
-                  backgroundColor: "#fef2f2",
-                }}
-                title="Reset all verbs"
-              >
-                🔄 Reset
-              </button>
             </div>
           </div>
 
@@ -2835,7 +2623,7 @@ export default function VerbsPage({
                 className="btn btn-primary"
                 style={{ flex: 1, justifyContent: "center" }}
                 onClick={() => {
-                  stopGoalAchievedMusic();
+                  stopQuizCompletionMusic();
                   setScoreModal((p) => ({ ...p, isOpen: false }));
                   handleShuffleQuiz();
                   const parsed = parseInt(timerInput, 10);
@@ -2854,27 +2642,17 @@ export default function VerbsPage({
         </div>
       )}
 
-      {/* 🎯 Study Goals Modal */}
-      <GoalModal
-        isOpen={goalModalOpen}
-        onClose={() => setGoalModalOpen(false)}
-        defaultCategory="Verbs"
-        categoryStats={{
-          Verbs: {
-            dailyCurrent: verbDailyCount,
-            weeklyCurrent: verbWeeklyCount,
-          },
-        }}
-        initialDailyTarget={verbDailyTarget}
-        initialWeeklyTarget={verbWeeklyTarget}
-      />
-
       {/* Add / Edit Verb Modal */}
       {modalOpen && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
           <div className="modal">
             <h3>{editingVerbId ? "Edit Verb" : "Add New Verb"}</h3>
             <form onSubmit={handleSaveModal}>
+              <div className="verb-form-tabs" role="tablist" aria-label="Verb form sections" style={{ display: "flex", gap: 8, marginBottom: 18, borderBottom: "1px solid var(--line-2, #ebdccb)", paddingBottom: 10 }}>
+                <button type="button" role="tab" aria-selected={verbFormTab === "details"} onClick={() => setVerbFormTab("details")} className={`btn ${verbFormTab === "details" ? "btn-primary" : "btn-secondary"}`}>Verb Details</button>
+                <button type="button" role="tab" aria-selected={verbFormTab === "conjugations"} onClick={() => setVerbFormTab("conjugations")} className={`btn ${verbFormTab === "conjugations" ? "btn-primary" : "btn-secondary"}`}>Conjugations</button>
+              </div>
+              {verbFormTab === "details" && <>
               <div>
                 <label className="modal-label">Grammatical Case</label>
                 <div className="radios">
@@ -2971,6 +2749,29 @@ export default function VerbsPage({
                 />
               </div>
 
+              </>}
+              {verbFormTab === "conjugations" && (
+                <section className="verb-conjugations-panel" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, padding: "4px 0 18px" }}>
+                  <p style={{ gridColumn: "1 / -1", color: "var(--muted)", fontSize: 13, margin: "0 0 2px" }}>
+                    Enter the present-tense form for each German subject pronoun. Use the same form for er / sie / es and for sie / Sie where appropriate.
+                  </p>
+                  {CONJUGATION_FIELDS.map(({ key, label, placeholder }) => (
+                    <div key={key}>
+                      <label className="modal-label">{label}</label>
+                      <input
+                        className="modal-input"
+                        type="text"
+                        placeholder={placeholder}
+                        value={verbFormData.conjugations?.[key] || ""}
+                        onChange={(e) => setVerbFormData((prev) => ({
+                          ...prev,
+                          conjugations: { ...EMPTY_CONJUGATIONS, ...(prev.conjugations || {}), [key]: e.target.value },
+                        }))}
+                      />
+                    </div>
+                  ))}
+                </section>
+              )}
               <div className="modal-actions">
                 <button type="button" onClick={() => setModalOpen(false)} className="btn btn-secondary">
                   Cancel
@@ -2980,69 +2781,6 @@ export default function VerbsPage({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Reset Confirmation Modal */}
-      {resetModalOpen && (
-        <div
-          className="overlay"
-          style={{ zIndex: 1200 }}
-          onClick={(e) => e.target === e.currentTarget && setResetModalOpen(false)}
-        >
-          <div
-            className="modal"
-            style={{
-              textAlign: "center",
-              maxWidth: 360,
-              padding: "24px 20px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              animation: "fadeIn 0.2s ease-in-out",
-            }}
-          >
-            <img
-              src={warningRedGif}
-              alt="Warning"
-              style={{
-                width: 90,
-                height: 90,
-                objectFit: "contain",
-                marginBottom: 16,
-              }}
-            />
-            <h3 style={{ margin: "0 0 8px", fontSize: 20, color: "#dc2626" }}>
-              Reset All Verbs?
-            </h3>
-            <p style={{ color: "var(--muted)", margin: "0 0 20px", fontSize: 14 }}>
-              Are you sure you want to delete all verbs? This action will permanently remove your entire verb list and cannot be undone.
-            </p>
-            <div style={{ display: "flex", gap: 10, width: "100%" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ flex: 1, justifyContent: "center" }}
-                onClick={() => setResetModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  backgroundColor: "#dc2626",
-                  borderColor: "#dc2626",
-                  color: "#ffffff",
-                }}
-                onClick={handleConfirmReset}
-              >
-                Yes, Reset All
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -3086,119 +2824,6 @@ export default function VerbsPage({
               onClick={() => setDuplicateModalOpen(false)}
             >
               Understood
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Goal Reached Celebration Modal */}
-      {goalCelebration.isOpen && (
-        <div
-          className="overlay"
-          style={{ zIndex: 1300 }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              stopGoalAchievedMusic();
-              setGoalCelebration((p) => ({ ...p, isOpen: false }));
-            }
-          }}
-        >
-          <div
-            className="modal"
-            style={{
-              textAlign: "center",
-              maxWidth: 380,
-              padding: "28px 22px 24px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              borderRadius: 20,
-              border: "1px solid #ebdccb",
-              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.18)",
-              animation: "fadeIn 0.22s ease-out",
-            }}
-          >
-            <img
-              src={congratsGif}
-              alt="Celebration Congrats"
-              style={{
-                width: 105,
-                height: 105,
-                objectFit: "contain",
-                marginBottom: 12,
-              }}
-            />
-
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                color: "#b85c19",
-                backgroundColor: "#fef3c7",
-                border: "1px solid #fde68a",
-                padding: "4px 12px",
-                borderRadius: 20,
-                marginBottom: 10,
-                textTransform: "uppercase",
-              }}
-            >
-              {goalCelebration.goalType === "daily" ? "🎯 Daily Goal Achieved!" : "🏆 Weekly Goal Achieved!"}
-            </span>
-
-            <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "var(--ink, #1e1e1e)" }}>
-              Herzlichen Glückwunsch!
-            </h3>
-
-            <p style={{ color: "var(--muted, #6b7280)", margin: "0 0 16px", fontSize: 14, lineHeight: 1.55 }}>
-              {goalCelebration.goalType === "daily" ? (
-                <>
-                  You reached your daily goal of{" "}
-                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} verbs</strong>!
-                </>
-              ) : (
-                <>
-                  Phenomenal work! You hit your weekly goal of{" "}
-                  <strong style={{ color: "#b85c19" }}>{goalCelebration.target} verbs</strong>!
-                </>
-              )}
-            </p>
-
-            {goalCelebration.addedWord && (
-              <div
-                style={{
-                  fontSize: 12.5,
-                  color: "#166534",
-                  backgroundColor: "#dcfce7",
-                  border: "1px solid #86efac",
-                  padding: "6px 14px",
-                  borderRadius: 10,
-                  marginBottom: 18,
-                  fontWeight: 600,
-                }}
-              >
-                Added: <strong>"{goalCelebration.addedWord}"</strong>
-              </div>
-            )}
-
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{
-                width: "100%",
-                justifyContent: "center",
-                padding: "12px 18px",
-                fontSize: 14.5,
-                fontWeight: 700,
-                backgroundColor: "#b85c19",
-                borderColor: "#b85c19",
-              }}
-              onClick={() => {
-                stopGoalAchievedMusic();
-                setGoalCelebration((p) => ({ ...p, isOpen: false }));
-              }}
-            >
-              Awesome, Keep Going! 🚀
             </button>
           </div>
         </div>

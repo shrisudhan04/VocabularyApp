@@ -1,0 +1,365 @@
+/* Backdrop */
+.goal-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(18, 16, 14, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+/* Modal Shell */
+.goal-modal-box {
+  background: #ffffff;
+  border-radius: 22px;
+  width: 100%;
+  max-width: 470px;
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 20px 40px -12px rgba(60, 40, 20, 0.16);
+  border: 1px solid #ebdccb;
+  overflow: hidden;
+  animation: modalScaleIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Header */
+.goal-modal-header {
+  padding: 20px 24px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.goal-modal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #b85c19;
+  margin-bottom: 2px;
+}
+
+.goal-modal-title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 800;
+  color: #1a1816;
+  letter-spacing: -0.02em;
+}
+
+.goal-modal-close-btn {
+  background: #f7f3ed;
+  border: 1px solid #ede6db;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #8c8276;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.goal-modal-close-btn:hover {
+  background: #ebdccb;
+  color: #1a1816;
+}
+
+/* Category Pill Tabs */
+.goal-category-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 24px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid #f4ede4;
+}
+
+.goal-category-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.goal-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 20px;
+  border: 1px solid #ede6db;
+  background: #faf8f5;
+  color: #6a6155;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+
+.goal-cat-pill:hover {
+  background: #f1ebdE;
+  color: #1a1816;
+}
+
+.goal-cat-pill.active {
+  background: #b85c19;
+  border-color: #b85c19;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(184, 92, 25, 0.28);
+}
+
+/* Modal Body */
+.goal-modal-body {
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #fdfcf9;
+}
+
+/* Card */
+.goal-card-premium {
+  background: #ffffff;
+  border: 1px solid #ede5d8;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 2px 6px rgba(35, 25, 15, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.goal-card-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.goal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.goal-type-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #8b8072;
+}
+
+.goal-unit-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #a09587;
+  background: #f5f0e8;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+/* Limit Stepper */
+.limit-stepper-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stepper-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #9c9182;
+}
+
+.stepper-box {
+  display: inline-flex;
+  align-items: center;
+  background: #fbf9f6;
+  border: 1px solid #e2d7c8;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.stepper-box button {
+  background: #ffffff;
+  border: 1px solid #e7ded2;
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #5a5043;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.stepper-box button:hover {
+  background: #f3ede2;
+  color: #1a1816;
+}
+
+.stepper-box input {
+  width: 40px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #1a1816;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.stepper-box input::-webkit-outer-spin-button,
+.stepper-box input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Card Main Details */
+.goal-card-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.goal-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.goal-count-display {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.metric-current {
+  font-size: 30px;
+  font-weight: 800;
+  color: #1a1816;
+  line-height: 1;
+}
+
+.metric-slash {
+  font-size: 18px;
+  font-weight: 500;
+  color: #c4b9aa;
+}
+
+.metric-target {
+  font-size: 16px;
+  font-weight: 700;
+  color: #7a6e60;
+}
+
+.metric-unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9c9182;
+  margin-left: 2px;
+}
+
+.goal-status-text {
+  margin: 0;
+  font-size: 12px;
+  color: #7a6f62;
+}
+
+.goal-status-text strong {
+  color: #b85c19;
+  font-weight: 700;
+}
+
+.completed-tag {
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+/* Circular Ring */
+.modal-circular-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.circular-svg {
+  transform: rotate(-90deg);
+}
+
+.circular-progress-bar {
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.circular-text-inner {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-progress-percent {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1a1816;
+  letter-spacing: -0.02em;
+}
+
+/* Footer */
+.goal-modal-footer {
+  padding: 14px 24px 18px;
+  border-top: 1px solid #f2ece3;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.goal-primary-btn {
+  background: #b85c19;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(184, 92, 25, 0.25);
+  transition: all 0.15s ease;
+}
+
+.goal-primary-btn:hover {
+  background: #9f4d12;
+}
+
+/* Keyframes */
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalScaleIn {
+  from {
+    transform: scale(0.96) translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}

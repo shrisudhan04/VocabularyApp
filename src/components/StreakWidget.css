@@ -1,0 +1,70 @@
+/* src/components/StreakWidget.css */
+.streak-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+/* Today completed: vibrant flame */
+.streak-widget.is-active {
+  background: #fff7ed;
+  border-color: #ffedd5;
+  color: #c2410c;
+  box-shadow: 0 2px 6px rgba(194, 65, 12, 0.12);
+}
+
+.streak-widget.is-active:hover {
+  background: #ffedd5;
+  transform: translateY(-1px);
+}
+
+/* In danger (not completed today yet) */
+.streak-widget.is-pending {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+.streak-widget.is-pending:hover {
+  background: #e2e8f0;
+}
+
+.streak-flame {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.streak-count {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.streak-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+/* Pulsing alert dot when today is not logged */
+.streak-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f97316;
+  animation: streakPulse 1.6s infinite ease-in-out;
+}
+
+@keyframes streakPulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
